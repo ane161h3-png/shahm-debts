@@ -19,6 +19,6 @@
 `npm install && npm run vendor` ينسخ Firebase وjsPDF والخطوط إلى `web/vendor` حتى يشتغل البرنامج بدون CDN.
 
 ## نسخة احتياطية يومية على تلكرام
-`.github/workflows/backup.yml` يشتغل كل يوم الساعة 11 بالليل (بغداد): يدخل بحساب `backup` (مشاهد فقط)،
+`.github/workflows/backup.yml` يشتغل كل يوم الساعة 2 بالليل (بغداد): يدخل بحساب `backup` (مشاهد فقط)،
 يقرأ كل البيانات، ويدز ملف النسخة لتلكرام. يحتاج أسرار المستودع: `BACKUP_PASSWORD`, `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`.
 الملف ما ينحفظ بالمستودع ولا يطبع بالسجل. إذا فشل يوصلك تنبيه على تلكرام.
