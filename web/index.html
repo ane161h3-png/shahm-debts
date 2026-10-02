@@ -256,6 +256,9 @@ td.x{width:64px;white-space:nowrap}
 .calc-keys .op{color:var(--accent);background:var(--accent-soft);border-color:var(--accent-soft)}
 .calc-keys .fn{color:var(--muted);font-size:15px}
 .calc-keys .eq{grid-column:4;grid-row:4/span 2;background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.wa-auto{display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;color:var(--ink)}
+.wa-auto input{width:18px;height:18px;accent-color:#1fa855;margin:0}
+.wa-auto.off{color:var(--muted);cursor:default}
 .quick{display:flex;flex-wrap:wrap;gap:6px}
 .quick button{border:1px solid var(--line);background:var(--paper-2);border-radius:99px;padding:4px 11px;font-size:13px;cursor:pointer}
 .quick button:hover{border-color:var(--accent);color:var(--accent)}
@@ -360,7 +363,12 @@ function calcEval(s){
   let v=term();while(k[i]==="+"||k[i]==="-"){const op=k[i++],r=term();v=op==="+"?v+r:v-r}
   return i===k.length&&isFinite(v)?v:NaN;
 }
-const CALC_KEY="shahm-calc";
+const CALC_KEY="shahm-calc",WA_AUTO_KEY="shahm-wa-auto";
+// Opens WhatsApp (or any external link) from code: the app's own browser can't, so the native build hands it to the system.
+function openExternal(url){
+  if(NATIVE){plugin("AppLauncher").openUrl({url}).catch(()=>{location.href=url});return}
+  const w=window.open(url,"_blank");if(!w)location.href=url;
+}
 const parseAmt=s=>{const n=Number(normDigits(s).replace(/[,،\s]/g,""));return isFinite(n)?n:NaN};
 const dayName=iso=>{try{return new Date(iso+"T12:00:00").toLocaleDateString("ar-IQ",{weekday:"long",day:"numeric",month:"long",numberingSystem:"latn"})}catch(e){return iso}};
 const shortDate=iso=>{try{return new Date(iso+"T12:00:00").toLocaleDateString("ar-IQ",{day:"numeric",month:"short",year:"numeric",numberingSystem:"latn"})}catch(e){return iso}};
@@ -932,7 +940,7 @@ function setPage(k){
       <div class="field"><textarea id="tpl-${key}" aria-label="${title}">${esc(t[key]||DEFAULT_TPL[key])}</textarea></div>
       <div class="ph">${ph.map(p=>`<button type="button" data-ph="${p}" data-for="tpl-${key}">{${p}}</button>`).join("")}</div>
       <div><button class="btn ghost sm" type="button" data-tplreset="${key}">رجوع للنص الافتراضي</button></div></div>`;
-    return `<h2>قوالب الرسائل</h2><p class="lead">بعد كل دين أو تسديد يظهر زر «إرسال واتساب» بهذا النص لرقم الزبون. الكلمات بين { } تتبدل تلقائياً.</p>
+    return `<h2>قوالب الرسائل</h2><p class="lead">بعد كل دين أو تسديد ينفتح واتساب على رقم الزبون بهذا النص (تكدر تطفيها من نافذة التسجيل). الكلمات بين { } تتبدل تلقائياً.</p>
       ${box("debt","إضافة دين جديد","ترسل بعد تسجيل دين")}${box("pay","إضافة دفعة","ترسل بعد تسجيل تسديد")}${box("remind","تذكير بالرصيد","زر «تذكير واتساب» في صفحة الزبون")}
       <div><button class="btn primary" type="button" data-act="savetpl">حفظ القوالب</button></div>`;
   }
@@ -1031,6 +1039,7 @@ function txnForm(type,existing){
       <div class="quick">${quick.map(q=>`<button type="button" data-q="${q}">+${fmt(q)}</button>`).join("")}${!isDebt&&!existing&&bal>0?`<button type="button" data-all="${bal}">سداد كامل ${fmt(bal)}</button>`:""}</div>
       <div class="field"><label for="tNote">${isDebt?"المواد / البيان":"ملاحظة"} (اختياري)</label><input id="tNote" maxlength="140" value="${esc(existing&&existing.note)}" placeholder="${isDebt?"مثال: رز، زيت، سكر":"مثال: دفعة نقداً"}"></div>
       <div class="field"><label for="tDate">التاريخ</label><input id="tDate" type="date" value="${existing?esc(existing.date):todayISO()}"></div>
+      ${existing||isSup(c)?"":c.phone?`<label class="wa-auto"><input type="checkbox" id="tWa" ${(()=>{try{return localStorage.getItem(WA_AUTO_KEY)==="0"?"":"checked"}catch(e){return "checked"}})()}>فتح واتساب بعد الحفظ والرسالة جاهزة</label>`:`<span class="wa-auto off">الزبون بدون رقم، أضف رقمه حتى ترسل له واتساب.</span>`}
       <p class="err" id="tErr"></p>
       <div class="foot"><button class="btn ${isDebt?"debt":"paid"}" type="submit">${existing?"حفظ التعديل":isDebt?"حفظ الدين":"حفظ التسديد"}</button><button class="btn" type="button" data-close>إلغاء</button></div>
     </form>`,m=>{
@@ -1066,8 +1075,11 @@ function txnForm(type,existing){
         closeModal();put("txns",obj);log("edit",what,{customerName:c.name,amount:amt,detail:changed});toast("تم حفظ التعديل");return;
       }
       const obj={id:uid(),customerId:c.id,type:what,amount:amt,note,date,createdAt:Date.now(),by:S.me.name};
+      const waBox=m.querySelector("#tWa"),autoWa=!!(waBox&&waBox.checked);
+      if(waBox)try{localStorage.setItem(WA_AUTO_KEY,autoWa?"1":"0")}catch(e){}
       closeModal();await put("txns",obj);log("add",what,{customerName:c.name,amount:amt});
       const link=c.phone&&!isSup(c)?waLink(c.phone,fillTpl(what,c,{amount:amt,date,note})):"";
+      if(link&&autoWa)openExternal(link);
       toast((isDebt?"سُجّل دين ":"سُجّل تسديد ")+fmt(amt)+" "+CUR,link?{href:link,label:"إرسال واتساب"}:null);
     });
   });
