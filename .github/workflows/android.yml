@@ -1,0 +1,52 @@
+# Builds the Android app (Capacitor wrapping web/) and publishes it as the latest release,
+# downloadable at releases/latest/download/shahm-debts.apk.
+name: Android APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: android
+  cancel-in-progress: true
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Create Android project
+        run: |
+          npx cap add android
+          npx @capacitor/assets generate --android \
+            --iconBackgroundColor '#4a46c9' --iconBackgroundColorDark '#4a46c9' \
+            --splashBackgroundColor '#eef0f6' --splashBackgroundColorDark '#121318'
+          npx cap sync android
+      - name: Set version
+        run: |
+          sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -E "versionCode|versionName" android/app/build.gradle
+      # Same key on every build, so a new APK installs over the old one without losing anything.
+      - name: Signing key
+        run: mkdir -p ~/.android && cp signing/debug.keystore ~/.android/debug.keystore
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk shahm-debts.apk
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete app-latest --yes --cleanup-tag || true
+          gh release create app-latest shahm-debts.apk --target "${{ github.sha }}" --latest \
+            --title "ديون الشهم 1.0.${{ github.run_number }}" \
+            --notes "حمّل shahm-debts.apk وثبّته على موبايل الأندرويد. للتحديث ثبّته فوق النسخة القديمة."

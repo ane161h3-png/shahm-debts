@@ -1,0 +1,25 @@
+{
+  "name": "shahm-debts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "دفتر ديون ماركت الشهم",
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/app-launcher": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/share": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.0",
+    "@fontsource/ibm-plex-sans-arabic": "^5.0.0",
+    "@fontsource/readex-pro": "^5.0.0",
+    "firebase": "^10.14.1",
+    "jspdf": "2.5.1"
+  }
+}

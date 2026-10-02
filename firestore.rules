@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isOwner() { return signedIn() && request.auth.token.email == 'admin@shahm-debts.app'; }
+    function hasProf() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function prof() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function active() { return isOwner() || (hasProf() && prof().status == 'active'); }
+    function writer() { return isOwner() || (active() && prof().role == 'editor'); }
+
+    match /customers/{id} { allow read: if active(); allow write: if writer(); }
+    match /txns/{id}      { allow read: if active(); allow write: if writer(); }
+    match /activity/{id} {
+      allow read: if active();
+      allow create: if writer() || (active() && request.resource.data.kind == 'remind');
+      allow update, delete: if isOwner();
+    }
+    match /settings/{id}  { allow read: if active(); allow write: if isOwner(); }
+    match /users/{uid} {
+      allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
+      allow create: if isOwner() || (signedIn() && request.auth.uid == uid
+        && request.resource.data.status == 'pending' && request.resource.data.role == 'viewer');
+      allow update, delete: if isOwner();
+    }
+  }
+}
