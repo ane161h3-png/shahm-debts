@@ -259,6 +259,24 @@ td.x{width:64px;white-space:nowrap}
 .wa-auto{display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;color:var(--ink)}
 .wa-auto input{width:18px;height:18px;accent-color:#1fa855;margin:0}
 .wa-auto.off{color:var(--muted);cursor:default}
+.modal.wide{max-width:640px}
+.modal.wide .foot{position:sticky;bottom:-18px;background:var(--paper);padding:10px 0;margin-bottom:-8px}
+.scan-pick{display:flex;flex-direction:column;gap:8px}
+.scan-pick label{cursor:pointer}
+.scan-wait{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0;color:var(--muted);text-align:center}
+.scan-thumbs{display:flex;gap:6px;overflow-x:auto}
+.scan-thumbs img{height:220px;border-radius:10px;border:1px solid var(--line)}
+.scan-sum{display:flex;flex-wrap:wrap;gap:6px;font-size:13px}
+.sr-list{display:flex;flex-direction:column;gap:8px}
+.sr{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;background:var(--paper)}
+.sr.warn{border-color:var(--warn);background:var(--warn-soft)}
+.sr.bad{border-color:var(--debt)}
+.sr-top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.sr-top b{color:var(--ink)}
+.sr select,.sr input{border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:8px 10px;width:100%;min-width:0;color:var(--ink)}
+.sr-row{display:flex;gap:8px;align-items:center}
+.sr-row .seg{flex:none}
+.sr-row input{font-family:var(--f-display);font-weight:600;font-size:16px;text-align:left;direction:ltr}
 .quick{display:flex;flex-wrap:wrap;gap:6px}
 .quick button{border:1px solid var(--line);background:var(--paper-2);border-radius:99px;padding:4px 11px;font-size:13px;cursor:pointer}
 .quick button:hover{border-color:var(--accent);color:var(--accent)}
@@ -388,6 +406,7 @@ function fillTpl(kind,c,extra){
   return tpl.replace(/\{([^}]+)\}/g,(m,k)=>k in map?map[k]:m);
 }
 const I={
+  camera:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>',
   home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
   users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2a5 5 0 0 1 5.5 5.8"/></svg>',
   gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
@@ -613,7 +632,7 @@ function homeView(){
     </section>
     <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
       <section class="pane card-pad"><div class="section-title"><h2>إجراءات سريعة</h2></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button>`:""}<button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين (${owing})</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button><button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`:""}<button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين (${owing})</button></div>
         ${isAdmin()&&(!S.settings.lastBackupAt||Date.now()-S.settings.lastBackupAt>7*864e5)&&S.customers.size?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${S.settings.lastBackupAt?"مرّ أكثر من أسبوع على آخر نسخة احتياطية.":"لم تحفظ نسخة احتياطية بعد."}</span><button class="btn sm" type="button" data-act="gobackup">${I.save}احفظ نسخة</button></div>`:""}
         ${supOwed>0?`<div class="banner warn">علينا للموردين: <b class="num">${fmt(supOwed)}</b> ${CUR}</div>`:""}</section>
       <section class="pane card-pad"><div class="section-title"><h2>أعلى الديون</h2><button class="linkish" type="button" data-go="customers">كل الزبائن</button></div>
@@ -1084,6 +1103,105 @@ function txnForm(type,existing){
     });
   });
 }
+/* ---------- ledger photo: read the paper notebook with AI, review, save ---------- */
+async function shrinkImage(file){
+  let src;
+  try{src=await createImageBitmap(file,{imageOrientation:"from-image"})}
+  catch(e){src=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error("bad image"));i.src=URL.createObjectURL(file)})}
+  const w=src.width,h=src.height,k=Math.min(1,1568/Math.max(w,h));
+  const cv=document.createElement("canvas");cv.width=Math.round(w*k);cv.height=Math.round(h*k);
+  cv.getContext("2d").drawImage(src,0,0,cv.width,cv.height);
+  const url=cv.toDataURL("image/jpeg",.85);
+  return {url,data:url.slice(url.indexOf(",")+1),media_type:"image/jpeg"};
+}
+function scanStart(){
+  if(!window.AI_URL){openModal(`<h3>تصوير ورقة اليوميات</h3><p class="hint">هذي الخاصية بعدها ما مفعّلة. تحتاج ربط خدمة الذكاء الاصطناعي أول مرة.</p><div class="foot"><button class="btn" type="button" data-close>تمام</button></div>`);return}
+  openModal(`<h3>تصوير ورقة اليوميات</h3>
+    <p class="hint">صوّر الورقة كاملة وبضوء زين. البرنامج يقرأ الأسماء والمبالغ، وتراجعها قبل ما تنحفظ.</p>
+    <div id="scBody"><div class="scan-pick">
+      <label class="btn primary block">${I.camera}تصوير الورقة<input type="file" accept="image/*" capture="environment" hidden id="scCam"></label>
+      <label class="btn block">اختيار صور من المعرض (لحد 4)<input type="file" accept="image/*" multiple hidden id="scGal"></label>
+    </div></div>
+    <p class="err" id="scErr"></p>
+    <div class="foot"><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
+    const go=async files=>{
+      files=[...files].slice(0,4);if(!files.length)return;
+      const err=m.querySelector("#scErr");err.textContent="";
+      m.querySelector("#scBody").innerHTML=`<div class="scan-wait"><div class="spinner"></div><b>جاري قراءة الورقة…</b><span>ممكن تاخذ لحد دقيقة، لا تسد البرنامج.</span></div>`;
+      try{
+        const imgs=[];for(const f of files)imgs.push(await shrinkImage(f));
+        const customers=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({id:c.id,name:c.name}));
+        const token=await auth.currentUser.getIdToken();
+        const ctl=new AbortController();const tm=setTimeout(()=>ctl.abort(),150000);
+        let r,j;
+        try{r=await fetch(window.AI_URL,{method:"POST",signal:ctl.signal,headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({images:imgs.map(({data,media_type})=>({data,media_type})),customers})});j=await r.json().catch(()=>({}))}
+        finally{clearTimeout(tm)}
+        if(!r.ok)throw new Error(j.error||"تعذّرت قراءة الورقة.");
+        if(!j.rows||!j.rows.length)throw new Error("ما لكيت حركات بالصورة. تأكد إن الورقة واضحة وكاملة.");
+        scanReview(j.rows,imgs.map(i=>i.url));
+      }catch(e){
+        if(!$("#scBody"))return;
+        err.textContent=e.name==="AbortError"?"طوّلت القراءة كلش. تأكد من الإنترنت وحاول مرة ثانية.":navigator.onLine===false?"لازم إنترنت حتى تنقرأ الصورة.":(e.message||"تعذّرت قراءة الورقة.");
+        $("#scBody").innerHTML=`<div class="scan-pick"><button class="btn primary block" type="button" id="scAgain">حاول مرة ثانية</button></div>`;
+        $("#scAgain").onclick=()=>{closeModal();scanStart()};
+      }
+    };
+    m.querySelector("#scCam").addEventListener("change",e=>go(e.target.files));
+    m.querySelector("#scGal").addEventListener("change",e=>go(e.target.files));
+  });
+}
+function scanReview(rows,pics){
+  const custs=[...S.customers.values()].filter(c=>!isSup(c)).sort((a,b)=>a.name.localeCompare(b.name,"ar"));
+  const R=rows.map(r=>({...r,cust:r.customer_id||"",amount:r.amount>0?r.amount:0,gone:false}));
+  const opts=sel=>`<option value="">— اختر الزبون —</option><option value="new" ${sel==="new"?"selected":""}>+ زبون جديد بهذا الاسم</option>${custs.map(c=>`<option value="${esc(c.id)}" ${c.id===sel?"selected":""}>${esc(c.name)}</option>`).join("")}`;
+  const card=(r,i)=>{const warn=r.match!=="sure"||r.amount_unsure||!r.amount;
+    return `<div class="sr ${warn?"warn":""}" data-i="${i}">
+      <div class="sr-top"><span>مكتوب بالورقة: <b>${esc(r.written_name)||"؟"}</b>${r.match==="unsure"?" · تأكد من الاسم":r.match==="none"?" · ما لكيته بالزبائن":""}${r.amount_unsure?" · تأكد من المبلغ":""}</span><button class="icon-btn del" type="button" aria-label="حذف السطر" data-srdel>${I.trash}</button></div>
+      <select data-f="cust" aria-label="الزبون">${opts(r.cust)}</select>
+      <div class="sr-row"><div class="seg" role="group" aria-label="نوع الحركة"><button type="button" data-t="debt" aria-pressed="${r.type==="debt"}">دين</button><button type="button" data-t="pay" aria-pressed="${r.type==="pay"}">تسديد</button></div><input data-f="amt" inputmode="numeric" aria-label="المبلغ" value="${r.amount?fmt(r.amount):""}" placeholder="المبلغ"></div>
+      <input data-f="note" maxlength="140" aria-label="المواد" value="${esc(r.note)}" placeholder="المواد (اختياري)">
+    </div>`};
+  openModal(`<h3>راجع الحركات قبل الحفظ</h3>
+    <p class="hint">المظلّل بالأصفر تأكد منه. تكدر تغيّر الزبون أو المبلغ أو تحذف السطر.</p>
+    <details><summary>عرض الصورة</summary><div class="scan-thumbs">${pics.map(u=>`<img src="${u}" alt="صورة الورقة">`).join("")}</div></details>
+    <div class="field"><label for="srDate">تاريخ الحركات</label><input id="srDate" type="date" value="${todayISO()}"></div>
+    <div class="scan-sum" id="srSum"></div>
+    <div class="sr-list" id="srList">${R.map(card).join("")}</div>
+    <p class="err" id="srErr"></p>
+    <div class="foot"><button class="btn primary" type="button" id="srSave">حفظ</button><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
+    m.classList.add("wide");setTimeout(()=>document.activeElement&&document.activeElement.blur(),0);
+    const list=m.querySelector("#srList");
+    const sum=()=>{const live=R.filter(r=>!r.gone);let d=0,p=0;for(const r of live)r.type==="pay"?p+=r.amount||0:d+=r.amount||0;
+      const nw=new Set(live.filter(r=>r.cust==="new").map(r=>r.written_name.trim())).size;
+      m.querySelector("#srSum").innerHTML=`<span class="chip zero">${live.length} حركة</span><span class="chip debt">ديون ${fmt(d)}</span>${p?`<span class="chip paid">تسديد ${fmt(p)}</span>`:""}${nw?`<span class="chip warn">${nw} زبون جديد</span>`:""}`;
+      m.querySelector("#srSave").textContent=`حفظ ${live.length} حركة`;m.querySelector("#srSave").disabled=!live.length};
+    list.addEventListener("click",e=>{const c=e.target.closest(".sr");if(!c)return;const r=R[c.dataset.i];
+      if(e.target.closest("[data-srdel]")){r.gone=true;c.remove();sum();return}
+      const t=e.target.closest("[data-t]");if(t){r.type=t.dataset.t;c.querySelectorAll("[data-t]").forEach(b=>b.setAttribute("aria-pressed",String(b===t)));sum()}});
+    list.addEventListener("input",e=>{const c=e.target.closest(".sr");if(!c)return;const r=R[c.dataset.i],f=e.target.dataset.f;
+      if(f==="amt"){const v=parseAmt(e.target.value);r.amount=isFinite(v)?Math.round(v):0}
+      if(f==="note")r.note=e.target.value;
+      if(f==="cust")r.cust=e.target.value;
+      c.classList.remove("bad");sum()});
+    list.addEventListener("change",e=>{if(e.target.dataset.f==="cust"){const c=e.target.closest(".sr");R[c.dataset.i].cust=e.target.value;c.classList.remove("warn");sum()}
+      if(e.target.dataset.f==="amt"&&R[e.target.closest(".sr").dataset.i].amount)e.target.value=fmt(R[e.target.closest(".sr").dataset.i].amount)});
+    sum();
+    m.querySelector("#srSave").addEventListener("click",()=>{
+      const live=R.filter(r=>!r.gone);let bad=0;
+      list.querySelectorAll(".sr").forEach(c=>{const r=R[c.dataset.i];const ok=r.cust&&r.amount>0&&(r.cust!=="new"||r.written_name.trim());c.classList.toggle("bad",!ok);if(!ok)bad++});
+      if(bad){m.querySelector("#srErr").textContent=`${bad} سطر ناقص: اختر الزبون واكتب المبلغ، أو احذف السطر.`;list.querySelector(".sr.bad").scrollIntoView({block:"center",behavior:"smooth"});return}
+      const date=m.querySelector("#srDate").value||todayISO();const made=new Map();let t0=Date.now();
+      for(const r of live){
+        let cid=r.cust;
+        if(cid==="new"){const nm=r.written_name.trim();if(!made.has(nm)){const c={id:uid(),name:nm,kind:"customer",limit:0,phone:"",note:"",createdAt:Date.now(),by:S.me.name};put("customers",c);log("add","customer",{customerName:nm});made.set(nm,c.id)}cid=made.get(nm)}
+        const c=S.customers.get(cid);
+        put("txns",{id:uid(),customerId:cid,type:r.type,amount:r.amount,note:r.note.trim(),date,createdAt:t0++,by:S.me.name,source:"photo"});
+        log("add",r.type,{customerName:c?c.name:r.written_name,amount:r.amount});
+      }
+      closeModal();toast(`تم حفظ ${live.length} حركة من الورقة`);
+    });
+  });
+}
 function pickCustomer(type){
   openModal(`<h3>${type==="debt"?"دين جديد":"تسديد"}: اختر الزبون</h3>
     <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="pq" type="search" placeholder="ابحث بالاسم أو الهاتف" autocomplete="off"></div>
@@ -1228,6 +1346,7 @@ document.addEventListener("click",e=>{
     case "back":S.selected=null;render();break;
     case "quick":if(canWrite())pickCustomer("debt");break;
     case "quickpay":if(canWrite())pickCustomer("pay");break;
+    case "scan":if(canWrite())scanStart();break;
     case "newcust":if(canWrite())customerForm(null);break;
     case "debt":if(canWrite())txnForm("debt");break;
     case "pay":if(canWrite())txnForm("pay");break;

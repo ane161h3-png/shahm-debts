@@ -1,0 +1,43 @@
+# Deploys worker/ (reads ledger photos with AI) to Cloudflare Workers.
+# Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, and GEMINI_API_KEY (free) or ANTHROPIC_API_KEY (Claude; wins if set).
+name: AI worker
+on:
+  push:
+    branches: [main]
+    paths: ["worker/**", ".github/workflows/ai-worker.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Check secrets
+        run: |
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::Missing secret CLOUDFLARE_API_TOKEN"; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Missing secret CLOUDFLARE_ACCOUNT_ID"; exit 1; }
+          [ -n "$GEMINI_API_KEY$ANTHROPIC_API_KEY" ] || { echo "::error::Add GEMINI_API_KEY or ANTHROPIC_API_KEY"; exit 1; }
+      - name: Check the Gemini model is available
+        if: env.GEMINI_API_KEY != '' && env.ANTHROPIC_API_KEY == ''
+        run: |
+          curl -s -H "x-goog-api-key: $GEMINI_API_KEY" "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200" \
+            | jq -r 'if .error then "Gemini error: \(.error.status) \(.error.message)" else (.models[].name | select(test("flash"))) end'
+      - run: npm ci
+      - name: Deploy
+        run: npx wrangler deploy
+      - name: Store the AI key on the worker
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY; fi
+          if [ -n "$ANTHROPIC_API_KEY" ]; then printf '%s' "$ANTHROPIC_API_KEY" | npx wrangler secret put ANTHROPIC_API_KEY
+          else yes | npx wrangler secret delete ANTHROPIC_API_KEY >/dev/null 2>&1 || true; fi

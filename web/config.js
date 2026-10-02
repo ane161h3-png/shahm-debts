@@ -8,3 +8,6 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "484305962591",
   appId: "1:484305962591:web:1be0bba9352d4255d37dea"
 };
+
+// Address of the small server that reads ledger photos (worker/). Empty until it is deployed.
+window.AI_URL = "";

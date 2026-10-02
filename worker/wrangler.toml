@@ -1,0 +1,13 @@
+# Small server that reads photos of the paper ledger with Claude.
+# It keeps the Anthropic API key off the public website: the app sends the photo here,
+# this checks the person is a signed-in editor, then asks Claude. Deployed by .github/workflows/ai-worker.yml.
+name = "shahm-ai"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+FIREBASE_API_KEY = "AIzaSyA8ZcghTnu-k3iQ01JuBeXPl44Pj0pwDDg"
+FIREBASE_PROJECT = "shahm-debts-a080e"
+OWNER_EMAIL = "admin@shahm-debts.app"
+ALLOWED_ORIGINS = "https://ane161h3-png.github.io,https://localhost,capacitor://localhost"
