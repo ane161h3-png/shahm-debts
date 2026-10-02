@@ -1,0 +1,30 @@
+# Sends a full backup of the debt book to Telegram every day at 11pm Baghdad time (20:00 UTC).
+# Secrets (Settings > Secrets and variables > Actions): BACKUP_PASSWORD, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
+name: Daily backup
+on:
+  schedule:
+    - cron: "0 20 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Send backup to Telegram
+        env:
+          BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node scripts/backup.mjs
+      # GitHub pauses scheduled workflows after 60 days without repo activity; re-enabling keeps it running.
+      - name: Keep the schedule alive
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/backup.yml/enable" || true
