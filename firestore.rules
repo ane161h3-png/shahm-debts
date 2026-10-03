@@ -25,10 +25,40 @@ service cloud.firestore {
       allow write: if isOwner();
       allow update: if writer() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']);
     }
+    // An editor's sale with a discount needs a discount the owner approved for exactly this invoice total,
+    // and the same write marks that approval used, so it cannot be spent twice.
+    function apPath(aid) { return /databases/$(database)/documents/approvals/$(aid); }
+    function discountOk(d) {
+      return !('discount' in d) || d.discount == 0 || isOwner() || (('approvalId' in d) && d.approvalId is string
+        && exists(apPath(d.approvalId))
+        && get(apPath(d.approvalId)).data.status == 'approved'
+        && get(apPath(d.approvalId)).data.byId == request.auth.uid
+        && get(apPath(d.approvalId)).data.amount >= d.discount
+        && get(apPath(d.approvalId)).data.subtotal == d.subtotal
+        && getAfter(apPath(d.approvalId)).data.status == 'used');
+    }
     match /sales/{id} {
       allow read: if active();
-      allow create: if writer();
+      allow create: if writer() && discountOk(request.resource.data);
       allow update, delete: if isOwner();
+    }
+    // Discount requests: an editor asks, the owner approves or refuses; the editor can only withdraw a pending
+    // request or mark an approved one used by a sale.
+    match /approvals/{id} {
+      allow read: if active();
+      allow create: if writer() && request.resource.data.byId == request.auth.uid && request.resource.data.status == 'pending';
+      allow update: if isOwner() || (writer() && resource.data.byId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'saleId', 'usedAt'])
+        && ((resource.data.status == 'pending' && request.resource.data.status == 'cancelled')
+          || (resource.data.status == 'approved' && request.resource.data.status == 'used')));
+      allow delete: if isOwner();
+    }
+    // Shifts: whoever sells opens and closes them; a closed shift is final (only the owner can delete one).
+    match /shifts/{id} {
+      allow read: if active();
+      allow create: if writer() && request.resource.data.status == 'open';
+      allow update: if writer() && resource.data.status == 'open';
+      allow delete: if isOwner();
     }
     match /users/{uid} {
       allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
