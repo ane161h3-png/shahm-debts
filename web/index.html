@@ -615,6 +615,10 @@ function homeView(){
   const top=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal})).filter(x=>x.b>0).sort((a,b)=>b.b-a.b).slice(0,6);
   const acts=S.activity.filter(a=>a.kind!=="login"&&(S.actFilter==="all"?a.kind!=="remind":a.kind===S.actFilter)).slice(0,60);
   return `<div style="display:flex;flex-direction:column;gap:14px">
+  <section class="pane card-pad"><div class="section-title"><h2>إجراءات سريعة</h2></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button><button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`:""}<button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين (${owing})</button></div>
+        ${isAdmin()&&(!S.settings.lastBackupAt||Date.now()-S.settings.lastBackupAt>7*864e5)&&S.customers.size?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${S.settings.lastBackupAt?"مرّ أكثر من أسبوع على آخر نسخة احتياطية.":"لم تحفظ نسخة احتياطية بعد."}</span><button class="btn sm" type="button" data-act="gobackup">${I.save}احفظ نسخة</button></div>`:""}
+        ${supOwed>0?`<div class="banner warn">علينا للموردين: <b class="num">${fmt(supOwed)}</b> ${CUR}</div>`:""}</section>
   <section class="stats" aria-label="ملخص">
     <div class="stat main"><div class="k">${I.wallet}مجموع الدين</div><div class="v"><span class="num">${fmt(total)}</span><small>${CUR}</small></div></div>
     <div class="stat"><div class="k">${I.users}الزبائن</div><div class="v"><span class="num">${custN}</span><small>${owing} عليهم دين</small></div></div>
@@ -632,10 +636,6 @@ function homeView(){
       :`<div class="empty"><b>لا يوجد نشاط بعد</b>كل دين أو تسديد أو تعديل يظهر هنا مع اسم من سجّله.</div>`}
     </section>
     <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
-      <section class="pane card-pad"><div class="section-title"><h2>إجراءات سريعة</h2></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button><button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`:""}<button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين (${owing})</button></div>
-        ${isAdmin()&&(!S.settings.lastBackupAt||Date.now()-S.settings.lastBackupAt>7*864e5)&&S.customers.size?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${S.settings.lastBackupAt?"مرّ أكثر من أسبوع على آخر نسخة احتياطية.":"لم تحفظ نسخة احتياطية بعد."}</span><button class="btn sm" type="button" data-act="gobackup">${I.save}احفظ نسخة</button></div>`:""}
-        ${supOwed>0?`<div class="banner warn">علينا للموردين: <b class="num">${fmt(supOwed)}</b> ${CUR}</div>`:""}</section>
       <section class="pane card-pad"><div class="section-title"><h2>أعلى الديون</h2><button class="linkish" type="button" data-go="customers">كل الزبائن</button></div>
         ${top.length?`<ul class="top-list">${top.map(x=>`<li><span class="avatar" aria-hidden="true">${initial(x.c.name)}</span><button type="button" data-open="${esc(x.c.id)}">${esc(x.c.name)}</button><span class="chip debt"><span class="num">${fmt(x.b)}</span></span></li>`).join("")}</ul>`
         :`<div class="empty"><b>لا توجد ديون</b>أضف زبوناً وسجّل عليه أول دين.</div>`}
