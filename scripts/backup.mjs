@@ -77,7 +77,27 @@ async function readDoc(token, path) {
   return fields(j.fields || {});
 }
 
+// The cashier's collections are newer than the backup account's rules may be: until firestore.rules is published
+// they read as forbidden, and the report goes on without them instead of failing.
+async function readOptional(token, coll) {
+  try { return await readAll(token, coll); } catch (e) { console.warn(`Skipping ${coll}: ${e.message}`); return []; }
+}
+
 const fmt = n => Math.round(n).toLocaleString("en-US");
+
+// Cashier sales (web/pos/) in a time range: totals, how they were paid, and the best sellers.
+function salesSummary(sales, inRange) {
+  const list = sales.filter(s => s.status !== "void" && inRange(Number(s.at) || 0));
+  const sum = k => list.reduce((a, s) => a + (Number(s[k]) || 0), 0);
+  const items = new Map();
+  for (const s of list) for (const i of s.items || []) {
+    const x = items.get(i.name) || { qty: 0, total: 0 };
+    x.qty += Number(i.qty) || 0; x.total += Number(i.total) || 0; items.set(i.name, x);
+  }
+  return { n: list.length, total: sum("total"), cash: sum("cash"), debt: sum("debt"), discount: sum("discount"),
+    top: [...items].sort((a, b) => b[1].total - a[1].total).slice(0, 5) };
+}
+const salesLine = p => `🛒 مبيعات الكاشير: ${fmt(p.total)} د.ع (${p.n} فاتورة) · كاش ${fmt(p.cash)}${p.debt ? ` · دين ${fmt(p.debt)}` : ""}`;
 
 const BAGHDAD = 3 * 3600e3;
 const isoDay = ms => new Date(ms + BAGHDAD).toISOString().slice(0, 10);
@@ -88,7 +108,7 @@ function reportDay(now) {
   const local = new Date(now.getTime() + BAGHDAD);
   return isoDay(now.getTime() - (local.getUTCHours() < 12 ? 24 * 3600e3 : 0));
 }
-function daySummary(customers, txns, settings, now) {
+function daySummary(customers, txns, settings, now, sales = []) {
   const day = reportDay(now);
   const next = isoDay(Date.parse(day + "T12:00:00Z") + 24 * 3600e3);
   const byId = new Map(customers.map(c => [c.id, c]));
@@ -112,7 +132,14 @@ function daySummary(customers, txns, settings, now) {
 
   const shop = settings.shopName || "ماركت الشهم";
   const lines = [`📊 ملخص يوم ${day}: ${shop}`, ""];
-  if (!done.length && !newCust) lines.push("ما انسجلت أي حركة بهذا اليوم.");
+  const pos = salesSummary(sales, ms => isoDay(ms) === day);
+  if (pos.n) {
+    lines.push(salesLine(pos));
+    if (pos.discount) lines.push(`🏷 خصومات: ${fmt(pos.discount)} د.ع`);
+    if (pos.top.length) lines.push("أكثر المواد مبيعاً:", ...pos.top.map(([n, x]) => `  • ${n}: ${fmt(x.total)}`));
+    lines.push("");
+  }
+  if (!done.length && !newCust) lines.push("ما انسجلت أي حركة ديون بهذا اليوم.");
   else {
     lines.push(`🔴 ديون جديدة: ${fmt(debt.v)} د.ع (${debt.n} حركة)`);
     lines.push(`🟢 واصل: ${fmt(pay.v)} د.ع (${pay.n} حركة)`);
@@ -149,7 +176,7 @@ const ICON = { add: "➕", edit: "✏️", delete: "🗑", remind: "💬" };
 
 // Two-hour report. The window is the two-hour slot that just closed (even UTC hours), so a late GitHub run
 // neither skips nor repeats entries; a manual run reports the last two hours.
-function periodicReport(customers, txns, activity, settings, now, manual) {
+function periodicReport(customers, txns, activity, settings, now, manual, sales = []) {
   const end = manual ? now.getTime() : Math.floor(now.getTime() / 7200e3) * 7200e3, start = end - 7200e3;
   const byId = new Map(customers.map(c => [c.id, c]));
   const inWin = ms => ms >= start && ms < end;
@@ -159,8 +186,10 @@ function periodicReport(customers, txns, activity, settings, now, manual) {
   const debt = sum("debt", false), pay = sum("pay", false), buy = sum("debt", true), paySup = sum("pay", true);
   const shop = settings.shopName || "ماركت الشهم";
   const lines = [`🕑 تحديث ${shop}: من ${hm(start)} إلى ${hm(end)}`, ""];
-  if (!acts.length && !made.length) lines.push("ما صار شي بهالساعتين.");
-  else {
+  const pos = salesSummary(sales, inWin);
+  if (pos.n) lines.push(salesLine(pos));
+  if (!acts.length && !made.length && !pos.n) lines.push("ما صار شي بهالساعتين.");
+  else if (acts.length || made.length) {
     if (debt.n) lines.push(`🔴 ديون: ${fmt(debt.v)} د.ع (${debt.n})`);
     if (pay.n) lines.push(`🟢 واصل: ${fmt(pay.v)} د.ع (${pay.n})`);
     if (buy.n || paySup.n) lines.push(`🚚 الموردين: مشتريات ${fmt(buy.v)} · دفعات ${fmt(paySup.v)}`);
@@ -178,7 +207,7 @@ function periodicReport(customers, txns, activity, settings, now, manual) {
   const waiting = customers.filter(c => c.kind !== "supplier" && c.promise && c.promise.date && c.promise.date <= today && (bal.get(c.id) || 0) > 0)
     .map(c => `  • ${c.name}${c.promise.amount ? ": " + fmt(c.promise.amount) : ""}${c.promise.date < today ? " (فات موعده)" : ""}`);
   if (waiting.length) lines.push("", "🤝 ما صار بعد: وعدوا يدفعون وما دفعوا", ...waiting.slice(0, 20), ...(waiting.length > 20 ? [`  … و ${waiting.length - 20} غيرهم`] : []));
-  return { text: lines.join("\n").slice(0, 4000), changed: acts.length > 0 || made.length > 0, start, end, stamp: `${today}-${hm(end).replace(/[:\s]/g, "")}` };
+  return { text: lines.join("\n").slice(0, 4000), changed: acts.length > 0 || made.length > 0 || pos.n > 0, start, end, stamp: `${today}-${hm(end).replace(/[:\s]/g, "")}` };
 }
 
 async function tg(method, body) {
@@ -199,19 +228,20 @@ async function sendFile(name, data, type, caption, quiet) {
 async function main() {
   const mode = (process.env.MODE || "daily").trim();
   const token = await signIn();
-  const [customers, txns, activity, settings] = await Promise.all([
+  const [customers, txns, activity, settings, sales, products] = await Promise.all([
     readAll(token, "customers"), readAll(token, "txns"), readAll(token, "activity"), readDoc(token, "settings/main"),
+    readOptional(token, "sales"), readOptional(token, "products"),
   ]);
   const now = new Date();
   const day = isoDay(now.getTime());
   const shop = settings.shopName || "ماركت الشهم";
   const slug = shop.replace(/\s+/g, "-");
-  const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: mode === "periodic" ? "telegram-2h" : "daily-telegram", settings, customers, txns, accounts: [], activity };
+  const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: mode === "periodic" ? "telegram-2h" : "daily-telegram", settings, customers, txns, accounts: [], activity, products, sales };
   const backupJson = JSON.stringify(backup);
   const chat = env("TELEGRAM_CHAT_ID");
 
   if (mode === "periodic") {
-    const rep = periodicReport(customers, txns, activity, settings, now, process.env.MANUAL === "true");
+    const rep = periodicReport(customers, txns, activity, settings, now, process.env.MANUAL === "true", sales);
     // Quiet slots (usually at night) get a silent one-line message; the last backup is still current.
     await tg("sendMessage", { chat_id: chat, text: rep.text, ...(rep.changed ? {} : { disable_notification: true }) });
     if (rep.changed) {
@@ -237,7 +267,7 @@ async function main() {
   await sendFile(`نسخة-ديون-${slug}-${day}.json`, backupJson, "application/json", caption);
   console.log(`Sent backup: ${customers.length} accounts, ${txns.length} transactions, ${activity.length} activity entries.`);
 
-  await tg("sendMessage", { chat_id: chat, text: daySummary(customers, txns, settings, now) });
+  await tg("sendMessage", { chat_id: chat, text: daySummary(customers, txns, settings, now, sales) });
   console.log("Sent end-of-day summary.");
 
   // Every transaction of the reported day in one PDF (CSV if no browser is available to print it).

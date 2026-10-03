@@ -18,6 +18,13 @@ service cloud.firestore {
       allow update, delete: if isOwner();
     }
     match /settings/{id}  { allow read: if active(); allow write: if isOwner(); }
+    // Cashier (web/pos/): the owner manages items and prices; editors sell; only the owner cancels a sale.
+    match /products/{id}  { allow read: if active(); allow write: if isOwner(); }
+    match /sales/{id} {
+      allow read: if active();
+      allow create: if writer();
+      allow update, delete: if isOwner();
+    }
     match /users/{uid} {
       allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
       allow create: if isOwner() || (signedIn() && request.auth.uid == uid
