@@ -1,11 +1,11 @@
 # Telegram reports for the debt book:
-# - every 2 hours (even UTC hours): what happened in the last 2 hours, what is still pending, plus a backup and a PDF of those transactions if anything changed.
+# - every 2 hours (7 minutes past even UTC hours; GitHub often drops runs scheduled exactly on the hour): what happened in the last 2 hours, what is still pending, plus a backup and a PDF of those transactions if anything changed.
 # - every day at 2am Baghdad time (23:00 UTC): full backup, end-of-day summary, and a PDF with all of the previous day's transactions.
 # Secrets (Settings > Secrets and variables > Actions): BACKUP_PASSWORD, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
 name: Daily backup
 on:
   schedule:
-    - cron: "0 */2 * * *"
+    - cron: "7 */2 * * *"
     - cron: "0 23 * * *"
   workflow_dispatch:
     inputs:
@@ -33,7 +33,7 @@ jobs:
           BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          MODE: ${{ github.event.schedule == '0 */2 * * *' && 'periodic' || inputs.mode || 'daily' }}
+          MODE: ${{ github.event.schedule == '7 */2 * * *' && 'periodic' || inputs.mode || 'daily' }}
           MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
         run: node scripts/backup.mjs
       # GitHub pauses scheduled workflows after 60 days without repo activity; re-enabling keeps it running.
