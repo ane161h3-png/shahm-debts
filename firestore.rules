@@ -10,6 +10,8 @@ service cloud.firestore {
 
     match /customers/{id} { allow read: if active(); allow write: if writer(); }
     match /txns/{id}      { allow read: if active(); allow write: if writer(); }
+    // Invoice photos (one compressed JPEG per document), linked from txns.photos.
+    match /photos/{id}    { allow read: if active(); allow write: if writer(); }
     match /activity/{id} {
       allow read: if active();
       allow create: if writer() || (active() && request.resource.data.kind == 'remind');

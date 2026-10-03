@@ -287,6 +287,13 @@ td.x{width:64px;white-space:nowrap}
 .inv-box li:first-child{border-top:0}
 .inv-r{display:flex;align-items:center;gap:6px}.inv-r small{color:var(--muted)}
 .sup-sum{display:flex;flex-wrap:wrap;gap:6px}
+.pics{display:flex;gap:8px;flex-wrap:wrap}
+.pic{position:relative;width:72px;height:72px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--paper-2);display:grid;place-items:center}
+.pic img{width:100%;height:100%;object-fit:cover}
+.pic button{position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:15px;line-height:1;cursor:pointer}
+.pic-btn{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);background:var(--paper-2);color:var(--accent);border-radius:7px;padding:1px 6px;font-size:12px;cursor:pointer;vertical-align:middle}
+.pic-btn svg{width:14px;height:14px}
+.pics-view{display:flex;flex-direction:column;gap:10px}.pics-view img{width:100%;border-radius:10px;border:1px solid var(--line)}
 .note-row{display:flex;gap:8px}.note-row select{flex:0 0 36%;min-width:0}.note-row input{flex:1;min-width:0}
 .sr-cust{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:9px 10px;color:var(--ink);cursor:pointer;text-align:right;font:inherit}
 .sr-cust.empty{color:var(--muted)}
@@ -795,12 +802,12 @@ function renderDetail(){
     </div>
     ${per.bal>0&&!sup?(remind?`<a class="btn wa block" href="${esc(remind)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}">${I.bell}إرسال تذكير بالدين على واتساب</a>`:(w?`<button class="btn wa block" type="button" data-act="addphone">${I.bell}إرسال تذكير (أضف رقم واتساب أولاً)</button>`:"")):""}
     ${sup?(()=>{const oi=openInvoices(c),t0=todayISO();return oi.length?`<div class="inv-box"><h3>فواتير غير مسددة (${oi.length})</h3><ul>${oi.slice().reverse().map(({t,rem})=>{const left=t.due?daysBetween(t0,t.due):null;
-      return `<li><span>${t.inv?`فاتورة <b class="num">#${esc(t.inv)}</b>`:"فاتورة"} · ${esc(shortDate(t.date))}${t.note?" · "+esc(t.note):""}</span><span class="inv-r">${left!==null?`<span class="chip ${left<0?"debt":left<=2?"warn":"zero"}">${left<=2?dueText(left):"تستحق "+esc(shortDate(t.due))}</span>`:""}<b class="num">${fmt(rem)}</b>${rem<t.amount?`<small> من ${fmt(t.amount)}</small>`:""}</span></li>`}).join("")}</ul></div>`:""})():""}
+      return `<li><span>${t.inv?`فاتورة <b class="num">#${esc(t.inv)}</b>`:"فاتورة"} · ${esc(shortDate(t.date))}${t.note?" · "+esc(t.note):""}${t.photos&&t.photos.length?` <button class="pic-btn" type="button" data-act="viewpics" data-id="${esc(t.id)}" aria-label="عرض صورة القائمة">${I.camera}${t.photos.length>1?t.photos.length:""}</button>`:""}</span><span class="inv-r">${left!==null?`<span class="chip ${left<0?"debt":left<=2?"warn":"zero"}">${left<=2?dueText(left):"تستحق "+esc(shortDate(t.due))}</span>`:""}<b class="num">${fmt(rem)}</b>${rem<t.amount?`<small> من ${fmt(t.amount)}</small>`:""}</span></li>`}).join("")}</ul></div>`:""})():""}
     <div class="ledger">
       <div class="period"><h3>الحركات</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><select id="period" aria-label="المدة">${PERIODS.map(([k,l])=>`<option value="${k}" ${S.period===k?"selected":""}>${l}</option>`).join("")}</select><button class="btn sm primary" type="button" data-act="custpdf">${I.pdf}تقرير PDF</button></div></div>
       ${L.list.length||L.from?`<div class="ledger-scroll"><table><thead><tr><th>التاريخ والبيان</th><th>${sup?"فاتورة":"دين"}</th><th>دفعة</th><th>الرصيد</th>${w?"<th></th>":""}</tr></thead><tbody>
       ${L.from?`<tr class="edge"><td colspan="3">رصيد نهاية المدة · ${esc(shortDate(todayISO()))}</td><td class="run"><span class="num">${fmt(L.close)}</span></td>${w?"<td></td>":""}</tr>`:""}
-      ${L.list.slice().reverse().map(({t,run})=>`<tr><td class="desc">${t.inv?`<b class="num">#${esc(t.inv)}</b> `:""}${esc(t.note||(t.type==="debt"?(sup?"بضاعة بالآجل":"مشتريات"):"دفعة"))}<span class="d">${esc(shortDate(t.date))}${t.by?" · "+esc(t.by):""}</span></td>
+      ${L.list.slice().reverse().map(({t,run})=>`<tr><td class="desc">${t.inv?`<b class="num">#${esc(t.inv)}</b> `:""}${esc(t.note||(t.type==="debt"?(sup?"بضاعة بالآجل":"مشتريات"):"دفعة"))}${t.photos&&t.photos.length?` <button class="pic-btn" type="button" data-act="viewpics" data-id="${esc(t.id)}" aria-label="عرض صورة القائمة">${I.camera}${t.photos.length>1?t.photos.length:""}</button>`:""}<span class="d">${esc(shortDate(t.date))}${t.by?" · "+esc(t.by):""}</span></td>
         <td class="amt-d">${t.type==="debt"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="amt-p">${t.type==="pay"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="run"><span class="num">${fmt(run)}</span></td>
@@ -1151,7 +1158,9 @@ function txnForm(type,existing){
       <div class="quick">${quick.map(q=>`<button type="button" data-q="${q}">+${fmt(q)}</button>`).join("")}${!isDebt&&!existing&&bal>0?`<button type="button" data-all="${bal}">${sup?"دفع الكل":"سداد كامل"} ${fmt(bal)}</button>`:""}</div>
       ${sup&&isDebt?`<div class="two"><div class="field"><label for="tInv">رقم الفاتورة (اختياري)</label><input id="tInv" maxlength="30" inputmode="numeric" value="${esc(existing&&existing.inv)}" style="direction:ltr;text-align:right"></div>
         <div class="field"><label for="tDue">موعد الدفع (اختياري)</label><input id="tDue" type="date" value="${esc(existing&&existing.due)}"></div></div>
-        <div class="quick" id="dueQ">${[["بعد أسبوع",7],["بعد أسبوعين",14],["بعد شهر",30]].map(([l,d])=>`<button type="button" data-due="${d}">${l}</button>`).join("")}</div>`:""}
+        <div class="quick" id="dueQ">${[["بعد أسبوع",7],["بعد أسبوعين",14],["بعد شهر",30]].map(([l,d])=>`<button type="button" data-due="${d}">${l}</button>`).join("")}</div>
+        <div class="field"><label>صور القائمة (اختياري، لحد ${PHOTO_MAX})</label><div class="pics" id="tPics"></div>
+          <label class="btn sm" id="tPicAdd" style="align-self:flex-start;cursor:pointer">${I.camera}إضافة صورة<input type="file" accept="image/*" multiple hidden id="tPicIn"></label></div>`:""}
       <div class="field"><label for="tNote">${isDebt?(sup?"البضاعة / البيان":"المواد / البيان"):"ملاحظة"} (اختياري)</label><div class="note-row">${isDebt?`<select id="tCat" aria-label="اختر صنف"><option value="">الأصناف</option>${cats().map(x=>`<option>${esc(x)}</option>`).join("")}</select>`:""}<input id="tNote" maxlength="140" value="${esc(existing&&existing.note)}" placeholder="${isDebt?"اختر صنف أو اكتب":"مثال: دفعة نقداً"}"></div></div>
       <div class="field"><label for="tDate">التاريخ</label><input id="tDate" type="date" value="${existing?esc(existing.date):todayISO()}"></div>
       ${!existing&&!isDebt&&!isSup(c)?`<label class="wa-auto"><input type="checkbox" id="tPdf" ${(()=>{try{return localStorage.getItem(PDF_AUTO_KEY)==="0"?"":"checked"}catch(e){return "checked"}})()}>تجهيز كشف حساب PDF بعد الحفظ حتى ترسله</label>`:""}
@@ -1180,6 +1189,15 @@ function txnForm(type,existing){
     m.querySelectorAll("[data-q]").forEach(b=>b.addEventListener("click",()=>{const cur=parseAmt(a.value)||0;a.value=fmt(cur+Number(b.dataset.q));if(!calc.hidden){expr=String(cur+Number(b.dataset.q));showCalc()}a.focus()}));
     m.querySelectorAll("[data-due]").forEach(b=>b.addEventListener("click",()=>{const base=$("#tDate").value||todayISO();const d=new Date(base+"T12:00:00");d.setDate(d.getDate()+Number(b.dataset.due));
       $("#tDue").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}));
+    const pics=[],picBox=m.querySelector("#tPics");const dropped=[];
+    const drawPics=()=>{if(!picBox)return;picBox.innerHTML=pics.map((p,i)=>`<span class="pic">${p.url?`<img src="${p.url}" alt="">`:`<span class="spinner"></span>`}<button type="button" aria-label="حذف الصورة" data-rmpic="${i}">×</button></span>`).join("");
+      m.querySelector("#tPicAdd").hidden=pics.length>=PHOTO_MAX};
+    if(picBox){
+      for(const id of (existing&&existing.photos)||[]){const p={id,url:"",old:true};pics.push(p);loadPhoto(id).then(u=>{p.url=u;drawPics()}).catch(()=>{})}
+      drawPics();
+      picBox.addEventListener("click",e=>{const b=e.target.closest("[data-rmpic]");if(!b)return;const [p]=pics.splice(Number(b.dataset.rmpic),1);if(p.old)dropped.push(p.id);drawPics()});
+      m.querySelector("#tPicIn").addEventListener("change",async e=>{const files=[...e.target.files].slice(0,PHOTO_MAX-pics.length);e.target.value="";
+        for(const f of files){try{const im=await shrinkImage(f,1400,.7);pics.push({id:uid(),url:im.url,fresh:true});drawPics()}catch(err){toast("تعذّر قراءة الصورة.")}}})}
     const tCat=m.querySelector("#tCat");
     if(tCat)tCat.addEventListener("change",()=>{const v=tCat.value,n=m.querySelector("#tNote");tCat.value="";if(!v)return;
       const parts=n.value.split(/[،,]/).map(x=>x.trim()).filter(Boolean);if(!parts.includes(v))parts.push(v);n.value=parts.join("، ").slice(0,140)});
@@ -1195,11 +1213,13 @@ function txnForm(type,existing){
       if(!existing&&!m.dataset.dupOk&&[...S.txns.values()].some(t=>t.customerId===c.id&&t.type===what&&t.amount===amt&&Date.now()-(t.createdAt||0)<5*60e3)){
         m.dataset.dupOk="1";$("#tErr").textContent=`نفس ال${isDebt?"دين":"تسديد"} (${fmt(amt)}) انسجل لهذا الزبون قبل دقائق. اضغط حفظ مرة ثانية إذا هو جديد.`;return}
       if(existing){
-        const obj={...existing,amount:amt,note,date,updatedAt:Date.now(),updatedBy:S.me.name,...(sup&&isDebt?{inv,due}:{})};
-        const changed=[existing.amount!==amt?`المبلغ من ${fmt(existing.amount)} إلى ${fmt(amt)}`:"",existing.note!==note?"البيان":"",existing.date!==date?"التاريخ":""].filter(Boolean).join("، ");
+        const obj={...existing,amount:amt,note,date,updatedAt:Date.now(),updatedBy:S.me.name,...(sup&&isDebt?{inv,due,photos:pics.map(p=>p.id)}:{})};
+        if(picBox){savePhotos(pics.filter(p=>p.fresh),obj);dropPhotos(dropped)}
+        const changed=[existing.amount!==amt?`المبلغ من ${fmt(existing.amount)} إلى ${fmt(amt)}`:"",existing.note!==note?"البيان":"",existing.date!==date?"التاريخ":"",picBox&&(dropped.length||pics.some(p=>p.fresh))?"الصور":""].filter(Boolean).join("، ");
         closeModal();put("txns",obj);log("edit",what,{customerName:c.name,amount:amt,detail:changed,...(sup?{sup:true}:{})});toast("تم حفظ التعديل");return;
       }
-      const obj={id:uid(),customerId:c.id,type:what,amount:amt,note,date,createdAt:Date.now(),by:S.me.name,...(inv?{inv}:{}),...(due?{due}:{})};
+      const obj={id:uid(),customerId:c.id,type:what,amount:amt,note,date,createdAt:Date.now(),by:S.me.name,...(inv?{inv}:{}),...(due?{due}:{}),...(pics.length?{photos:pics.map(p=>p.id)}:{})};
+      if(pics.length)savePhotos(pics,obj);
       const waBox=m.querySelector("#tWa"),autoWa=!!(waBox&&waBox.checked);
       if(waBox)try{localStorage.setItem(WA_AUTO_KEY,autoWa?"1":"0")}catch(e){}
       const pdfBox=m.querySelector("#tPdf"),autoPdf=!!(pdfBox&&pdfBox.checked);
@@ -1231,15 +1251,38 @@ function sendStatementPdf(c,textLink){
   });
 }
 /* ---------- ledger photo: read the paper notebook with AI, review, save ---------- */
-async function shrinkImage(file){
+async function shrinkImage(file,max=1568,q=.85){
   let src;
   try{src=await createImageBitmap(file,{imageOrientation:"from-image"})}
   catch(e){src=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error("bad image"));i.src=URL.createObjectURL(file)})}
-  const w=src.width,h=src.height,k=Math.min(1,1568/Math.max(w,h));
+  const w=src.width,h=src.height,k=Math.min(1,max/Math.max(w,h));
   const cv=document.createElement("canvas");cv.width=Math.round(w*k);cv.height=Math.round(h*k);
   cv.getContext("2d").drawImage(src,0,0,cv.width,cv.height);
-  const url=cv.toDataURL("image/jpeg",.85);
+  let url=cv.toDataURL("image/jpeg",q);
+  // Invoice photos live in Firestore documents (1 MB cap), so step the quality down until it fits comfortably.
+  for(let qq=q-.1;url.length>900000&&qq>.3;qq-=.1)url=cv.toDataURL("image/jpeg",qq);
   return {url,data:url.slice(url.indexOf(",")+1),media_type:"image/jpeg"};
+}
+/* ---------- invoice photos: stored one per document in "photos", linked from the transaction's photos list ---------- */
+const PHOTO_MAX=3;
+function photoFail(e){console.warn(e);toast(e&&e.code==="permission-denied"?"الصورة ما انحفظت: لازم تحديث قواعد Firebase.":"تعذّر حفظ الصورة. تحقق من الإنترنت.")}
+const photoCache=new Map();
+async function loadPhoto(id){if(photoCache.has(id))return photoCache.get(id);
+  const d=await db.collection("photos").doc(id).get();const url=d.exists?d.data().data:"";if(url)photoCache.set(id,url);return url}
+function savePhotos(list,t){for(const ph of list){photoCache.set(ph.id,ph.url);
+  try{db.collection("photos").doc(ph.id).set({id:ph.id,data:ph.url,txnId:t.id,customerId:t.customerId,at:Date.now(),by:S.me.name}).catch(photoFail)}catch(e){photoFail(e)}}}
+function dropPhotos(ids){for(const id of ids||[]){photoCache.delete(id);try{db.collection("photos").doc(id).delete().catch(()=>{})}catch(e){}}}
+function viewPhotos(t){
+  const c=S.customers.get(t.customerId);
+  openModal(`<h3>صور ${t.inv?"القائمة #"+esc(t.inv):"القائمة"}${c?" · "+esc(c.name):""}</h3><div class="pics-view" id="pv"><div class="spinner"></div></div>
+    <div class="foot"><button class="btn" type="button" data-close>إغلاق</button></div>`,async m=>{
+    m.classList.add("wide");const box=m.querySelector("#pv");
+    try{const urls=await Promise.all((t.photos||[]).map(loadPhoto));
+      box.innerHTML=urls.filter(Boolean).map((u,i)=>`<a href="${u}" target="_blank" rel="noopener" data-pic="${i}"><img src="${u}" alt="صورة القائمة"></a>`).join("")||`<p class="hint">الصورة غير موجودة.</p>`;
+      box.querySelectorAll("[data-pic]").forEach(a=>a.addEventListener("click",e=>{e.preventDefault();const u=a.querySelector("img").src;
+        fetch(u).then(r=>r.blob()).then(b=>{const w=window.open(URL.createObjectURL(b),"_blank");if(!w)toast("افتح الصورة من زر المشاركة.")})}))}
+    catch(e){console.warn(e);box.innerHTML=`<p class="err">${e&&e.code==="permission-denied"?"لازم تحديث قواعد Firebase حتى تنعرض الصور.":"تعذّر تحميل الصورة. تحقق من الإنترنت."}</p>`}
+  });
 }
 const SHEET_URL="https://ane161h3-png.github.io/shahm-debts/daily-sheet.pdf";
 function scanStart(){
@@ -1498,6 +1541,7 @@ document.addEventListener("click",e=>{
   const c=S.customers.get(S.selected);
   switch(b.dataset.act){
     case "back":S.selected=null;render();break;
+    case "viewpics":{const x=S.txns.get(b.dataset.id);if(x)viewPhotos(x);break}
     case "gosup":S.view="customers";S.kind="supplier";S.filter="due";S.selected=null;render();window.scrollTo(0,0);break;
     case "quick":if(canWrite())pickCustomer("debt");break;
     case "quickpay":if(canWrite())pickCustomer("pay");break;
@@ -1522,9 +1566,9 @@ document.addEventListener("click",e=>{
     case "resetcats":if(isAdmin())$("#catsTa").value=DEFAULT_CATS.join("\n");break;
     case "savetpl":if(isAdmin()){const tp={};for(const k of Object.keys(DEFAULT_TPL))tp[k]=document.getElementById("tpl-"+k).value;saveSettings({templates:tp}).then(ok=>ok&&toast("تم حفظ القوالب"))}break;
     case "edittx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())txnForm(null,x);break}
-    case "deltx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())confirmBox("حذف الحركة",`حذف ${c&&isSup(c)?(x.type==="debt"?"فاتورة":"دفعة"):(x.type==="debt"?"دين":"تسديد")} بمبلغ ${fmt(x.amount)} ${CUR} بتاريخ ${x.date}؟`,"حذف",()=>{del("txns",x.id);log("delete",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount,...(c&&isSup(c)?{sup:true}:{})});toast("حُذفت الحركة")});break}
+    case "deltx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())confirmBox("حذف الحركة",`حذف ${c&&isSup(c)?(x.type==="debt"?"فاتورة":"دفعة"):(x.type==="debt"?"دين":"تسديد")} بمبلغ ${fmt(x.amount)} ${CUR} بتاريخ ${x.date}؟`,"حذف",()=>{del("txns",x.id);dropPhotos(x.photos);log("delete",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount,...(c&&isSup(c)?{sup:true}:{})});toast("حُذفت الحركة")});break}
     case "delcust":if(canWrite()&&c)confirmBox("حذف الزبون",`سيُحذف ${c.name} وكل حركاته نهائياً. صدّر نسخة احتياطية أولاً إذا كنت تحتاج السجل.`,"حذف نهائي",()=>{
-      for(const x of txnsOf(c.id))del("txns",x.id);del("customers",c.id);log("delete","customer",{customerName:c.name});S.selected=null;render();toast("حُذف الزبون")});break;
+      for(const x of txnsOf(c.id)){del("txns",x.id);dropPhotos(x.photos)}del("customers",c.id);log("delete","customer",{customerName:c.name});S.selected=null;render();toast("حُذف الزبون")});break;
   }
 });
 document.addEventListener("input",e=>{if(e.target.id==="q"){S.q=e.target.value;renderList()}});
