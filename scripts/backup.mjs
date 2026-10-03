@@ -1,9 +1,12 @@
-// Daily backup: signs in to Firebase as the read-only `backup` account, reads every collection the app
-// uses, and sends the file to Telegram in the same format as the app's «حفظ نسخة» (so «استعادة» accepts it).
+// Telegram reports: signs in to Firebase as the read-only `backup` account, reads every collection the app
+// uses, and sends backups in the same format as the app's «حفظ نسخة» (so «استعادة» accepts them).
+//   MODE=periodic (every 2 hours): what changed in the last two hours, what is still pending, and a backup.
+//   MODE=daily (02:00 Baghdad): backup, end-of-day summary, and a PDF with every transaction of the day.
 // Runs from .github/workflows/backup.yml. Needs env: BACKUP_PASSWORD, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
 // The data never touches the repo or the logs.
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { dayPdf } from "./day-report.mjs";
 
 const env = name => {
   const v = (process.env[name] || "").trim();
@@ -59,7 +62,7 @@ async function readAll(token, coll) {
     const j = await r.json();
     if (r.status === 403) throw new Error(`حساب ${USER} غير مفعّل أو موقوف. فعّله من الإعدادات ← المستخدمين.`);
     if (!r.ok) throw new Error(`Reading ${coll} failed: ${j.error && j.error.message}`);
-    for (const d of j.documents || []) out.push(fields(d.fields || {}));
+    for (const d of j.documents || []) out.push({ id: d.name.split("/").pop(), ...fields(d.fields || {}) });
     page = j.nextPageToken || "";
   } while (page);
   return out;
@@ -81,9 +84,12 @@ const isoDay = ms => new Date(ms + BAGHDAD).toISOString().slice(0, 10);
 
 // End-of-day report. The job runs at 02:00 Baghdad time, so before noon it reports the day that just ended;
 // a manual run in the afternoon reports today so far. Counts what was recorded that day (createdAt).
-function daySummary(customers, txns, settings, now) {
+function reportDay(now) {
   const local = new Date(now.getTime() + BAGHDAD);
-  const day = isoDay(now.getTime() - (local.getUTCHours() < 12 ? 24 * 3600e3 : 0));
+  return isoDay(now.getTime() - (local.getUTCHours() < 12 ? 24 * 3600e3 : 0));
+}
+function daySummary(customers, txns, settings, now) {
+  const day = reportDay(now);
   const next = isoDay(Date.parse(day + "T12:00:00Z") + 24 * 3600e3);
   const byId = new Map(customers.map(c => [c.id, c]));
   const sup = id => (byId.get(id) || {}).kind === "supplier";
@@ -121,20 +127,102 @@ function daySummary(customers, txns, settings, now) {
   return lines.join("\n");
 }
 
+// Baghdad wall-clock helpers (UTC+3, no DST).
+const hm = ms => { const d = new Date(ms + BAGHDAD); let h = d.getUTCHours(); const ap = h < 12 ? "ص" : "م"; h = h % 12 || 12; return `${h}:${String(d.getUTCMinutes()).padStart(2, "0")} ${ap}`; };
+const isSup = (byId, id) => (byId.get(id) || {}).kind === "supplier";
+
+// One line per activity entry, worded like the app's activity log.
+function actText(a) {
+  const amt = a.amount ? ` ${fmt(a.amount)}` : "", c = a.customerName || "";
+  const k = a.kind;
+  switch (a.what) {
+    case "debt": return a.sup ? (k === "add" ? `فاتورة شراء${amt} من ${c}` : k === "edit" ? `عدّل فاتورة ${c}${a.detail ? " (" + a.detail + ")" : ""}` : `حذف فاتورة${amt} من ${c}`)
+      : (k === "add" ? `دين${amt} على ${c}` : k === "edit" ? `عدّل دين ${c}${a.detail ? " (" + a.detail + ")" : ""}` : `حذف دين${amt} من ${c}`);
+    case "pay": return a.sup ? (k === "add" ? `دفعة${amt} للمورد ${c}` : k === "edit" ? `عدّل دفعة ${c}` : `حذف دفعة${amt} من ${c}`)
+      : (k === "add" ? `تسديد${amt} من ${c}` : k === "edit" ? `عدّل تسديد ${c}${a.detail ? " (" + a.detail + ")" : ""}` : `حذف تسديد${amt} من ${c}`);
+    case "customer": return k === "add" ? `حساب جديد: ${c}` : k === "edit" ? `عدّل حساب ${c}${a.detail ? " (" + a.detail + ")" : ""}` : `حذف حساب ${c}`;
+    case "remind": return `تذكير واتساب إلى ${c}`;
+    default: return a.detail || "";
+  }
+}
+const ICON = { add: "➕", edit: "✏️", delete: "🗑", remind: "💬" };
+
+// Two-hour report. The window is the two-hour slot that just closed (even UTC hours), so a late GitHub run
+// neither skips nor repeats entries; a manual run reports the last two hours.
+function periodicReport(customers, txns, activity, settings, now, manual) {
+  const end = manual ? now.getTime() : Math.floor(now.getTime() / 7200e3) * 7200e3, start = end - 7200e3;
+  const byId = new Map(customers.map(c => [c.id, c]));
+  const inWin = ms => ms >= start && ms < end;
+  const acts = activity.filter(a => a.kind !== "login" && inWin(Number(a.at) || 0)).sort((a, b) => a.at - b.at);
+  const made = txns.filter(t => inWin(Number(t.createdAt) || 0));
+  const sum = (type, sup) => made.filter(t => t.type === type && isSup(byId, t.customerId) === sup).reduce((a, t) => ({ n: a.n + 1, v: a.v + (Number(t.amount) || 0) }), { n: 0, v: 0 });
+  const debt = sum("debt", false), pay = sum("pay", false), buy = sum("debt", true), paySup = sum("pay", true);
+  const shop = settings.shopName || "ماركت الشهم";
+  const lines = [`🕑 تحديث ${shop}: من ${hm(start)} إلى ${hm(end)}`, ""];
+  if (!acts.length && !made.length) lines.push("ما صار شي بهالساعتين.");
+  else {
+    if (debt.n) lines.push(`🔴 ديون: ${fmt(debt.v)} د.ع (${debt.n})`);
+    if (pay.n) lines.push(`🟢 واصل: ${fmt(pay.v)} د.ع (${pay.n})`);
+    if (buy.n || paySup.n) lines.push(`🚚 الموردين: مشتريات ${fmt(buy.v)} · دفعات ${fmt(paySup.v)}`);
+    const edits = acts.filter(a => a.kind === "edit").length, dels = acts.filter(a => a.kind === "delete").length;
+    if (edits || dels) lines.push(`⚠️ ${edits ? edits + " تعديل" : ""}${edits && dels ? " و " : ""}${dels ? dels + " حذف" : ""}`);
+    lines.push("", "شنو صار:");
+    const MAX = 40;
+    for (const a of acts.slice(0, MAX)) lines.push(`${ICON[a.kind] || "•"} ${hm(a.at)} · ${actText(a)}${a.by ? " · " + a.by : ""}`);
+    if (acts.length > MAX) lines.push(`… و ${acts.length - MAX} غيرها (كلها بالنسخة المرفقة)`);
+  }
+  // Still pending: promises due today (or overdue) that have not been paid yet.
+  const today = isoDay(now.getTime());
+  const bal = new Map();
+  for (const t of txns) bal.set(t.customerId, (bal.get(t.customerId) || 0) + (t.type === "debt" ? t.amount : -t.amount));
+  const waiting = customers.filter(c => c.kind !== "supplier" && c.promise && c.promise.date && c.promise.date <= today && (bal.get(c.id) || 0) > 0)
+    .map(c => `  • ${c.name}${c.promise.amount ? ": " + fmt(c.promise.amount) : ""}${c.promise.date < today ? " (فات موعده)" : ""}`);
+  if (waiting.length) lines.push("", "🤝 ما صار بعد: وعدوا يدفعون وما دفعوا", ...waiting.slice(0, 20), ...(waiting.length > 20 ? [`  … و ${waiting.length - 20} غيرهم`] : []));
+  return { text: lines.join("\n").slice(0, 4000), changed: acts.length > 0 || made.length > 0, stamp: `${today}-${hm(end).replace(/[:\s]/g, "")}` };
+}
+
+async function tg(method, body) {
+  const isForm = body instanceof FormData;
+  const r = await fetch(`${TG_URL}/bot${env("TELEGRAM_TOKEN")}/${method}`, { method: "POST", ...(isForm ? { body } : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(`Telegram ${method}: ${j.description}`);
+}
+async function sendFile(name, data, type, caption, quiet) {
+  const form = new FormData();
+  form.append("chat_id", env("TELEGRAM_CHAT_ID"));
+  if (caption) form.append("caption", caption.slice(0, 1000));
+  if (quiet) form.append("disable_notification", "true");
+  form.append("document", new Blob([data], { type }), name);
+  await tg("sendDocument", form);
+}
+
 async function main() {
+  const mode = (process.env.MODE || "daily").trim();
   const token = await signIn();
   const [customers, txns, activity, settings] = await Promise.all([
     readAll(token, "customers"), readAll(token, "txns"), readAll(token, "activity"), readDoc(token, "settings/main"),
   ]);
   const now = new Date();
-  const day = new Date(now.getTime() + 3 * 3600e3).toISOString().slice(0, 10); // Baghdad date
-  const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: "daily-telegram", settings, customers, txns, accounts: [], activity };
+  const day = isoDay(now.getTime());
+  const shop = settings.shopName || "ماركت الشهم";
+  const slug = shop.replace(/\s+/g, "-");
+  const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: mode === "periodic" ? "telegram-2h" : "daily-telegram", settings, customers, txns, accounts: [], activity };
+  const backupJson = JSON.stringify(backup);
+  const chat = env("TELEGRAM_CHAT_ID");
+
+  if (mode === "periodic") {
+    const rep = periodicReport(customers, txns, activity, settings, now, process.env.MANUAL === "true");
+    // Quiet slots (usually at night) get a silent one-line message; the last backup is still current.
+    await tg("sendMessage", { chat_id: chat, text: rep.text, ...(rep.changed ? {} : { disable_notification: true }) });
+    if (rep.changed) await sendFile(`نسخة-${slug}-${rep.stamp}.json`, backupJson, "application/json", "💾 نسخة احتياطية بعد آخر تحديث");
+    console.log(`Sent 2-hour report (${rep.changed ? "with" : "no"} changes).`);
+    return;
+  }
 
   const bal = new Map();
   for (const t of txns) bal.set(t.customerId, (bal.get(t.customerId) || 0) + (t.type === "debt" ? t.amount : -t.amount));
   let owed = 0, owing = 0;
   for (const c of customers) if (c.kind !== "supplier") { const b = bal.get(c.id) || 0; if (b > 0) { owed += b; owing++; } }
-  const shop = settings.shopName || "ماركت الشهم";
   const caption = [
     `💾 نسخة احتياطية يومية: ${shop}`,
     `📅 ${day}`,
@@ -142,24 +230,16 @@ async function main() {
     `💰 مجموع الديون: ${fmt(owed)} د.ع (${owing} زبون)`,
     `للاستعادة: الإعدادات ← النسخ الاحتياطي ← اختيار ملف النسخة`,
   ].join("\n");
-
-  const form = new FormData();
-  form.append("chat_id", env("TELEGRAM_CHAT_ID"));
-  form.append("caption", caption);
-  form.append("document", new Blob([JSON.stringify(backup)], { type: "application/json" }), `نسخة-ديون-${shop.replace(/\s+/g, "-")}-${day}.json`);
-  const r = await fetch(`${TG_URL}/bot${env("TELEGRAM_TOKEN")}/sendDocument`, { method: "POST", body: form });
-  const j = await r.json();
-  if (!j.ok) throw new Error("Telegram: " + j.description);
+  await sendFile(`نسخة-ديون-${slug}-${day}.json`, backupJson, "application/json", caption);
   console.log(`Sent backup: ${customers.length} accounts, ${txns.length} transactions, ${activity.length} activity entries.`);
 
-  const summary = daySummary(customers, txns, settings, now);
-  const s = await fetch(`${TG_URL}/bot${env("TELEGRAM_TOKEN")}/sendMessage`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: env("TELEGRAM_CHAT_ID"), text: summary }),
-  });
-  const sj = await s.json();
-  if (!sj.ok) throw new Error("Telegram summary: " + sj.description);
+  await tg("sendMessage", { chat_id: chat, text: daySummary(customers, txns, settings, now) });
   console.log("Sent end-of-day summary.");
+
+  // Every transaction of the reported day in one PDF (CSV if no browser is available to print it).
+  const rDay = reportDay(now);
+  const file = await dayPdf({ day: rDay, customers, txns, activity, settings, fmt, isoDay, hm });
+  if (file) { await sendFile(file.name, file.data, file.type, `📄 كل حركات يوم ${rDay}`); console.log("Sent day file:", file.type); }
 }
 
 main().catch(async e => {
@@ -167,7 +247,7 @@ main().catch(async e => {
   // Tell the owner on Telegram too, so a broken backup does not go unnoticed.
   const tok = process.env.TELEGRAM_TOKEN, chat = process.env.TELEGRAM_CHAT_ID;
   if (tok && chat) {
-    try { await fetch(`${TG_URL}/bot${tok}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: chat, text: "⚠️ فشلت النسخة الاحتياطية اليومية: " + e.message }) }); } catch {}
+    try { await fetch(`${TG_URL}/bot${tok}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: chat, text: (process.env.MODE === "periodic" ? "⚠️ فشل تقرير الساعتين: " : "⚠️ فشلت النسخة الاحتياطية اليومية: ") + e.message }) }); } catch {}
   }
   process.exit(1);
 });
