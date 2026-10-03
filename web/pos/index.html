@@ -235,6 +235,12 @@ input:disabled{opacity:.55}
 .rows .r.static{cursor:default}.rows .r.static:hover{background:none}
 @media (max-width:900px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stats .stat.main{grid-column:1/-1}.rep-grid{grid-template-columns:minmax(0,1fr)}}
 
+/* ---------- discount requests (owner) ---------- */
+.apvs{display:flex;flex-direction:column;gap:8px}
+.apv{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--warn)}
+.apv .m{flex:1;min-width:200px}
+.apv .m span{display:block;font-size:12.5px;opacity:.85}
+
 /* ---------- products ---------- */
 .prod-tools{padding:12px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
 .prow{display:flex;align-items:center;gap:6px;padding-inline-end:10px}
@@ -295,6 +301,7 @@ input:disabled{opacity:.55}
     <nav class="tabs" id="tabs" aria-label="الأقسام"></nav>
     <button class="me" id="meBox" type="button" aria-label="الحساب"></button>
   </header>
+  <div id="approvals" class="apvs" hidden aria-live="polite"></div>
   <div id="view"></div>
 </div>
 <div id="modalRoot"></div>
@@ -317,7 +324,7 @@ const SLOGAN="كل احتياجات بيتك بشهامة";
 // Same default item categories as the debt book (settings/main.categories overrides them).
 const DEFAULT_CATS=["مشكل","مواد غذائية","خضروات","فواكه","أجبان وألبان","لحوم ودجاج","معلبات","حلويات","مشروبات","منظفات","خبز ومعجنات","سكائر","كارت رصيد","غاز"];
 const S={products:new Map(),customers:new Map(),txns:new Map(),sales:new Map(),settings:{},me:null,isOwner:false,
-  view:"sell",cat:"all",q:"",cart:[],discount:0,whole:false,day:"",repDay:"",repMode:"day",repMonth:"",repCache:new Map(),pq:"",pcat:"all",ready:{p:false,s:false}};
+  view:"sell",cat:"all",q:"",cart:[],discount:0,whole:false,day:"",repDay:"",repMode:"day",repMonth:"",repCache:new Map(),pq:"",pcat:"all",shift:null,shiftLog:null,approvals:new Map(),approval:null,ready:{p:false,s:false,sh:false}};
 let db=null,auth=null,unsubs=[],salesUnsub=null,dataOn=false,modalCleanup=null,deniedShown=false;
 
 /* ---------- helpers ---------- */
@@ -451,7 +458,7 @@ function readFail(e){console.warn(e);if(e&&e.code==="permission-denied"&&!denied
   toast(isAdmin()?"قاعدة البيانات رفضت القراءة. انشر قواعد firestore.rules الجديدة من Firebase console.":"ما عندك صلاحية لقراءة بيانات الكاشير. راجع المدير.",7000)}}
 function stopData(){
   unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];if(salesUnsub){salesUnsub();salesUnsub=null}dataOn=false;
-  S.products=new Map();S.customers=new Map();S.txns=new Map();S.sales=new Map();S.settings={};S.repCache=new Map();S.ready={p:false,s:false};deniedShown=false;
+  S.products=new Map();S.customers=new Map();S.txns=new Map();S.sales=new Map();S.settings={};S.repCache=new Map();S.shift=null;S.shiftLog=null;S.approvals=new Map();S.ready={p:false,s:false,sh:false};deniedShown=false;renderApprovals();
 }
 function startData(){
   if(dataOn)return;dataOn=true;
@@ -459,6 +466,11 @@ function startData(){
   unsubs.push(db.collection("customers").onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));refresh("cust")},readFail));
   unsubs.push(db.collection("txns").onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,d.data()]));refresh("cust")},readFail));
   unsubs.push(db.doc("settings/main").onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};if(S.me&&S.isOwner)S.me.name=S.settings.ownerName||"المدير";refresh()},readFail));
+  // The open shift (if any), for everyone; pending discount requests, for the owner.
+  unsubs.push(db.collection("shifts").where("status","==","open").onSnapshot(s=>{
+    S.shift=s.docs.map(d=>d.data()).sort((a,b)=>b.openedAt-a.openedAt)[0]||null;S.ready.sh=true;refresh()},e=>{S.ready.sh=true;readFail(e)}));
+  if(isAdmin())unsubs.push(db.collection("approvals").where("status","==","pending").onSnapshot(s=>{
+    S.approvals=new Map(s.docs.map(d=>[d.id,d.data()]));renderApprovals()},readFail));
   watchToday();
 }
 // Today's sales stay live (the cashier's own report); other days are read once when opened.
@@ -497,8 +509,13 @@ function findCode(code){
 const stockHtml=p=>`<span class="num">${qtyText(round3(stockOf(p)))}</span> ${esc(baseUnit(p))}`;
 
 /* ---------- cart (kept on this device so a power cut never loses a half-made sale) ---------- */
-function saveCart(){try{localStorage.setItem(CART_KEY,JSON.stringify({cart:S.cart,discount:S.discount,whole:S.whole}))}catch(e){}}
-function loadCart(){try{const d=JSON.parse(localStorage.getItem(CART_KEY)||"null");if(d&&Array.isArray(d.cart)){S.cart=d.cart.filter(l=>l&&l.name&&l.price>=0&&l.qty>0).map(l=>({n:1,...l,key:l.pid&&!String(l.key).includes("|")?l.pid+"|":l.key}));S.discount=Number(d.discount)||0;S.whole=!!d.whole}}catch(e){}}
+function saveCart(){
+  // An approved discount belongs to the invoice it was asked for; any change to the invoice drops it.
+  if(S.approval&&(S.cart.reduce((a,l)=>a+Math.round(l.price*l.qty),0)!==S.approval.subtotal||S.discount>S.approval.amount||!S.discount)){
+    if(S.discount&&S.cart.length)toast("انشال الخصم لأن الفاتورة تغيّرت. اطلب موافقة جديدة.",3500);S.approval=null;S.discount=0}
+  try{localStorage.setItem(CART_KEY,JSON.stringify({cart:S.cart,discount:S.discount,whole:S.whole,approval:S.approval}))}catch(e){}
+}
+function loadCart(){try{const d=JSON.parse(localStorage.getItem(CART_KEY)||"null");if(d&&Array.isArray(d.cart)){S.cart=d.cart.filter(l=>l&&l.name&&l.price>=0&&l.qty>0).map(l=>({n:1,...l,key:l.pid&&!String(l.key).includes("|")?l.pid+"|":l.key}));S.discount=Number(d.discount)||0;S.whole=!!d.whole;S.approval=d.approval&&d.approval.id?d.approval:null}}catch(e){}}
 function totals(){
   const sub=S.cart.reduce((a,l)=>a+Math.round(l.price*l.qty),0);
   const disc=Math.max(0,Math.min(Math.round(S.discount)||0,sub));
@@ -519,7 +536,7 @@ function setQty(key,q){
   if(!(q>0))S.cart=S.cart.filter(x=>x!==l);else l.qty=round3(q);
   if(!S.cart.length){S.discount=0;S.whole=false}saveCart();refresh("cart");
 }
-function clearCart(){S.cart=[];S.discount=0;S.whole=false;saveCart();refresh("cart")}
+function clearCart(){S.cart=[];S.discount=0;S.whole=false;S.approval=null;saveCart();refresh("cart")}
 // Switch the whole invoice between retail and wholesale prices.
 function setWhole(v){
   S.whole=v;
@@ -541,7 +558,7 @@ function render(){
   else{v.innerHTML=productsView();renderProducts()}
 }
 function renderHeader(){
-  $("#today").textContent=dayName(todayISO());
+  $("#today").textContent=dayName(todayISO())+(S.shift?" · وردية من "+hm12(S.shift.openedAt):"");
   $("#shopTitle").textContent="كاشير "+shopName();
   const nAl=isAdmin()?alertCount():0;
   $("#tabs").innerHTML=NAV().map(([k,l,ic])=>`<button type="button" data-go="${k}" aria-current="${S.view===k?"page":"false"}">${ic}${l}${k==="products"&&nAl?`<span class="badge num" title="تنبيهات المخزن">${nAl}</span>`:""}</button>`).join("");
@@ -659,12 +676,13 @@ function editLine(key){
 }
 function discountForm(){
   const t=totals();
-  openModal(`<h3>خصم على الفاتورة</h3><p class="hint">المجموع <b class="num">${fmt(t.sub)}</b> ${CUR}. اكتب مبلغ، أو نسبة مثل 10%.</p>
+  const ask=!isAdmin();
+  openModal(`<h3>خصم على الفاتورة</h3><p class="hint">المجموع <b class="num">${fmt(t.sub)}</b> ${CUR}. اكتب مبلغ، أو نسبة مثل 10%.${ask?" الخصم يحتاج موافقة المدير، يوصله الطلب على الكاشير بجهازه.":""}</p>
     <form id="df" class="field" style="gap:12px" novalidate>
       <div class="field"><input id="dv" class="big" inputmode="decimal" value="${t.disc?fmt(t.disc):""}" placeholder="0" aria-label="الخصم"></div>
       <div class="quick">${[250,500,1000,"5%","10%"].map(v=>`<button type="button" data-dq="${v}">${typeof v==="number"?fmt(v):v}</button>`).join("")}</div>
       <p class="err" id="dErr"></p>
-      <div class="foot"><button class="btn primary" type="submit">تطبيق</button>${t.disc?`<button class="btn ghost danger-text" type="button" id="dDel">إلغاء الخصم</button>`:""}<button class="btn" type="button" data-close>رجوع</button></div>
+      <div class="foot"><button class="btn primary" type="submit">${ask?"اطلب موافقة المدير":"تطبيق"}</button>${t.disc?`<button class="btn ghost danger-text" type="button" id="dDel">إلغاء الخصم</button>`:""}<button class="btn" type="button" data-close>رجوع</button></div>
     </form>`,m=>{
     const inp=m.querySelector("#dv");
     m.querySelectorAll("[data-dq]").forEach(b=>b.onclick=()=>{inp.value=b.dataset.dq;inp.focus()});
@@ -674,6 +692,7 @@ function discountForm(){
       if(/%$/.test(raw)){const p=parseAmt(raw.slice(0,-1));v=p>=0&&p<=100?Math.round(t.sub*p/100):NaN}else v=raw?Math.round(parseAmt(raw)):0;
       if(!(v>=0)){m.querySelector("#dErr").textContent="اكتب مبلغ أو نسبة صحيحة.";return}
       if(v>t.sub){m.querySelector("#dErr").textContent="الخصم أكبر من المجموع.";return}
+      if(ask&&v>0){if(S.approval&&v<=S.approval.amount){S.discount=v;saveCart();refresh("cart");closeModal();return}requestApproval(v,t.sub);return}
       S.discount=v;saveCart();refresh("cart");closeModal()});
   });
 }
@@ -762,6 +781,8 @@ document.addEventListener("keydown",e=>{
 /* ---------- checkout ---------- */
 function checkout(resume){
   if(!S.cart.length||!canSell())return;
+  // A discount without the owner's approval (e.g. from an older version of the app) is not sent.
+  if(!isAdmin()&&S.discount>0&&!S.approval){S.discount=0;saveCart();refresh("cart");toast("انشال الخصم لأنه يحتاج موافقة المدير.",3500)}
   const t=totals();
   const st={mode:"cash",cust:null,cashPart:0,received:0,q:"",...(resume||{})};
   openModal(`<h3>الدفع</h3>
@@ -863,7 +884,7 @@ function saveSale(pay){
   const items=S.cart.map(l=>({pid:l.pid||null,name:l.name,unit:l.unit||"",n:l.n||1,price:Math.round(l.price),qty:l.qty,total:Math.round(l.price*l.qty),cat:l.cat||"",
     cost:l.cost>0?l.cost:null}));
   const sale={id,no,at:now,date:todayISO(),items,count:items.length,subtotal:t.sub,discount:t.disc,total:t.total,cash:pay.cash,debt:pay.debt,
-    ...(S.whole?{wholesale:true}:{}),...(pay.received?{received:pay.received,change:pay.received-t.total}:{}),by:S.me.name,byId:S.me.id,status:"done"};
+    ...(S.whole?{wholesale:true}:{}),...(S.shift?{shiftId:S.shift.id}:{}),...(S.approval&&t.disc>0?{approvalId:S.approval.id}:{}),...(pay.received?{received:pay.received,change:pay.received-t.total}:{}),by:S.me.name,byId:S.me.id,status:"done"};
   const b=db.batch();
   if(pay.debt>0){
     const c=pay.customer;
@@ -877,10 +898,11 @@ function saveSale(pay){
   }
   // Stock: each tracked item goes down by what was sold, in base units (a carton of 24 = 24).
   for(const [pid,q] of stockMoves(items))b.update(db.collection("products").doc(pid),{stock:firebase.firestore.FieldValue.increment(-q)});
+  if(sale.approvalId)b.update(db.collection("approvals").doc(sale.approvalId),{status:"used",saleId:id,usedAt:now});
   b.set(db.collection("sales").doc(id),sale);
   S.sales.set(id,sale);
   b.commit().catch(e=>{writeFail(e);S.sales.delete(id);if(sale.txnId)S.txns.delete(sale.txnId);refresh("sales")});
-  S.cart=[];S.discount=0;S.whole=false;saveCart();document.body.classList.remove("show-cart");refresh("cart");
+  S.cart=[];S.discount=0;S.whole=false;S.approval=null;saveCart();document.body.classList.remove("show-cart");refresh("cart");
   return sale;
 }
 function stockMoves(items){
@@ -1020,6 +1042,7 @@ function summarize(list){
 const baseUnitName=i=>{const p=i.pid&&S.products.get(i.pid);return p?baseUnit(p):(Number(i.n)>1?"":i.unit||"")};
 function renderSales(){
   const v=$("#view");if(!v)return;
+  if(S.repMode==="shift"){renderShift();return}
   const month=S.repMode==="month",day=S.repDay||todayISO(),ym=S.repMonth||monthOf(todayISO());
   const prevFocus=document.activeElement&&document.activeElement.id;
   const list=repList();
@@ -1031,7 +1054,7 @@ function renderSales(){
       <input type="date" id="repDay" value="${day}" max="${todayISO()}" aria-label="اليوم">
       <button class="icon-btn" type="button" data-day="${shiftDay(day,1)}" aria-label="اليوم التالي"${day>=todayISO()?" disabled":""}>${I.left}</button>
       <b style="font-family:var(--f-display);flex:1">${day===todayISO()?"اليوم، ":""}${esc(dayName(day))}</b>`;
-  const head=`<div class="rep-tools"><div class="seg" role="group" aria-label="الفترة" style="flex:none"><button type="button" data-rmode="day" aria-pressed="${!month}">يومي</button><button type="button" data-rmode="month" aria-pressed="${month}">شهري</button></div>
+  const head=`<div class="rep-tools">${repSeg(month?"month":"day")}
       ${nav}<button class="btn" type="button" data-act="reppdf"${list&&list.length?"":" disabled"}>${I.pdf}تقرير PDF</button></div>`;
   if(!list){v.innerHTML=head+`<div class="pane"><div class="spinner" style="margin:30px auto"></div></div>`;return}
   const r=summarize(list),admin=isAdmin();const sorted=list.slice().sort((a,b)=>b.at-a.at);
@@ -1141,6 +1164,184 @@ async function reportPdf(){
   const {jsPDF}=window.jspdf;const pdf=new jsPDF({unit:"pt",format:"a4"});
   pages.forEach((cv,i)=>{if(i)pdf.addPage();pdf.addImage(cv.toDataURL("image/jpeg",0.92),"JPEG",0,0,595.28,841.89)});
   try{if(await saveFile(`مبيعات-${stamp}.pdf`,pdf.output("blob")))toast("تم حفظ التقرير")}catch(e){console.warn(e);toast("تعذّر حفظ الملف.")}
+}
+
+/* ---------- shift (وردية) and Z report ----------
+   One shop-wide shift at a time: opened with the cash already in the drawer, closed by counting the drawer.
+   Expected cash = opening cash + cash taken by sales since the shift opened; the difference is what is missing or extra.
+   A closed shift keeps its own totals, so its Z report never changes afterwards. */
+const repSeg=mode=>`<div class="seg" role="group" aria-label="الفترة" style="flex:none">${[["day","يومي"],["month","شهري"],["shift","الوردية"]].map(([k,l])=>`<button type="button" data-rmode="${k}" aria-pressed="${mode===k}">${l}</button>`).join("")}</div>`;
+function shiftSales(sh){
+  const from=Number(sh.openedAt)||0,od=isoOf(new Date(from));
+  if(!S.ready.s)return null;
+  let list=[...S.sales.values()];
+  if(od<S.day){const old=fetchSales("sh:"+sh.id,db.collection("sales").where("date",">=",od));if(!old)return null;list=[...old.filter(s=>s.date!==S.day),...list]}
+  return list.filter(s=>(Number(s.at)||0)>=from);
+}
+function zOf(sh,list){
+  const r=summarize(list),fl=Number(sh.float)||0;
+  return {n:r.n,voids:r.voids,total:r.total,cash:r.cash,debt:r.debt,disc:r.disc,profit:r.profit,uncosted:r.uncosted,
+    who:r.who.map(([k,w])=>({name:k,n:w.n,v:w.v})),float:fl,expected:fl+r.cash};
+}
+const diffText=d=>d===0?"مضبوط":d>0?`زايد ${fmt(d)}`:`ناقص ${fmt(-d)}`;
+const diffCls=d=>d===0?"paid":d>0?"warn":"debt";
+function fetchShiftLog(){
+  if(S.shiftLog)return;S.shiftLog=[];
+  db.collection("shifts").orderBy("openedAt","desc").limit(30).get()
+    .then(s=>{S.shiftLog=s.docs.map(d=>d.data()).filter(x=>x.status==="closed");if(S.view==="sales"&&S.repMode==="shift")renderSales()})
+    .catch(e=>{S.shiftLog=null;readFail(e)});
+}
+function renderShift(){
+  const v=$("#view");if(!v)return;
+  const head=`<div class="rep-tools">${repSeg("shift")}<b style="font-family:var(--f-display);flex:1">${S.shift?`مفتوحة من ${esc(hm12(S.shift.openedAt))}${isoOf(new Date(S.shift.openedAt))!==todayISO()?` (${esc(isoOf(new Date(S.shift.openedAt)))})`:""} · ${esc(S.shift.openedBy||"")}`:"الوردية"}</b>
+    ${S.shift&&canSell()?`<button class="btn primary" type="button" data-act="closeshift">${I.check}تقفيل الوردية</button>`:""}</div>`;
+  fetchShiftLog();
+  const log=`<section class="pane"><h2>الورديات السابقة</h2>${S.shiftLog&&S.shiftLog.length?`<ul class="rows">${S.shiftLog.map(x=>`<li><button class="r" type="button" data-shift="${esc(x.id)}">
+      <div class="m"><b>${esc(dayName(isoOf(new Date(x.openedAt))))} · ${esc(hm12(x.openedAt))} إلى ${esc(hm12(x.closedAt))}</b><span>${esc(x.openedBy||"")}${x.closedBy&&x.closedBy!==x.openedBy?" ← "+esc(x.closedBy):""} · <span class="num">${(x.z&&x.z.n)||0}</span> فاتورة</span></div>
+      <div class="a"><span class="num">${fmt(x.z&&x.z.total)}</span><small><span class="chip ${diffCls(x.diff)}">${esc(diffText(x.diff))}</span></small></div></button></li>`).join("")}</ul>`
+      :`<div class="empty">${S.shiftLog?"ماكو ورديات مقفلة بعد.":"…"}</div>`}</section>`;
+  if(!S.ready.sh){v.innerHTML=head+`<div class="pane"><div class="spinner" style="margin:30px auto"></div></div>`;return}
+  if(!S.shift){
+    v.innerHTML=head+`<div class="rep-grid"><section class="pane"><h2>ماكو وردية مفتوحة</h2>
+      ${canSell()?`<form id="shf" class="field" style="gap:12px;padding:14px" novalidate>
+        <p class="hint">بداية الدوام: عدّ الكاش اللي بالدرج واكتبه، وبنهاية الدوام تقفّل الوردية وتعدّ الكاش مرة ثانية.</p>
+        <div class="field"><label for="shFloat">الكاش بالدرج هسه (${CUR})</label><input id="shFloat" class="big" inputmode="numeric" placeholder="0"></div>
+        <p class="err" id="shErr"></p><button class="btn primary" type="submit">فتح وردية</button></form>`
+        :`<div class="empty">الكاشير يفتح الوردية من حسابه.</div>`}</section>${log}</div>`;
+    return;
+  }
+  const list=shiftSales(S.shift);
+  if(!list){v.innerHTML=head+`<div class="pane"><div class="spinner" style="margin:30px auto"></div></div>`;return}
+  const z=zOf(S.shift,list),admin=isAdmin();
+  v.innerHTML=head+`
+    <div class="stats">
+      <div class="stat main"><div class="k">المفروض بالدرج</div><div class="v"><span class="num">${fmt(z.expected)}</span><small>${CUR}</small></div><div class="k">بداية <span class="num">${fmt(z.float)}</span> + كاش <span class="num">${fmt(z.cash)}</span></div></div>
+      <div class="stat"><div class="k">مبيعات الوردية</div><div class="v"><span class="num">${fmt(z.total)}</span></div></div>
+      ${admin?`<div class="stat"><div class="k">الربح</div><div class="v ${z.profit>=0?"paid":"debt"}"><span class="num">${fmt(z.profit)}</span></div></div>`:""}
+      <div class="stat"><div class="k">كاش</div><div class="v paid"><span class="num">${fmt(z.cash)}</span></div></div>
+      <div class="stat"><div class="k">دين على الزبائن</div><div class="v debt"><span class="num">${fmt(z.debt)}</span></div></div>
+      <div class="stat"><div class="k">الخصومات</div><div class="v"><span class="num">${fmt(z.disc)}</span></div></div>
+      <div class="stat"><div class="k">عدد الفواتير</div><div class="v"><span class="num">${z.n}</span>${z.voids?`<small>(${z.voids} ملغية)</small>`:""}</div></div>
+    </div>
+    <div class="rep-grid">${log}
+      <section class="pane"><h2>حسب الكاشير</h2>${z.who.length?`<ul class="rows">${z.who.map(w=>`<li><div class="r static"><div class="m"><b>${esc(w.name)}</b><span><span class="num">${w.n}</span> فاتورة</span></div><div class="a num">${fmt(w.v)}</div></div></li>`).join("")}</ul>`:`<div class="empty">ماكو مبيعات بهاي الوردية بعد.</div>`}</section>
+    </div>`;
+}
+function openShift(m){
+  const raw=m.querySelector("#shFloat").value.trim(),fl=raw?Math.round(parseAmt(raw)):0;
+  if(!(fl>=0)){m.querySelector("#shErr").textContent="اكتب مبلغ صحيح، أو خليه فارغ إذا الدرج فارغ.";return}
+  if(S.shift){toast("أكو وردية مفتوحة.");renderSales();return}
+  const sh={id:uid(),status:"open",openedAt:Date.now(),openedBy:S.me.name,openedById:S.me.id,float:fl};
+  S.shift=sh;try{db.collection("shifts").doc(sh.id).set(sh).catch(e=>{writeFail(e);if(S.shift&&S.shift.id===sh.id)S.shift=null;refresh()})}catch(e){writeFail(e)}
+  log("add","shift",{amount:fl,detail:`فتح وردية بكاش ${fmt(fl)}`});
+  refresh();toast("انفتحت الوردية");
+}
+function closeShiftForm(){
+  const sh=S.shift;if(!sh||!canSell())return;
+  const list=shiftSales(sh);if(!list){toast("لحظة، دا يحمّل مبيعات الوردية.");return}
+  const z=zOf(sh,list);
+  openModal(`<h3>تقفيل الوردية</h3><p class="hint">عدّ الكاش اللي بالدرج هسه واكتبه.</p>
+    <div class="due"><span class="k">المفروض بالدرج</span><span class="v"><span class="num">${fmt(z.expected)}</span> <small style="font-size:16px">${CUR}</small></span><span class="k">بداية <span class="num">${fmt(z.float)}</span> + مبيعات كاش <span class="num">${fmt(z.cash)}</span> (<span class="num">${z.n}</span> فاتورة)</span></div>
+    <form id="czf" class="field" style="gap:12px" novalidate>
+      <div class="field"><label for="czC">الكاش المعدود</label><input id="czC" class="big" inputmode="numeric" placeholder="0"></div>
+      <div class="banner info" id="czD" hidden></div>
+      <div class="field"><label for="czN">ملاحظة (اختياري)</label><input id="czN" maxlength="120" placeholder="مثلاً: سحبت 50,000 للمورد"></div>
+      <p class="err" id="czErr"></p>
+      <div class="foot"><button class="btn primary" type="submit">تقفيل وطباعة التقرير</button><button class="btn" type="button" data-close>رجوع</button></div>
+    </form>`,m=>{
+    const c=m.querySelector("#czC"),dEl=m.querySelector("#czD");
+    c.addEventListener("input",()=>{const v=parseAmt(c.value);if(!(v>=0)){dEl.hidden=true;return}const d=Math.round(v)-z.expected;
+      dEl.hidden=false;dEl.className="banner "+(d===0?"ok":d>0?"warn":"bad");dEl.innerHTML=d===0?"الدرج مضبوط.":`${d>0?"زايد":"ناقص"} <b class="num">${fmt(Math.abs(d))}</b> ${CUR}`});
+    m.querySelector("#czf").addEventListener("submit",e=>{e.preventDefault();
+      const v=parseAmt(c.value);if(!(v>=0)){m.querySelector("#czErr").textContent="اكتب الكاش المعدود.";return}
+      const counted=Math.round(v),now=Date.now(),z2=zOf(sh,shiftSales(sh)||list);
+      const upd={status:"closed",closedAt:now,closedBy:S.me.name,closedById:S.me.id,counted,expected:z2.expected,diff:counted-z2.expected,note:m.querySelector("#czN").value.trim(),z:z2};
+      try{db.collection("shifts").doc(sh.id).update(upd).catch(writeFail)}catch(x){writeFail(x)}
+      log("edit","shift",{amount:z2.total,detail:`قفّل الوردية: مبيعات ${fmt(z2.total)}، المفروض بالدرج ${fmt(z2.expected)}، المعدود ${fmt(counted)} (${diffText(counted-z2.expected)})`});
+      const done={...sh,...upd};S.shift=null;if(S.shiftLog)S.shiftLog.unshift(done);
+      closeModal();refresh();zModal(done);
+    });
+  });
+}
+function zModal(x){
+  const z=x.z||{},admin=isAdmin();
+  const ln=(k,v,st)=>`<div class="ln"${st?` style="${st}"`:""}><span>${k}</span><span class="num">${v}</span></div>`;
+  openModal(`<h3>تقرير الوردية (Z)</h3><p class="hint">${esc(x.openedBy||"")} · ${esc(isoOf(new Date(x.openedAt)))} ${esc(hm12(x.openedAt))} إلى ${esc(hm12(x.closedAt))}${x.closedBy&&x.closedBy!==x.openedBy?` · قفّلها ${esc(x.closedBy)}`:""}</p>
+    <div class="rcpt">${ln("كاش البداية",fmt(z.float))}${ln("مبيعات كاش",fmt(z.cash),"color:var(--paid)")}${ln("<b>المفروض بالدرج</b>",fmt(x.expected))}${ln("<b>المعدود</b>",fmt(x.counted))}
+      <div class="ln big" style="color:var(--${diffCls(x.diff)})"><span>الفرق</span><span>${esc(diffText(x.diff))}</span></div><hr>
+      ${ln("مجموع المبيعات",fmt(z.total))}${ln("دين على الزبائن",fmt(z.debt),"color:var(--debt)")}${ln("الخصومات",fmt(z.disc))}${admin&&z.profit!=null?ln("الربح",fmt(z.profit)):""}
+      ${ln("عدد الفواتير",String(z.n||0)+(z.voids?` (+${z.voids} ملغية)`:""))}
+      ${(z.who||[]).length>1?"<hr>"+z.who.map(w=>ln(esc(w.name),fmt(w.v))).join(""):""}
+      ${x.note?`<hr><div class="ln"><span>${esc(x.note)}</span></div>`:""}</div>
+    <div class="foot"><button class="btn primary" type="button" id="zPdf">${I.pdf}تقرير PDF</button><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
+    m.querySelector("#zPdf").onclick=()=>zPdf(x);
+  });
+}
+/* Z report as an 80mm slip, like the receipt. */
+async function zPdf(x){
+  toast("جارِ تجهيز التقرير…");if(!await pdfReady())return;
+  const z=x.z||{},W=576,M=28,who=(z.who||[]).length>1?z.who:[];
+  const cv=document.createElement("canvas");cv.width=W;cv.height=900+who.length*30+(x.note?40:0);const c=cv.getContext("2d");
+  c.fillStyle="#fff";c.fillRect(0,0,W,cv.height);c.fillStyle=PDFC.green;c.fillRect(0,0,W,12);c.fillStyle=PDFC.orange;c.fillRect(0,12,W,4);
+  c.direction="rtl";c.textAlign="center";let y=70;
+  c.fillStyle=PDFC.green;c.font=`400 40px ${PDF_BRAND}`;c.fillText(shopName(),W/2,y);y+=40;
+  c.fillStyle=PDFC.ink;c.font=`700 22px ${PDF_F}`;c.fillText("تقرير الوردية (Z)",W/2,y);y+=30;
+  c.fillStyle=PDFC.muted;c.font=`400 18px ${PDF_F}`;c.fillText(`${isoOf(new Date(x.openedAt))} · ${hm12(x.openedAt)} إلى ${hm12(x.closedAt)}`,W/2,y);y+=26;
+  c.fillText(x.openedBy+(x.closedBy&&x.closedBy!==x.openedBy?" ← "+x.closedBy:""),W/2,y);y+=22;
+  const rule=()=>{c.strokeStyle=PDFC.line;c.lineWidth=2;c.setLineDash([6,6]);c.beginPath();c.moveTo(M,y);c.lineTo(W-M,y);c.stroke();c.setLineDash([])};
+  const lr=(r,l,o)=>{o=o||{};c.font=`${o.w||400} ${o.s||20}px ${PDF_F}`;c.fillStyle=o.c||PDFC.ink;c.textAlign="right";c.direction="rtl";c.fillText(r,W-M,y);
+    c.textAlign="left";c.direction=o.rtl?"rtl":"ltr";if(o.rtl)c.textAlign="left";c.font=`${o.w||700} ${o.s||20}px ${o.rtl?PDF_F:PDF_D}`;c.fillText(l,M,y);c.direction="rtl";y+=o.gap||32};
+  rule();y+=34;
+  lr("كاش البداية",fmt(z.float));lr("مبيعات كاش",fmt(z.cash),{c:PDFC.paid});
+  lr("المفروض بالدرج",fmt(x.expected),{w:700});lr("المعدود",fmt(x.counted),{w:700});
+  lr("الفرق",diffText(x.diff),{w:700,s:24,c:x.diff===0?PDFC.paid:PDFC.debt,rtl:true,gap:40});
+  y-=8;rule();y+=34;
+  lr("مجموع المبيعات",fmt(z.total)+" IQD",{w:700,c:PDFC.green});lr("دين على الزبائن",fmt(z.debt),{c:PDFC.debt});lr("الخصومات",fmt(z.disc));
+  lr("عدد الفواتير",String(z.n||0)+(z.voids?` (+${z.voids})`:""));
+  if(isAdmin()&&z.profit!=null)lr("الربح",fmt(z.profit));
+  for(const w of who)lr(w.name,fmt(w.v),{s:18,c:PDFC.muted,gap:28});
+  if(x.note){lr(x.note,"",{s:17,c:PDFC.muted})}
+  y-=8;rule();y+=34;c.textAlign="center";c.fillStyle=PDFC.green;c.font=`700 20px ${PDF_D}`;c.fillText(SLOGAN,W/2,y);
+  const hPx=Math.min(cv.height,y+40);const out=document.createElement("canvas");out.width=W;out.height=hPx;out.getContext("2d").drawImage(cv,0,0);
+  const {jsPDF}=window.jspdf;const wMM=80,hMM=hPx*wMM/W;const pdf=new jsPDF({unit:"mm",format:[wMM,hMM],orientation:hMM<wMM?"landscape":"portrait"});
+  pdf.addImage(out.toDataURL("image/jpeg",0.95),"JPEG",0,0,wMM,hMM);
+  try{if(await saveFile(`وردية-${isoOf(new Date(x.openedAt))}-${hm12(x.openedAt).replace(/[:\s]/g,"")}.pdf`,pdf.output("blob")))toast("تم حفظ التقرير")}catch(e){console.warn(e);toast("تعذّر حفظ الملف.")}
+}
+
+/* ---------- discount approval ----------
+   An editor's discount is applied only after the owner approves it from the cashier on their own device.
+   The approval is tied to the invoice total it was asked for; changing the invoice drops it. The rules enforce the same. */
+function requestApproval(amount,sub){
+  const a={id:uid(),kind:"discount",amount,subtotal:sub,items:itemsText(S.cart,120),by:S.me.name,byId:S.me.id,at:Date.now(),status:"pending"};
+  try{db.collection("approvals").doc(a.id).set(a).catch(writeFail)}catch(e){writeFail(e);return}
+  openModal(`<h3>بانتظار موافقة المدير</h3><p class="hint">طلبت خصم <b class="num">${fmt(amount)}</b> على فاتورة <b class="num">${fmt(sub)}</b>. أول ما يوافق المدير من جهازه ينطبق الخصم هنا.</p>
+    <div class="spinner" aria-hidden="true"></div>
+    <div class="foot"><button class="btn" type="button" data-close>إلغاء الطلب</button></div>`,()=>{
+    const ref=db.collection("approvals").doc(a.id);
+    const un=ref.onSnapshot(s=>{const d=s.data();if(!d)return;
+      if(d.status==="approved"){un();modalCleanup=null;closeModal();
+        if(totals().sub!==sub){toast("الفاتورة تغيّرت. اطلب الخصم مرة ثانية.",3500);return}
+        S.discount=Math.min(d.amount,sub);S.approval={id:a.id,amount:d.amount,subtotal:sub};saveCart();refresh("cart");toast("وافق المدير على الخصم",2500)}
+      else if(d.status==="denied"){un();modalCleanup=null;closeModal();toast("المدير رفض الخصم.",3500)}
+    },e=>console.warn(e));
+    // Leaving the wait withdraws the request, so the owner never approves something nobody is waiting for.
+    modalCleanup=()=>{un();ref.update({status:"cancelled"}).catch(()=>{})};
+  });
+}
+function renderApprovals(){
+  const el=$("#approvals");if(!el)return;
+  const list=isAdmin()?[...S.approvals.values()].filter(a=>a.status==="pending").sort((a,b)=>a.at-b.at):[];
+  el.innerHTML=list.map(a=>`<div class="apv banner warn"><div class="m"><b>${esc(a.by)}</b> يطلب خصم <b class="num">${fmt(a.amount)}</b> على فاتورة <b class="num">${fmt(a.subtotal)}</b> <small>(${esc(hm12(a.at))})</small><span>${esc(a.items||"")}</span></div>
+    <div class="foot" style="margin:0"><button class="btn sm paid" type="button" data-apv="${esc(a.id)}" data-ok="1">${I.check}موافقة</button><button class="btn sm" type="button" data-apv="${esc(a.id)}" data-ok="0">رفض</button></div></div>`).join("");
+  el.hidden=!list.length;
+  const base=document.title.replace(/^\(\d+\) /,"");document.title=(list.length?`(${list.length}) `:"")+base;
+}
+function decideApproval(id,ok){
+  const a=S.approvals.get(id);if(!a||!isAdmin())return;
+  const upd={status:ok?"approved":"denied",decidedBy:S.me.name,decidedAt:Date.now()};
+  S.approvals.set(id,{...a,...upd});renderApprovals();
+  try{db.collection("approvals").doc(id).update(upd).catch(writeFail)}catch(e){writeFail(e)}
+  log(ok?"add":"delete","discount",{amount:a.amount,detail:`${ok?"وافق على":"رفض"} خصم ${fmt(a.amount)} على فاتورة ${fmt(a.subtotal)} طلبه ${a.by}`});
 }
 
 /* ---------- products (owner only) ---------- */
@@ -1343,6 +1544,8 @@ document.addEventListener("click",e=>{
   const rm=t.closest("[data-rmode]");if(rm){S.repMode=rm.dataset.rmode;renderSales();return}
   const mo=t.closest("[data-month]");if(mo&&!mo.disabled){S.repMonth=mo.dataset.month;renderSales();return}
   const od=t.closest("[data-openday]");if(od){S.repMode="day";S.repDay=od.dataset.openday;renderSales();window.scrollTo(0,0);return}
+  const ap=t.closest("[data-apv]");if(ap){decideApproval(ap.dataset.apv,ap.dataset.ok==="1");return}
+  const shl=t.closest("[data-shift]");if(shl){const x=(S.shiftLog||[]).find(z=>z.id===shl.dataset.shift);if(x)zModal(x);return}
   const rs=t.closest("[data-restock]");if(rs){const p=S.products.get(rs.dataset.restock);if(p)restockForm(p);return}
   const a=t.closest("[data-act]");if(!a||a.disabled)return;
   switch(a.dataset.act){
@@ -1355,11 +1558,13 @@ document.addEventListener("click",e=>{
     case "hidecart":document.body.classList.remove("show-cart");break;
     case "newprod":productForm();break;
     case "reppdf":reportPdf();break;
+    case "closeshift":closeShiftForm();break;
     case "whole":if(canSell())setWhole(!S.whole);break;
   }
 });
 // Tapping the dark area above the cart sheet closes it (the ::after overlay sits on body).
 document.addEventListener("click",e=>{if(document.body.classList.contains("show-cart")&&e.target===document.body)document.body.classList.remove("show-cart")});
+document.addEventListener("submit",e=>{if(e.target.id==="shf"){e.preventDefault();openShift(e.target)}});
 document.addEventListener("input",e=>{
   if(e.target.id==="q"){S.q=e.target.value;renderTiles()}
   else if(e.target.id==="pq"){S.pq=e.target.value;renderProducts()}

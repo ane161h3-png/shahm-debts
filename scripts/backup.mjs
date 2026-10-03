@@ -133,7 +133,7 @@ function reportDay(now) {
   const local = new Date(now.getTime() + BAGHDAD);
   return isoDay(now.getTime() - (local.getUTCHours() < 12 ? 24 * 3600e3 : 0));
 }
-function daySummary(customers, txns, settings, now, sales = [], products = []) {
+function daySummary(customers, txns, settings, now, sales = [], products = [], shifts = []) {
   const day = reportDay(now);
   const next = isoDay(Date.parse(day + "T12:00:00Z") + 24 * 3600e3);
   const byId = new Map(customers.map(c => [c.id, c]));
@@ -164,6 +164,12 @@ function daySummary(customers, txns, settings, now, sales = [], products = []) {
     if (pos.discount) lines.push(`🏷 خصومات: ${fmt(pos.discount)} د.ع`);
     if (pos.top.length) lines.push("أكثر المواد مبيعاً:", ...pos.top.map(([n, x]) => `  • ${n}: ${fmt(x.total)}`));
     lines.push("");
+  }
+  // Shifts closed that day (cashier Z reports): how the drawer counted against what it should hold.
+  const closed = shifts.filter(x => x.status === "closed" && x.closedAt && isoDay(Number(x.closedAt)) === day).sort((a, b) => a.closedAt - b.closedAt);
+  if (closed.length) {
+    const dt = d => d === 0 ? "مضبوط ✅" : d > 0 ? `زايد ${fmt(d)}` : `ناقص ${fmt(-d)} ⚠️`;
+    lines.push("🔒 الورديات:", ...closed.map(x => `  • ${x.openedBy || "؟"} ${hm(Number(x.openedAt))} إلى ${hm(Number(x.closedAt))}: مبيعات ${fmt((x.z && x.z.total) || 0)}، الدرج ${dt(Number(x.diff) || 0)}`), "");
   }
   if (!done.length && !newCust) lines.push("ما انسجلت أي حركة ديون بهذا اليوم.");
   else {
@@ -256,15 +262,15 @@ async function sendFile(name, data, type, caption, quiet) {
 async function main() {
   const mode = (process.env.MODE || "daily").trim();
   const token = await signIn();
-  const [customers, txns, activity, settings, sales, products] = await Promise.all([
+  const [customers, txns, activity, settings, sales, products, shifts] = await Promise.all([
     readAll(token, "customers"), readAll(token, "txns"), readAll(token, "activity"), readDoc(token, "settings/main"),
-    readOptional(token, "sales"), readOptional(token, "products"),
+    readOptional(token, "sales"), readOptional(token, "products"), readOptional(token, "shifts"),
   ]);
   const now = new Date();
   const day = isoDay(now.getTime());
   const shop = settings.shopName || "ماركت الشهم";
   const slug = shop.replace(/\s+/g, "-");
-  const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: mode === "periodic" ? "telegram-2h" : "daily-telegram", settings, customers, txns, accounts: [], activity, products, sales };
+  const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: mode === "periodic" ? "telegram-2h" : "daily-telegram", settings, customers, txns, accounts: [], activity, products, sales, shifts };
   const backupJson = JSON.stringify(backup);
   const chat = env("TELEGRAM_CHAT_ID");
 
@@ -295,7 +301,7 @@ async function main() {
   await sendFile(`نسخة-ديون-${slug}-${day}.json`, backupJson, "application/json", caption);
   console.log(`Sent backup: ${customers.length} accounts, ${txns.length} transactions, ${activity.length} activity entries.`);
 
-  await tg("sendMessage", { chat_id: chat, text: daySummary(customers, txns, settings, now, sales, products).slice(0, 4000) });
+  await tg("sendMessage", { chat_id: chat, text: daySummary(customers, txns, settings, now, sales, products, shifts).slice(0, 4000) });
   console.log("Sent end-of-day summary.");
 
   // Every transaction of the reported day in one PDF (CSV if no browser is available to print it).
