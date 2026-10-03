@@ -101,7 +101,7 @@ function salesSummary(sales, inRange) {
     if (Number(i.cost) > 0) { costed++; margin += (Number(i.total) || 0) - Number(i.cost) * (Number(i.qty) || 0); }
     else uncosted += Number(i.total) || 0;
   }
-  return { n: list.length, total: sum("total"), cash: sum("cash"), debt: sum("debt"), discount: sum("discount"),
+  return { n: list.length, total: sum("total"), cash: sum("cash"), debt: sum("debt"), discount: sum("discount"), usd: Math.round(sum("usd") * 100) / 100,
     profit: costed ? margin - sum("discount") : null, uncosted,
     top: [...items].sort((a, b) => b[1].total - a[1].total).slice(0, 5) };
 }
@@ -136,7 +136,7 @@ function reportDay(now) {
   const local = new Date(now.getTime() + BAGHDAD);
   return isoDay(now.getTime() - (local.getUTCHours() < 12 ? 24 * 3600e3 : 0));
 }
-function daySummary(customers, txns, settings, now, sales = [], products = [], shifts = []) {
+function daySummary(customers, txns, settings, now, sales = [], products = [], shifts = [], stocktakes = []) {
   const day = reportDay(now);
   const next = isoDay(Date.parse(day + "T12:00:00Z") + 24 * 3600e3);
   const byId = new Map(customers.map(c => [c.id, c]));
@@ -165,6 +165,7 @@ function daySummary(customers, txns, settings, now, sales = [], products = [], s
     lines.push(salesLine(pos));
     if (profitLine(pos)) lines.push(profitLine(pos));
     if (pos.discount) lines.push(`🏷 خصومات: ${fmt(pos.discount)} د.ع`);
+    if (pos.usd) lines.push(`💵 مدفوع بالدولار: $${pos.usd}`);
     if (pos.top.length) lines.push("أكثر المواد مبيعاً:", ...pos.top.map(([n, x]) => `  • ${n}: ${fmt(x.total)}`));
     lines.push("");
   }
@@ -174,6 +175,9 @@ function daySummary(customers, txns, settings, now, sales = [], products = [], s
     const dt = d => d === 0 ? "مضبوط ✅" : d > 0 ? `زايد ${fmt(d)}` : `ناقص ${fmt(-d)} ⚠️`;
     lines.push("🔒 الورديات:", ...closed.map(x => `  • ${x.openedBy || "؟"} ${hm(Number(x.openedAt))} إلى ${hm(Number(x.closedAt))}: مبيعات ${fmt((x.z && x.z.total) || 0)}، الدرج ${dt(Number(x.diff) || 0)}`), "");
   }
+  // Stocktakes saved that day: how many items were counted and what was missing, at purchase price.
+  const takes = stocktakes.filter(x => x.at && isoDay(Number(x.at)) === day);
+  if (takes.length) lines.push("📋 الجرد:", ...takes.map(x => `  • ${x.by || "؟"}: ${x.n || 0} مادة، ناقص ${x.short || 0}${x.shortValue ? ` (${fmt(x.shortValue)} د.ع)` : ""}، زايد ${x.extra || 0}`), "");
   if (!done.length && !newCust) lines.push("ما انسجلت أي حركة ديون بهذا اليوم.");
   else {
     lines.push(`🔴 ديون جديدة: ${fmt(debt.v)} د.ع (${debt.n} حركة)`);
@@ -300,15 +304,15 @@ async function sendFile(name, data, type, caption, quiet) {
 async function main() {
   const mode = (process.env.MODE || "daily").trim();
   const token = await signIn();
-  const [customers, txns, activity, settings, sales, products, shifts] = await Promise.all([
+  const [customers, txns, activity, settings, sales, products, shifts, stocktakes] = await Promise.all([
     readAll(token, "customers"), readAll(token, "txns"), readAll(token, "activity"), readDoc(token, "settings/main"),
-    readOptional(token, "sales"), readOptional(token, "products"), readOptional(token, "shifts"),
+    readOptional(token, "sales"), readOptional(token, "products"), readOptional(token, "shifts"), readOptional(token, "stocktakes"),
   ]);
   const now = new Date();
   const day = isoDay(now.getTime());
   const shop = settings.shopName || "ماركت الشهم";
   const slug = shop.replace(/\s+/g, "-");
-  const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: mode === "periodic" ? "telegram-2h" : "daily-telegram", settings, customers, txns, accounts: [], activity, products, sales, shifts };
+  const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: mode === "periodic" ? "telegram-2h" : "daily-telegram", settings, customers, txns, accounts: [], activity, products, sales, shifts, stocktakes };
   const backupJson = JSON.stringify(backup);
   const chat = env("TELEGRAM_CHAT_ID");
 
@@ -342,7 +346,7 @@ async function main() {
   await sendFile(`نسخة-ديون-${slug}-${day}.json`, backupJson, "application/json", caption);
   console.log(`Sent backup: ${customers.length} accounts, ${txns.length} transactions, ${activity.length} activity entries.`);
 
-  await tg("sendMessage", { chat_id: chat, text: daySummary(customers, txns, settings, now, sales, products, shifts).slice(0, 4000) });
+  await tg("sendMessage", { chat_id: chat, text: daySummary(customers, txns, settings, now, sales, products, shifts, stocktakes).slice(0, 4000) });
   console.log("Sent end-of-day summary.");
 
   // Every transaction of the reported day in one PDF (CSV if no browser is available to print it).
