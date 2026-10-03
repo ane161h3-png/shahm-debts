@@ -60,6 +60,11 @@ service cloud.firestore {
       allow update: if writer() && resource.data.status == 'open';
       allow delete: if isOwner();
     }
+    // Stocktakes: the owner saves a count of the shelves; everyone who can read the cashier can see the record.
+    match /stocktakes/{id} {
+      allow read: if active();
+      allow write: if isOwner();
+    }
     match /users/{uid} {
       allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
       allow create: if isOwner() || (signedIn() && request.auth.uid == uid
