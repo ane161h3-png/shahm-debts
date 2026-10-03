@@ -162,6 +162,8 @@ input:disabled{opacity:.55}
 .tile .st{font-size:11.5px;color:var(--muted)}
 .tile .st.warn{color:var(--warn);font-weight:700}
 .tile .pr small{font-size:11px;font-weight:600;color:var(--warn)}
+.tile .pr small.kg{color:var(--muted);margin-inline-start:2px}
+.wpill{border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:99px;padding:5px 12px;font-family:var(--f-display);font-weight:700;cursor:pointer;white-space:nowrap}
 .tile .q{position:absolute;top:-8px;left:-6px;min-width:26px;height:26px;padding:0 7px;border-radius:99px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:13px;display:grid;place-items:center;font-family:var(--f-display)}
 .tile.custom{border-style:dashed;border-top-style:dashed;border-top-color:var(--accent);background:var(--paper);align-items:center;justify-content:center;color:var(--accent);font-weight:700;font-family:var(--f-display)}
 .tile.custom svg{width:26px;height:26px}
@@ -340,7 +342,13 @@ const parseAmt=s=>{const t=normDigits(s).replace(/[,،\s]/g,"");if(!t)return NaN
 const dayName=iso=>{try{return new Date(iso+"T12:00:00").toLocaleDateString("ar-IQ",{weekday:"long",day:"numeric",month:"long",numberingSystem:"latn"})}catch(e){return iso}};
 const hm12=ms=>{const d=new Date(ms);let h=d.getHours();const ap=h<12?"ص":"م";h=h%12||12;return h+":"+String(d.getMinutes()).padStart(2,"0")+" "+ap};
 const shopName=()=>S.settings.shopName||"ماركت الشهم";
-const cats=()=>Array.isArray(S.settings.categories)&&S.settings.categories.length?S.settings.categories:DEFAULT_CATS;
+// A supermarket's usual sections; shown after the debt book's own list, plus any section an item already uses.
+const MARKET_CATS=["مواد غذائية","رز وطحين وسكر","زيوت وسمن","بقوليات وحبوب","معكرونة وشعيرية","معلبات","بهارات وتوابل","صلصات ومربيات","شاي وقهوة",
+  "أجبان وألبان","بيض","لحوم ودجاج","مجمدات","أسماك","خضروات","فواكه","خبز ومعجنات","كيك وكرواسون","حلويات وشوكولاتة","بسكويت","مكسرات وكرزات",
+  "شيبس وسناكات","آيس كريم","مشروبات","مياه","عصائر","مشروبات طاقة","أغذية وحليب أطفال","حفاضات","منظفات","مناديل وورقيات","عناية شخصية",
+  "صابون وشامبو","أدوات منزلية","نايلون وبلاستيك","قرطاسية","بطاريات وكهربائيات","سكائر","معسل وفحم","كارت رصيد","غاز","أكل حيوانات","مشكل"];
+const cats=()=>{const base=Array.isArray(S.settings.categories)&&S.settings.categories.length?S.settings.categories:DEFAULT_CATS;
+  return [...new Set([...base,...MARKET_CATS,...[...S.products.values()].map(p=>p.category).filter(Boolean)])]};
 const isAdmin=()=>S.me&&S.me.role==="owner";
 const canSell=()=>S.me&&(S.me.role==="owner"||S.me.role==="editor");
 const isSup=c=>c&&c.kind==="supplier";
@@ -490,6 +498,7 @@ const round3=n=>Math.round(n*1000)/1000;
 function priceFor(p,pack,whole){const r=pack?pack.price:p.price,w=pack?pack.wprice:p.wprice;return Math.round(Number(whole&&w>0?w:r)||0)}
 const costFor=(p,pack)=>Number(p.cost)>0?Math.round(Number(p.cost)*(pack?pack.n:1)):null;
 const tracked=p=>!!(p&&p.track===true);
+const isWeighed=p=>!!(p&&p.weighed===true);
 const stockOf=p=>Number(p&&p.stock)||0;
 const daysTo=iso=>Math.round((new Date(iso+"T12:00:00")-new Date(todayISO()+"T12:00:00"))/864e5);
 const EXP_DAYS=30;
@@ -522,7 +531,7 @@ function totals(){
   return {sub,disc,total:sub-disc,count:S.cart.reduce((a,l)=>a+l.qty,0)};
 }
 const lineKey=(p,pack)=>p.id+"|"+(pack?pack.name:"");
-function lineFor(p,pack,qty){return {key:lineKey(p,pack),pid:p.id,unit:pack?pack.name:baseUnit(p),n:pack?pack.n:1,name:p.name,price:priceFor(p,pack,S.whole),qty,cat:p.category||"",cost:costFor(p,pack)}}
+function lineFor(p,pack,qty){return {key:lineKey(p,pack),pid:p.id,unit:pack?pack.name:baseUnit(p),n:pack?pack.n:1,name:p.name,price:priceFor(p,pack,S.whole),qty,cat:p.category||"",cost:costFor(p,pack),...(isWeighed(p)&&!pack?{w:1}:{})}}
 // The line key is "<item id>|<pack name>" (empty pack name = the base unit).
 function packOfLine(p,l){const nm=String(l.key||"").split("|")[1]||"";return nm?packsOf(p).find(k=>k.name===nm)||null:null}
 function addToCart(p,qty,pack){
@@ -620,7 +629,7 @@ function renderTiles(){
     ${inCart.has(p.id)?`<span class="q num">${qtyText(inCart.get(p.id))}</span>`:""}
     <span class="nm">${esc(p.name)}</span><span class="ct">${esc(p.category||"")}</span>
     ${left!==null||al.some(a=>a.startsWith("exp"))?`<span class="st${al.length||(left!==null&&left<=0)?" warn":""}">${left!==null?`باقي <span class="num">${qtyText(left)}</span>`:""}${al.includes("expired")?" · منتهية":al.includes("expiring")?" · قرب انتهاؤها":""}</span>`:""}
-    <span class="pr"><span class="num">${fmt(priceFor(p,null,S.whole))}</span>${S.whole&&p.wprice>0?` <small>جملة</small>`:""}</span></button>`}).join("");
+    <span class="pr"><span class="num">${fmt(priceFor(p,null,S.whole))}</span>${isWeighed(p)?`<small class="kg">/كغم</small>`:""}${S.whole&&p.wprice>0?` <small>جملة</small>`:""}</span></button>`}).join("");
 }
 function renderCart(){
   const el=$("#cart"),bar=$("#cartBar");if(!el)return;
@@ -628,8 +637,9 @@ function renderCart(){
   el.innerHTML=`<div class="cart-head"><h2>الفاتورة ${S.cart.length?`<span class="chip zero num">${S.cart.length}</span>`:""}</h2>
       <div style="display:flex;gap:4px;align-items:center"><span class="chips"><button type="button" data-act="whole" aria-pressed="${!!S.whole}" title="أسعار الجملة">جملة</button></span>${S.cart.length?`<button class="btn sm ghost danger-text" type="button" data-act="clear">${I.trash}تفريغ</button>`:""}<button class="btn sm ghost close-cart" type="button" data-act="hidecart" aria-label="إغلاق السلة">${I.close}</button></div></div>
     ${S.cart.length?`<ul class="cart-lines">${S.cart.map(l=>`<li>
-      <button class="info" type="button" data-line="${esc(l.key)}"><b>${esc(l.name)}</b><span><span class="num">${fmt(l.price)}</span> × <span class="num">${qtyText(l.qty)}</span> ${esc(l.unit||"")}</span></button>
-      <div class="stepper"><button type="button" data-inc="${esc(l.key)}" aria-label="زيادة">${I.plus}</button><span class="num">${qtyText(l.qty)}</span><button type="button" data-dec="${esc(l.key)}" aria-label="نقصان">${l.qty>1?I.minus:I.trash}</button></div>
+      <button class="info" type="button" data-line="${esc(l.key)}"><b>${esc(l.name)}</b><span><span class="num">${fmt(l.price)}</span>${l.w?" للكيلو":` × <span class="num">${qtyText(l.qty)}</span> ${esc(l.unit||"")}`}</span></button>
+      ${l.w?`<button class="wpill" type="button" data-line="${esc(l.key)}" aria-label="تعديل الوزن">${kgHtml(l.qty)}</button>`
+        :`<div class="stepper"><button type="button" data-inc="${esc(l.key)}" aria-label="زيادة">${I.plus}</button><span class="num">${qtyText(l.qty)}</span><button type="button" data-dec="${esc(l.key)}" aria-label="نقصان">${l.qty>1?I.minus:I.trash}</button></div>`}
       <span class="lt num">${fmt(Math.round(l.price*l.qty))}</span></li>`).join("")}</ul>`
       :`<div class="empty cart-lines" style="display:grid;place-items:center"><div><b>الفاتورة فارغة</b>اضغط على مادة حتى تنضاف.</div></div>`}
     <div class="cart-foot">
@@ -644,9 +654,10 @@ function renderCart(){
 }
 
 /* line editing: quantity and unit for everyone, price only for the owner (the editor sells at the listed price) */
-function editLine(key){
+function editLine(key,raw){
   const l=S.cart.find(x=>x.key===key);if(!l)return;
   const p=l.pid&&S.products.get(l.pid),packs=p?packsOf(p):[];
+  if(!raw&&l.w&&p){weightForm(p,l);return}
   const priceOk=isAdmin()||!l.pid;
   let unit=p?(packOfLine(p,l)||null):null;
   openModal(`<h3>${esc(l.name)}</h3>
@@ -718,6 +729,60 @@ function keypadForm(){
   });
 }
 
+/* ---------- items sold by weight ----------
+   The price is per kilo; the cashier types the weight (kilo or gram) or the amount the customer wants,
+   and the other one is worked out. The line keeps the weight in kilos (to the gram). */
+const WUNIT_KEY="shahm-pos-wunit";
+const kgText=q=>q>0&&q<1?`${Math.round(q*1000)} غرام`:`${qtyText(q)} كغم`;
+// Same, for HTML: the number is isolated so the unit stays on its right side in RTL.
+const kgHtml=q=>q>0&&q<1?`<span class="num">${Math.round(q*1000)}</span> غرام`:`<span class="num">${qtyText(q)}</span> كغم`;
+function weightForm(p,line){
+  if(!canSell()||!p)return;
+  const price=line?line.price:priceFor(p,null,S.whole);
+  let mode="w",gram=false;try{gram=localStorage.getItem(WUNIT_KEY)==="g"}catch(e){}
+  openModal(`<h3>${esc(p.name)}</h3><p class="hint">سعر الكيلو <b class="num">${fmt(price)}</b> ${CUR}${S.whole&&p.wprice>0?" (جملة)":""}</p>
+    <div class="seg" role="group" aria-label="طريقة البيع"><button type="button" data-wm="w">بالوزن</button><button type="button" data-wm="a">بالمبلغ</button></div>
+    <form id="wf" class="field" style="gap:10px" novalidate>
+      <div class="tool-row"><div class="field" style="flex:1"><input id="wv" class="big" inputmode="decimal" autocomplete="off"></div>
+        <div class="seg" id="wu" role="group" aria-label="وحدة الوزن" style="flex:none"><button type="button" data-wu="kg">كغم</button><button type="button" data-wu="g">غرام</button></div></div>
+      <div class="quick" id="wq"></div>
+      <div class="due"><span class="k" id="wl"></span><span class="v"><span class="num" id="wt">0</span> <small style="font-size:16px">${CUR}</small></span></div>
+      <p class="err" id="wErr"></p>
+      <div class="foot"><button class="btn primary" type="submit" style="flex:1">${line?"تم":"إضافة للفاتورة"}</button>
+        ${line?`<button class="btn ghost danger-text" type="button" id="wDel">${I.trash}حذف</button>${isAdmin()?`<button class="btn" type="button" id="wPrice">السعر</button>`:""}`:""}<button class="btn" type="button" data-close>رجوع</button></div>
+    </form>`,m=>{
+    const inp=m.querySelector("#wv"),wu=m.querySelector("#wu");
+    const kg=()=>{const v=parseAmt(inp.value);if(!(v>0))return 0;return round3(mode==="a"?v/price:gram?v/1000:v)};
+    const setFromKg=q=>{inp.value=q>0?(mode==="a"?fmt(Math.round(q*price)):gram?String(Math.round(q*1000)):qtyText(q)):""};
+    const show=()=>{const q=kg();
+      m.querySelector("#wl").innerHTML=q>0?`${kgHtml(q)} × <span class="num">${fmt(price)}</span>`:(mode==="a"?"اكتب المبلغ اللي يريده الزبون":"اكتب الوزن");
+      m.querySelector("#wt").textContent=fmt(Math.round(price*q))};
+    const draw=()=>{
+      m.querySelectorAll("[data-wm]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.wm===mode)));
+      wu.hidden=mode==="a";wu.querySelectorAll("[data-wu]").forEach(b=>b.setAttribute("aria-pressed",String((b.dataset.wu==="g")===gram)));
+      inp.setAttribute("aria-label",mode==="a"?"المبلغ":"الوزن");inp.placeholder=mode==="a"?"المبلغ":gram?"مثلاً 750":"مثلاً 0.75";
+      const qs=mode==="a"?[250,500,1000,2000,5000].map(v=>[v,fmt(v)]):[[.25,"ربع كيلو"],[.5,"نص كيلو"],[.75,"ثلاث أرباع"],[1,"كيلو"],[2,"2 كيلو"]];
+      m.querySelector("#wq").innerHTML=qs.map(([v,l])=>`<button type="button" data-wv="${v}">${l}</button>`).join("");
+      show()};
+    m.querySelectorAll("[data-wm]").forEach(b=>b.onclick=()=>{const q=kg();mode=b.dataset.wm;setFromKg(q);draw();inp.focus()});
+    wu.querySelectorAll("[data-wu]").forEach(b=>b.onclick=()=>{const q=kg();gram=b.dataset.wu==="g";try{localStorage.setItem(WUNIT_KEY,gram?"g":"kg")}catch(e){}setFromKg(q);draw();inp.focus()});
+    m.querySelector("#wq").addEventListener("click",e=>{const b=e.target.closest("[data-wv]");if(!b)return;const v=Number(b.dataset.wv);
+      if(mode==="a")inp.value=fmt(v);else setFromKg(v);show();inp.focus()});
+    inp.addEventListener("input",show);
+    if(line)setFromKg(line.qty);draw();setTimeout(()=>{inp.focus();inp.select()},20);
+    const del=m.querySelector("#wDel");if(del)del.onclick=()=>{setQty(line.key,0);closeModal()};
+    const wp=m.querySelector("#wPrice");if(wp)wp.onclick=()=>editLine(line.key,true);
+    m.querySelector("#wf").addEventListener("submit",e=>{e.preventDefault();
+      const q=kg();if(!(q>0)){m.querySelector("#wErr").textContent=mode==="a"?"اكتب المبلغ.":"اكتب الوزن.";return}
+      if(q>500){m.querySelector("#wErr").textContent="الوزن كبير هواية. إذا كتبته بالغرام اختار «غرام».";return}
+      closeModal();
+      if(line)setQty(line.key,q);else{addToCart(p,q,null);toast(`انضاف ${kgText(q)} ${p.name}`,1500)}
+    });
+  });
+}
+// Adds an item the usual way, or asks for the weight when it is sold by weight (and not as a ready pack).
+function sellItem(p,pack){if(isWeighed(p)&&!pack){weightForm(p);return false}addToCart(p,1,pack||null);return true}
+
 /* ---------- barcode: phone camera and USB scanners that type like a keyboard ----------
    The camera uses the browser's own BarcodeDetector where it exists (Chrome on Android) and the bundled ZXing reader
    everywhere else (iPhone, laptops), so the scan button works on any device with a camera. */
@@ -765,7 +830,7 @@ async function scanBarcode(onCode){
 function sellCode(code){
   const t=normDigits(code).trim();if(!t)return false;
   const f=findCode(t);
-  if(f){addToCart(f.p,1,f.pack);toast("انضافت: "+f.p.name+(f.pack?" ("+f.pack.name+")":""),1500);return true}
+  if(f){if(sellItem(f.p,f.pack))toast("انضافت: "+f.p.name+(f.pack?" ("+f.pack.name+")":""),1500);return true}
   toast(isAdmin()?"هذا الباركود مو مسجل. أضفه من تبويب المواد.":"هذا الباركود مو مسجل على أي مادة.",3500);return false;
 }
 // A USB / Bluetooth scanner types the code fast and presses Enter. Catch it even when no field has focus.
@@ -876,12 +941,13 @@ function newCustomer(name,st){
 // Receipt number: the sale's number within its day (the date is printed next to it everywhere).
 function saleNo(){return String(S.sales.size+1)}
 const itemName=i=>i.name+(Number(i.n)>1&&i.unit?` (${i.unit})`:"");
-function itemsText(items,max){const s=items.map(i=>`${itemName(i)} ×${qtyText(i.qty)}`).join("، ");return max&&s.length>max?s.slice(0,max-1)+"…":s}
+const itemQty=i=>i.w?kgText(Number(i.qty)||0):qtyText(i.qty);
+function itemsText(items,max){const s=items.map(i=>i.w?`${itemName(i)} ${itemQty(i)}`:`${itemName(i)} ×${qtyText(i.qty)}`).join("، ");return max&&s.length>max?s.slice(0,max-1)+"…":s}
 /* One sale = one batch: the sale, and when part of it is on credit, the debt transaction on the customer's account
    (source "pos") plus its activity line, so it shows in the debt book, its activity log and the Telegram reports. */
 function saveSale(pay){
   const t=totals(),now=Date.now(),id=uid(),no=saleNo();
-  const items=S.cart.map(l=>({pid:l.pid||null,name:l.name,unit:l.unit||"",n:l.n||1,price:Math.round(l.price),qty:l.qty,total:Math.round(l.price*l.qty),cat:l.cat||"",
+  const items=S.cart.map(l=>({pid:l.pid||null,name:l.name,unit:l.unit||"",n:l.n||1,price:Math.round(l.price),qty:l.qty,total:Math.round(l.price*l.qty),cat:l.cat||"",...(l.w?{w:1}:{}),
     cost:l.cost>0?l.cost:null}));
   const sale={id,no,at:now,date:todayISO(),items,count:items.length,subtotal:t.sub,discount:t.disc,total:t.total,cash:pay.cash,debt:pay.debt,
     ...(S.whole?{wholesale:true}:{}),...(S.shift?{shiftId:S.shift.id}:{}),...(S.approval&&t.disc>0?{approvalId:S.approval.id}:{}),...(pay.received?{received:pay.received,change:pay.received-t.total}:{}),by:S.me.name,byId:S.me.id,status:"done"};
@@ -926,7 +992,7 @@ function saleDone(sale){
 /* ---------- receipts ---------- */
 function receiptText(sale){
   const L=[`*${shopName()}*`,`فاتورة #${sale.no} · ${sale.date} ${hm12(sale.at)}`,""];
-  for(const i of sale.items)L.push(`${itemName(i)} × ${qtyText(i.qty)} = ${fmt(i.total)}`);
+  for(const i of sale.items)L.push(`${itemName(i)} × ${itemQty(i)} = ${fmt(i.total)}`);
   L.push("");
   if(sale.discount)L.push(`المجموع: ${fmt(sale.subtotal)}`,`الخصم: ${fmt(sale.discount)}`);
   L.push(`*المطلوب: ${fmt(sale.total)} ${CUR}*`);
@@ -975,7 +1041,7 @@ async function receiptPdf(sale){
     let s=String(r);const maxW=W-2*M-170;while(s.length>2&&x.measureText(s).width>maxW)s=s.slice(0,-2);if(s!==String(r))s+="…";x.fillText(s,W-M,y);
     x.textAlign="left";x.direction="ltr";x.font=`${o.w2||o.w||700} ${o.s2||o.s||20}px ${o.f2||PDF_D}`;x.fillText(l,M,y);x.direction="rtl"};
   for(const i of sale.items){lr(itemName(i),fmt(i.total));y+=24;x.font=`400 16px ${PDF_F}`;x.fillStyle=PDFC.muted;x.textAlign="right";x.direction="rtl";
-    x.fillText(`${qtyText(i.qty)} × ${fmt(i.price)}`,W-M,y);y+=rowH*1.6-24}
+    x.fillText(`${itemQty(i)} × ${fmt(i.price)}`,W-M,y);y+=rowH*1.6-24}
   y-=14;rule(true);y+=34;
   if(sale.discount){lr("المجموع",fmt(sale.subtotal));y+=30;lr("الخصم","-"+fmt(sale.discount));y+=30}
   lr("المطلوب",fmt(sale.total)+" IQD",{w:700,s:26,c:PDFC.green,w2:800});y+=40;
@@ -1091,7 +1157,7 @@ function saleDetail(id){
   const list=repList()||[];const sale=list.find(s=>s.id===id)||S.sales.get(id);if(!sale)return;
   openModal(`<h3>فاتورة #<span class="num">${esc(sale.no)}</span> ${sale.status==="void"?`<span class="chip zero">ملغية</span>`:""}</h3>
     <p class="hint">${esc(sale.date)} · ${hm12(sale.at)} · ${esc(sale.by||"")}${sale.wholesale?" · بسعر الجملة":""}</p>
-    <div class="rcpt">${(sale.items||[]).map(i=>`<div class="ln"><span>${esc(itemName(i))} <small class="num" style="color:var(--muted)">${qtyText(i.qty)} × ${fmt(i.price)}</small></span><span class="num">${fmt(i.total)}</span></div>`).join("")}
+    <div class="rcpt">${(sale.items||[]).map(i=>`<div class="ln"><span>${esc(itemName(i))} <small style="color:var(--muted)">${i.w?kgHtml(Number(i.qty)||0):`<span class="num">${qtyText(i.qty)}</span>`} × <span class="num">${fmt(i.price)}</span></small></span><span class="num">${fmt(i.total)}</span></div>`).join("")}
       <hr>${sale.discount?`<div class="ln"><span>المجموع</span><span class="num">${fmt(sale.subtotal)}</span></div><div class="ln"><span>الخصم</span><span class="num">-${fmt(sale.discount)}</span></div>`:""}
       <div class="ln big"><span>المطلوب</span><span class="num">${fmt(sale.total)}</span></div>
       ${sale.cash>0?`<div class="ln" style="color:var(--paid)"><span>كاش</span><span class="num">${fmt(sale.cash)}</span></div>`:""}
@@ -1367,7 +1433,7 @@ function renderProducts(){
       <span class="avatar">${initial(p.name)}</span><div class="m"><b>${esc(p.name)}${p.active===false?` <span class="chip zero">موقوفة</span>`:""}</b>
       <span>${esc(p.category||"بدون صنف")}${tracked(p)?` · المخزن ${stockHtml(p)}`:""}${p.expiry?` · ينتهي <span class="num">${esc(p.expiry)}</span>`:""}${packsOf(p).length?` · ${packsOf(p).map(k=>esc(k.name)).join("، ")}`:""}</span>
       ${al.length?`<span class="al">${al.map(a=>`<span class="chip warn">${ALERT_TEXT[a]}</span>`).join(" ")}</span>`:""}</div>
-      <div class="a"><span class="num">${fmt(p.price)}</span><small>${p.cost>0?`شراء <span class="num">${fmt(p.cost)}</span>`:CUR}</small></div></button>
+      <div class="a"><span class="num">${fmt(p.price)}</span><small>${isWeighed(p)?"للكيلو":""}${p.cost>0?`${isWeighed(p)?" · ":""}شراء <span class="num">${fmt(p.cost)}</span>`:isWeighed(p)?"":CUR}</small></div></button>
       <button class="btn sm" type="button" data-restock="${esc(p.id)}" title="استلام كمية">${I.plus}كمية</button></div></li>`}).join("")
     :`<li class="empty"><b>${S.products.size?"ماكو نتائج":"ماكو مواد بعد"}</b>${S.products.size?"":"اضغط «مادة جديدة» وأضف المواد وأسعارها، وبعدها تطلع بشاشة البيع."}</li>`;
 }
@@ -1383,10 +1449,11 @@ function packRow(k){return `<div class="pack" data-pack>
 // Reads the item form. Returns {obj} or {err}.
 function readProductForm(m,p){
   const v=id=>m.querySelector("#"+id).value;
-  const name=v("pName").trim(),price=Math.round(numVal(v("pPrice"))),category=v("pCat"),barcode=normDigits(v("pCode")).trim(),unit=v("pUnit").trim()||"حبة";
+  const name=v("pName").trim(),price=Math.round(numVal(v("pPrice"))),category=v("pCat")==="__new"?v("pCatNew").trim().slice(0,30):v("pCat"),barcode=normDigits(v("pCode")).trim(),unit=v("pUnit").trim()||"حبة";
   const wp=v("pW").trim(),cp=v("pCost").trim(),wprice=wp?Math.round(numVal(wp)):0,cost=cp?numVal(cp):0;
-  const track=m.querySelector("#pTrack").checked,st=v("pStock").trim(),mn=v("pMin").trim(),expiry=v("pExp");
+  const weighed=m.querySelector("#pWeighed").checked,track=m.querySelector("#pTrack").checked,st=v("pStock").trim(),mn=v("pMin").trim(),expiry=v("pExp");
   if(!name)return {err:"اكتب اسم المادة."};
+  if(!category)return {err:"اكتب اسم الصنف الجديد."};
   if(!(price>=0))return {err:"اكتب سعر المفرد."};
   if(!(wprice>=0))return {err:"سعر الجملة لازم يكون رقم."};
   if(!(cost>=0))return {err:"سعر الشراء لازم يكون رقم."};
@@ -1408,7 +1475,7 @@ function readProductForm(m,p){
   if(new Set(codes).size!==codes.length)return {err:"نفس الباركود مكرر بهذي المادة."};
   for(const c of codes){const f=[...S.products.values()].find(x=>x.id!==p.id&&(x.barcode===c||packsOf(x).some(k=>k.barcode===c)));if(f)return {err:`الباركود ${c} مسجل على «${f.name}».`}}
   const act=m.querySelector("#pActive");
-  return {obj:{name,price,category,barcode,unit,wprice,cost,packs,track,min,expiry:expiry||"",active:act?act.checked:true,...(track?{stock}:{})}};
+  return {obj:{name,price,category,barcode,unit:weighed?"كغم":unit,weighed,wprice,cost,packs,track,min,expiry:expiry||"",active:act?act.checked:true,...(track?{stock}:{})}};
 }
 function productForm(p){
   // A draft coming back from the camera scan carries __new, so a new item stays new.
@@ -1418,12 +1485,14 @@ function productForm(p){
   openModal(`<h3>${isNew?"مادة جديدة":"تعديل مادة"}</h3>
     <form id="pf" class="field" style="gap:12px" novalidate>
       <div class="field"><label for="pName">اسم المادة</label><input id="pName" maxlength="80" value="${esc(p.name)}" placeholder="مثال: بيبسي علبة"></div>
-      <div class="row3"><div class="field"><label for="pCat">الصنف</label><select id="pCat">${cl.map(c=>`<option${c===p.category?" selected":""}>${esc(c)}</option>`).join("")}</select></div>
+      <div class="row3"><div class="field"><label for="pCat">الصنف</label><select id="pCat">${cl.map(c=>`<option${c===p.category?" selected":""}>${esc(c)}</option>`).join("")}<option value="__new">+ صنف جديد…</option></select>
+          <input id="pCatNew" maxlength="30" placeholder="اسم الصنف الجديد" hidden></div>
         <div class="field"><label for="pUnit">الوحدة</label><input id="pUnit" list="unitList" maxlength="15" value="${esc(baseUnit(p))}"><datalist id="unitList">${UNITS.map(u=>`<option value="${u}">`).join("")}</datalist></div>
         <div class="field"><label for="pCode">الباركود</label><div class="tool-row"><input id="pCode" inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(p.barcode||"")}" placeholder="اختياري">${canScan()?`<button class="icon-btn" type="button" id="pScan" aria-label="مسح بالكاميرا">${I.scan}</button>`:""}</div></div></div>
       <div class="row3"><div class="field"><label for="pPrice">سعر المفرد (${CUR})</label><input id="pPrice" class="big" inputmode="numeric" value="${p.price!==""&&p.price!=null?fmt(p.price):""}" placeholder="0"></div>
         <div class="field"><label for="pW">سعر الجملة</label><input id="pW" class="big" inputmode="numeric" value="${p.wprice>0?fmt(p.wprice):""}" placeholder="اختياري"></div>
         <div class="field"><label for="pCost">سعر الشراء</label><input id="pCost" class="big" inputmode="decimal" value="${p.cost>0?fmt(p.cost):""}" placeholder="للربح"></div></div>
+      <label class="check"><input type="checkbox" id="pWeighed" ${isWeighed(p)?"checked":""}> تنباع بالوزن (السعر للكيلو، والكاشير يكتب الوزن أو المبلغ)</label>
       <fieldset class="sec"><legend>المخزن</legend>
         <label class="check"><input type="checkbox" id="pTrack" ${tracked(p)?"checked":""}> تابع الكمية (تنقص مع كل بيع)</label>
         <div class="row3"><div class="field"><label for="pStock">الكمية الحالية (${esc(baseUnit(p))})</label><input id="pStock" inputmode="decimal" value="${tracked(p)?qtyText(round3(stockOf(p))):""}"${tracked(p)?"":" disabled"}></div>
@@ -1438,6 +1507,11 @@ function productForm(p){
       <p class="err" id="pErr"></p>
       <div class="foot"><button class="btn primary" type="submit">${isNew?"إضافة":"حفظ"}</button>${isNew?"":`<button class="btn ghost danger-text" type="button" id="pDel">${I.trash}حذف</button>`}<button class="btn" type="button" data-close>رجوع</button></div>
     </form>`,m=>{
+    const pc=m.querySelector("#pCat"),pcn=m.querySelector("#pCatNew");
+    pc.onchange=()=>{pcn.hidden=pc.value!=="__new";if(!pcn.hidden)pcn.focus()};
+    const wg=m.querySelector("#pWeighed"),un=m.querySelector("#pUnit"),plab=m.querySelector('label[for="pPrice"]');
+    const syncW=()=>{if(wg.checked)un.value="كغم";un.readOnly=wg.checked;plab.textContent=wg.checked?`سعر الكيلو (${CUR})`:`سعر المفرد (${CUR})`};
+    wg.onchange=syncW;un.addEventListener("change",()=>{if(un.value.trim()==="كغم"&&!wg.checked){wg.checked=true;syncW()}});syncW();
     const tr=m.querySelector("#pTrack");tr.onchange=()=>{m.querySelector("#pStock").disabled=!tr.checked;m.querySelector("#pMin").disabled=!tr.checked;if(tr.checked)m.querySelector("#pStock").focus()};
     m.querySelector("#addPack").onclick=()=>{m.querySelector("#packs").insertAdjacentHTML("beforeend",packRow({}));m.querySelector("#packs [data-pack]:last-child input").focus()};
     m.querySelector("#packs").addEventListener("click",e=>{const b=e.target.closest("[data-delpack]");if(b)b.closest("[data-pack]").remove()});
@@ -1446,8 +1520,8 @@ function productForm(p){
       // Keep what was typed: rebuild a draft from the form, then reopen it with the scanned code.
       const pv=numVal(m.querySelector("#pPrice").value),g=id=>m.querySelector("#"+id).value;
       const packs=[...m.querySelectorAll("[data-pack]")].map(row=>{const q=k=>row.querySelector(`[data-k="${k}"]`).value;return {name:q("name"),n:numVal(q("n"))||"",price:numVal(q("price")),wprice:numVal(q("wprice"))||0,barcode:q("barcode")}});
-      const draft={name:g("pName"),price:pv>=0?pv:"",category:g("pCat"),unit:g("pUnit"),wprice:numVal(g("pW"))||0,cost:numVal(g("pCost"))||0,
-        track:m.querySelector("#pTrack").checked,stock:numVal(g("pStock"))||0,min:numVal(g("pMin"))||0,expiry:g("pExp"),packs,active:p.active};
+      const draft={name:g("pName"),price:pv>=0?pv:"",category:g("pCat")==="__new"?g("pCatNew").trim():g("pCat"),unit:g("pUnit"),wprice:numVal(g("pW"))||0,cost:numVal(g("pCost"))||0,
+        weighed:m.querySelector("#pWeighed").checked,track:m.querySelector("#pTrack").checked,stock:numVal(g("pStock"))||0,min:numVal(g("pMin"))||0,expiry:g("pExp"),packs,active:p.active};
       scanBarcode(code=>productForm({...p,...draft,barcode:code,__new:isNew}))};
     const d=m.querySelector("#pDel");
     if(d)d.onclick=()=>{if(!confirm(`حذف «${p.name}» من القائمة؟ الفواتير القديمة تبقى مثل ما هي.`))return;
@@ -1532,7 +1606,7 @@ document.addEventListener("click",e=>{
   const t=e.target;
   const g=t.closest("[data-go]");if(g){e.preventDefault();go(g.dataset.go);return}
   if(t.closest("#meBox")){accountMenu();return}
-  const add=t.closest("[data-add]");if(add){const p=S.products.get(add.dataset.add);if(p)addToCart(p);return}
+  const add=t.closest("[data-add]");if(add){const p=S.products.get(add.dataset.add);if(p)sellItem(p);return}
   const inc=t.closest("[data-inc]");if(inc){const l=S.cart.find(x=>x.key===inc.dataset.inc);if(l)setQty(l.key,l.qty+1);return}
   const dec=t.closest("[data-dec]");if(dec){const l=S.cart.find(x=>x.key===dec.dataset.dec);if(l)setQty(l.key,l.qty>1?l.qty-1:0);return}
   const ln=t.closest("[data-line]");if(ln){editLine(ln.dataset.line);return}
@@ -1577,8 +1651,8 @@ document.addEventListener("keydown",e=>{
   if(e.target.id!=="q"||e.key!=="Enter")return;e.preventDefault();
   const v=e.target.value.trim();if(!v)return;
   const t=normDigits(v);const byCode=findCode(t);
-  if(byCode){addToCart(byCode.p,1,byCode.pack);toast("انضافت: "+byCode.p.name+(byCode.pack?" ("+byCode.pack.name+")":""),1500)}
-  else{const list=filteredProducts(v,S.cat);if(list.length===1)addToCart(list[0]);else{if(/^\d{6,}$/.test(t))sellCode(t);return}}
+  if(byCode){if(sellItem(byCode.p,byCode.pack))toast("انضافت: "+byCode.p.name+(byCode.pack?" ("+byCode.pack.name+")":""),1500)}
+  else{const list=filteredProducts(v,S.cat);if(list.length===1)sellItem(list[0]);else{if(/^\d{6,}$/.test(t))sellCode(t);return}}
   S.q="";e.target.value="";renderTiles();
 });
 
