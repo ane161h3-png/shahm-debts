@@ -187,7 +187,23 @@ async function readWithGemini(env, input) {
   try { return { rows: JSON.parse(text).rows }; } catch { throw new UserError("صار خطأ بقراءة النتيجة. حاول مرة ثانية."); }
 }
 
+// GitHub often skips its own scheduled runs, so Cloudflare's cron (wrangler.toml [triggers]) starts the 2-hour Telegram report
+// by dispatching .github/workflows/backup.yml. Needs the GH_DISPATCH_TOKEN secret (a GitHub token with Actions read/write on the repo).
+async function dispatchReport(env) {
+  if (!env.GH_DISPATCH_TOKEN) { console.log("GH_DISPATCH_TOKEN not set; skipping the 2-hour report."); return; }
+  const r = await fetch(`https://api.github.com/repos/${env.GH_REPO}/actions/workflows/backup.yml/dispatches`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`, Accept: "application/vnd.github+json", "User-Agent": "shahm-ai-cron", "X-GitHub-Api-Version": "2022-11-28" },
+    body: JSON.stringify({ ref: "main", inputs: { mode: "periodic", scheduled: "true" } }),
+  });
+  if (!r.ok) throw new Error(`GitHub dispatch failed: ${r.status} ${(await r.text()).slice(0, 200)}`);
+}
+
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(dispatchReport(env));
+  },
+
   async fetch(request, env) {
     const cors = corsFor(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });

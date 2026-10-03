@@ -12,3 +12,8 @@ FIREBASE_API_KEY = "AIzaSyA8ZcghTnu-k3iQ01JuBeXPl44Pj0pwDDg"
 FIREBASE_PROJECT = "shahm-debts-a080e"
 OWNER_EMAIL = "admin@shahm-debts.app"
 ALLOWED_ORIGINS = "https://ane161h3-png.github.io,https://localhost,capacitor://localhost"
+GH_REPO = "ane161h3-png/shahm-debts"
+
+# Starts the 2-hour Telegram report (7 minutes past every even UTC hour). See dispatchReport() in src/index.js.
+[triggers]
+crons = ["7 */2 * * *"]

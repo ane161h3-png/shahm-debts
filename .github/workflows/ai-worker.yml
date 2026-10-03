@@ -1,5 +1,6 @@
 # Deploys worker/ (reads ledger photos with AI) to Cloudflare Workers.
 # Secrets: CLOUDFLARE_API_TOKEN, and GEMINI_API_KEY (free) or ANTHROPIC_API_KEY (Claude; wins if set).
+# Optional DISPATCH_TOKEN: a GitHub token with Actions read/write on this repo, so the worker's cron can start the 2-hour Telegram report.
 name: AI worker
 on:
   push:
@@ -18,6 +19,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,3 +43,7 @@ jobs:
           if [ -n "$GEMINI_API_KEY" ]; then printf '%s' "$GEMINI_API_KEY" | tr -d '[:space:]"'"'"'' | npx wrangler secret put GEMINI_API_KEY; fi
           if [ -n "$ANTHROPIC_API_KEY" ]; then printf '%s' "$ANTHROPIC_API_KEY" | npx wrangler secret put ANTHROPIC_API_KEY
           else yes | npx wrangler secret delete ANTHROPIC_API_KEY >/dev/null 2>&1 || true; fi
+      - name: Store the GitHub token for the 2-hour report
+        run: |
+          if [ -n "$DISPATCH_TOKEN" ]; then printf '%s' "$DISPATCH_TOKEN" | tr -d '[:space:]' | npx wrangler secret put GH_DISPATCH_TOKEN
+          else echo "::warning::DISPATCH_TOKEN is not set, so the 2-hour Telegram report will not start."; fi
