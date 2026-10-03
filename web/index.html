@@ -14,26 +14,26 @@
 <meta name="apple-mobile-web-app-title" content="ديون الشهم">
 <link rel="stylesheet" href="vendor/fonts/fonts.css">
 <style>
-/* Layout: shop debt app. Gate (login) -> app with Home / Customers / Settings. Wide: top tabs, list + account side by side. Narrow: bottom nav, one pane.
-   Colors and fonts follow BRAND.md (Al-Shahm identity): forest green chrome, tomato red = owed, leaf green = paid, orange = warning. */
+/* Layout: shop debt app. Gate (login) -> app with Home / Customers / Settings. Wide: top tabs, list + account side by side. Narrow: bottom nav, one pane. Colors and fonts follow BRAND.md: brand green chrome, red = owed, green = paid. */
 :root{
+  /* Al-Shahm Market brand tokens (brand spec §2). paper = surface, line = border, ink = text, accent = primary, debt = danger, paid = success. */
   --bg:#f4f2ec; --paper:#ffffff; --paper-2:#f8f6f1; --line:#e3ded3; --ink:#1c2421; --muted:#5e6660;
   --accent:#0e5a3a; --accent-ink:#fff7e8; --accent-soft:#dceee3; --debt:#c2301e; --debt-soft:#fce9e5; --paid:#4a7f12; --paid-soft:#edf5e0; --warn:#a55f00; --warn-soft:#fdf0dc;
-  --brand-orange:#f39a1e; --brand-red:#e2412b; --brand-leaf:#7bc043;
-  --shadow:0 1px 2px rgba(28,36,33,.06),0 8px 24px rgba(28,36,33,.07);
+  --shadow:0 1px 2px rgba(28,36,33,.06),0 8px 24px rgba(28,36,33,.07); --shadow-fab:0 6px 18px rgba(14,90,58,.35);
+  --brand-orange:#f39a1e; --brand-tomato:#e2412b; --brand-leaf:#7bc043; --brand-cream:#fff7e8; --brand-deep:#083b26;
+  --f-brand:"Lalezar","Tajawal",sans-serif;
   --f-display:"Tajawal","IBM Plex Sans Arabic",Tahoma,sans-serif;
-  --f-brand:"Lalezar","Tajawal",Tahoma,sans-serif;
-  --f-body:"IBM Plex Sans Arabic",Tahoma,"Segoe UI",sans-serif;
-  --r:14px;
+  --f-body:"IBM Plex Sans Arabic","Tajawal",Tahoma,"Segoe UI",sans-serif;
+  --r:14px; --r-ctl:10px; --r-modal:18px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0f1512; --paper:#172019; --paper-2:#1e2921; --line:#2c3830; --ink:#ecf1ec; --muted:#9aa59d;
   --accent:#5fc48c; --accent-ink:#06200f; --accent-soft:#1b3527; --debt:#ff8a78; --debt-soft:#3a1f1b; --paid:#a6d86a; --paid-soft:#243319; --warn:#f5b654; --warn-soft:#3a2c14;
-  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); color-scheme:dark}}
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); --shadow-fab:0 6px 18px rgba(0,0,0,.45); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0f1512; --paper:#172019; --paper-2:#1e2921; --line:#2c3830; --ink:#ecf1ec; --muted:#9aa59d;
   --accent:#5fc48c; --accent-ink:#06200f; --accent-soft:#1b3527; --debt:#ff8a78; --debt-soft:#3a1f1b; --paid:#a6d86a; --paid-soft:#243319; --warn:#f5b654; --warn-soft:#3a2c14;
-  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); color-scheme:dark}
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); --shadow-fab:0 6px 18px rgba(0,0,0,.45); color-scheme:dark}
 
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -148,8 +148,8 @@ select.sort{border:1px solid var(--line);background:var(--paper-2);border-radius
 .row-q{display:flex;gap:4px;flex:none}
 .row-q button{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--paper);cursor:pointer;display:grid;place-items:center}
 .row-q button svg{width:18px;height:18px}
-.row-q .q-debt{color:var(--paid)} .row-q .q-pay{color:var(--debt)}
-.row-q .q-debt:hover{background:var(--paid-soft)} .row-q .q-pay:hover{background:var(--debt-soft)}
+.row-q .q-debt{color:var(--debt)} .row-q .q-pay{color:var(--paid)}
+.row-q .q-debt:hover{background:var(--debt-soft)} .row-q .q-pay:hover{background:var(--paid-soft)}
 .kind-seg{width:100%}.kind-seg button{flex:1;padding:7px 10px;font-size:14px}
 .btn.zero{background:var(--warn);border-color:var(--warn);color:var(--paper)}
 .limit-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
@@ -162,7 +162,7 @@ tr.edge td{background:var(--paper-2);color:var(--muted);font-size:13px}
 .empty{padding:26px 18px;text-align:center;color:var(--muted)}
 .empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
 
-.btn{border:1px solid var(--line);background:var(--paper);padding:9px 14px;border-radius:10px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;justify-content:center;text-decoration:none;color:var(--ink)}
+.btn{border:1px solid var(--line);background:var(--paper);padding:9px 14px;border-radius:var(--r-ctl);cursor:pointer;font-family:var(--f-display);font-weight:700;display:inline-flex;align-items:center;gap:6px;justify-content:center;text-decoration:none;color:var(--ink)}
 .btn:hover{background:var(--paper-2)}
 .btn[disabled]{opacity:.55;cursor:default}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -171,7 +171,7 @@ tr.edge td{background:var(--paper-2);color:var(--muted);font-size:13px}
 .btn.wa{background:#1fa855;border-color:#1fa855;color:#fff}
 .btn.ghost{background:none;border-color:transparent;color:var(--muted)}
 .btn.danger-text{color:var(--debt)}
-.btn.sm{padding:6px 10px;font-size:13px;border-radius:8px}
+.btn.sm{padding:6px 10px;font-size:13px;border-radius:var(--r-ctl)}
 .btn.block{width:100%;padding:12px}
 .btn svg{width:18px;height:18px}
 
@@ -221,7 +221,7 @@ td.x{width:64px;white-space:nowrap}
 .set-menu svg{width:20px;height:20px;flex:none}
 .set-menu .badge{margin-inline-start:auto;background:var(--debt);color:var(--paper);border-radius:99px;font-size:11.5px;padding:0 7px}
 .set-body{padding:18px;display:flex;flex-direction:column;gap:14px}
-.biz-wrap{max-width:560px}.biz-wrap canvas{display:block;width:100%;height:auto;border-radius:16px;box-shadow:0 10px 30px #0004}
+.biz-wrap{max-width:560px}.biz-wrap canvas{display:block;width:100%;height:auto;border-radius:16px;box-shadow:var(--shadow)}
 .biz-ops{display:flex;gap:8px;flex-wrap:wrap}
 .set-body h2{margin:0;font-family:var(--f-display);font-size:19px}
 .set-body .lead{margin:-8px 0 0;color:var(--muted);font-size:14px}
@@ -248,6 +248,7 @@ td.x{width:64px;white-space:nowrap}
 .field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .field label{font-size:13px;color:var(--muted);font-weight:500}
 .field input,.field textarea,.field select{border:1px solid var(--line);background:var(--paper-2);border-radius:10px;padding:10px 12px;width:100%}
+.field input:focus,.field textarea:focus,.field select:focus,.search input:focus,.sr select:focus,.sr input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
 .field input.big{font-size:24px;font-family:var(--f-display);font-weight:600;text-align:left;direction:ltr}
 .field .help{font-size:12px;color:var(--muted)}
 .amt-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -279,7 +280,7 @@ td.x{width:64px;white-space:nowrap}
 .sr{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;background:var(--paper)}
 .sr.warn{border-color:var(--warn);background:var(--warn-soft)}
 .sr.bad{border-color:var(--debt)}
-.sr.dup{border-color:var(--debt);background:var(--debt-soft,rgba(224,69,69,.08))}
+.sr.dup{border-color:var(--debt);background:var(--debt-soft)}
 .sr-dup{font-size:12.5px;font-weight:600;color:var(--debt)}
 .sr-top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
 .sr-top b{color:var(--ink)}
@@ -327,7 +328,7 @@ td.x{width:64px;white-space:nowrap}
 .quick{display:flex;flex-wrap:wrap;gap:6px}
 .quick button{border:1px solid var(--line);background:var(--paper-2);border-radius:99px;padding:4px 11px;font-size:13px;cursor:pointer}
 .quick button:hover{border-color:var(--accent);color:var(--accent)}
-.scrim{position:fixed;inset:0;background:rgba(10,12,20,.5);z-index:20;display:flex;align-items:center;justify-content:center;padding:16px}
+.scrim{position:fixed;inset:0;background:rgba(8,20,14,.5);z-index:20;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal{background:var(--paper);border-radius:18px;width:100%;max-width:450px;box-shadow:0 20px 50px rgba(0,0,0,.3);padding:18px;display:flex;flex-direction:column;gap:12px;max-height:calc(100% - 20px);overflow:auto}
 .modal h3{margin:0;font-family:var(--f-display);font-size:18px}
 .modal .hint{margin:-6px 0 0;color:var(--muted);font-size:13px}
@@ -349,7 +350,7 @@ td.x{width:64px;white-space:nowrap}
   .bottom-nav button{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--muted);cursor:pointer;padding:4px 6px;border-radius:12px;font-weight:600;min-width:56px}
   .bottom-nav button svg{width:22px;height:22px}
   .bottom-nav button[aria-current="page"]{color:var(--accent);background:var(--accent-soft)}
-  .bottom-nav .plus{background:var(--accent);color:var(--accent-ink);width:52px;height:52px;min-width:0;border-radius:50%;justify-content:center;margin-top:-22px;box-shadow:0 6px 18px rgba(14,90,58,.35)}
+  .bottom-nav .plus{background:var(--accent);color:var(--accent-ink);width:52px;height:52px;min-width:0;border-radius:50%;justify-content:center;margin-top:-22px;box-shadow:var(--shadow-fab)}
   .bottom-nav .plus svg{width:26px;height:26px}
   .layout{grid-template-columns:minmax(0,1fr)}
   .list-pane{position:static;max-height:none}
@@ -370,11 +371,11 @@ td.x{width:64px;white-space:nowrap}
 </head>
 <body>
 
-<div id="gate" class="gate"><div class="gate-card"><div class="gate-head"><div class="logo"><svg viewBox="1.0 -81.5 108.7 108.7" aria-hidden="true"><path d="M107.7 -21.2Q107.7 -15.9 106.6 -11Q105.5 -6.1 103.5 -2.9Q96.3 0.3 90.4 0.3Q85.9 0.3 82.2 -1.6Q78.6 -3.4 76.1 -7H75.3Q73.2 -3.7 69.7 -1.7Q66.1 0.3 62 0.3H61.9Q61.5 6.6 59.9 11.8Q58.3 17 55.7 20.6Q41.5 24.8 30.8 24.8Q16.8 24.8 9.9 18.9Q3 12.9 3 2Q3 -9.1 9.4 -24.3L23.2 -19.8Q19.6 -9.9 19.6 -4Q19.6 1.3 22.5 3.9Q25.3 6.4 31.2 6.4Q36.5 6.4 46.3 4Q45.7 -2.6 44 -9.8Q42.2 -17 40.5 -21.6L55 -27.7L55.8 -27.3Q56.4 -22.7 58.6 -20.2Q60.7 -17.8 63.5 -17.8Q66.7 -17.8 69.6 -20.9Q72.4 -23.9 73.5 -29.2L81.8 -27.9Q81.7 -27.1 81.7 -25.6Q81.7 -17.7 88.2 -17.7Q90 -17.7 93.4 -18.5Q92.5 -22.3 91.2 -26Q90 -29.7 89.7 -30.5L105.8 -34.2Q107.7 -28.2 107.7 -21.2Z" fill="currentColor"/><circle cx="45.2" cy="-45.8" r="8.6" fill="#F39A1E"/><circle cx="65.5" cy="-45.8" r="8.6" fill="#E2412B"/><circle cx="55.4" cy="-64.8" r="8.6" fill="#7BC043"/><path d="M57.1 -73.0q4.7 -6.4 10.8 -4.7q-3.0 6.4 -10.8 4.7z" fill="currentColor"/></svg></div><h1>دفتر ديون ماركت الشهم</h1><p>جارِ التحميل…</p></div><div class="spinner" aria-hidden="true"></div></div></div>
+<div id="gate" class="gate"><div class="gate-card"><div class="gate-head"><div class="logo"><svg viewBox="1.0 -81.5 108.7 108.7" aria-hidden="true"><path d="M107.7 -21.2Q107.7 -15.9 106.6 -11Q105.5 -6.1 103.5 -2.9Q96.3 0.3 90.4 0.3Q85.9 0.3 82.2 -1.6Q78.6 -3.4 76.1 -7H75.3Q73.2 -3.7 69.7 -1.7Q66.1 0.3 62 0.3H61.9Q61.5 6.6 59.9 11.8Q58.3 17 55.7 20.6Q41.5 24.8 30.8 24.8Q16.8 24.8 9.9 18.9Q3 12.9 3 2Q3 -9.1 9.4 -24.3L23.2 -19.8Q19.6 -9.9 19.6 -4Q19.6 1.3 22.5 3.9Q25.3 6.4 31.2 6.4Q36.5 6.4 46.3 4Q45.7 -2.6 44 -9.8Q42.2 -17 40.5 -21.6L55 -27.7L55.8 -27.3Q56.4 -22.7 58.6 -20.2Q60.7 -17.8 63.5 -17.8Q66.7 -17.8 69.6 -20.9Q72.4 -23.9 73.5 -29.2L81.8 -27.9Q81.7 -27.1 81.7 -25.6Q81.7 -17.7 88.2 -17.7Q90 -17.7 93.4 -18.5Q92.5 -22.3 91.2 -26Q90 -29.7 89.7 -30.5L105.8 -34.2Q107.7 -28.2 107.7 -21.2Z" fill="currentColor"/><circle cx="45.2" cy="-45.8" r="8.6" fill="#F39A1E"/><ellipse cx="42.2" cy="-49.1" rx="1.9" ry="1.2" transform="rotate(-30 42.2 -49.1)" fill="#fff" fill-opacity=".5"/><circle cx="65.5" cy="-45.8" r="8.6" fill="#E2412B"/><ellipse cx="62.5" cy="-49.1" rx="1.9" ry="1.2" transform="rotate(-30 62.5 -49.1)" fill="#fff" fill-opacity=".5"/><circle cx="55.4" cy="-64.8" r="8.6" fill="#7BC043"/><ellipse cx="52.4" cy="-68.1" rx="1.9" ry="1.2" transform="rotate(-30 52.4 -68.1)" fill="#fff" fill-opacity=".5"/><path d="M57.1 -73.0q4.7 -6.4 10.8 -4.7q-3.0 6.4 -10.8 4.7z" fill="currentColor"/></svg></div><h1>دفتر ديون ماركت الشهم</h1><p>جارِ التحميل…</p></div><div class="spinner" aria-hidden="true"></div></div></div>
 
 <div id="app" class="app" hidden>
   <header class="top">
-    <div class="brand"><div class="logo" aria-hidden="true"><svg viewBox="1.0 -81.5 108.7 108.7" aria-hidden="true"><path d="M107.7 -21.2Q107.7 -15.9 106.6 -11Q105.5 -6.1 103.5 -2.9Q96.3 0.3 90.4 0.3Q85.9 0.3 82.2 -1.6Q78.6 -3.4 76.1 -7H75.3Q73.2 -3.7 69.7 -1.7Q66.1 0.3 62 0.3H61.9Q61.5 6.6 59.9 11.8Q58.3 17 55.7 20.6Q41.5 24.8 30.8 24.8Q16.8 24.8 9.9 18.9Q3 12.9 3 2Q3 -9.1 9.4 -24.3L23.2 -19.8Q19.6 -9.9 19.6 -4Q19.6 1.3 22.5 3.9Q25.3 6.4 31.2 6.4Q36.5 6.4 46.3 4Q45.7 -2.6 44 -9.8Q42.2 -17 40.5 -21.6L55 -27.7L55.8 -27.3Q56.4 -22.7 58.6 -20.2Q60.7 -17.8 63.5 -17.8Q66.7 -17.8 69.6 -20.9Q72.4 -23.9 73.5 -29.2L81.8 -27.9Q81.7 -27.1 81.7 -25.6Q81.7 -17.7 88.2 -17.7Q90 -17.7 93.4 -18.5Q92.5 -22.3 91.2 -26Q90 -29.7 89.7 -30.5L105.8 -34.2Q107.7 -28.2 107.7 -21.2Z" fill="currentColor"/><circle cx="45.2" cy="-45.8" r="8.6" fill="#F39A1E"/><circle cx="65.5" cy="-45.8" r="8.6" fill="#E2412B"/><circle cx="55.4" cy="-64.8" r="8.6" fill="#7BC043"/><path d="M57.1 -73.0q4.7 -6.4 10.8 -4.7q-3.0 6.4 -10.8 4.7z" fill="currentColor"/></svg></div><div style="min-width:0"><h1 id="shopTitle">دفتر ديون ماركت الشهم</h1><small id="today"></small></div></div>
+    <div class="brand"><div class="logo" aria-hidden="true"><svg viewBox="1.0 -81.5 108.7 108.7" aria-hidden="true"><path d="M107.7 -21.2Q107.7 -15.9 106.6 -11Q105.5 -6.1 103.5 -2.9Q96.3 0.3 90.4 0.3Q85.9 0.3 82.2 -1.6Q78.6 -3.4 76.1 -7H75.3Q73.2 -3.7 69.7 -1.7Q66.1 0.3 62 0.3H61.9Q61.5 6.6 59.9 11.8Q58.3 17 55.7 20.6Q41.5 24.8 30.8 24.8Q16.8 24.8 9.9 18.9Q3 12.9 3 2Q3 -9.1 9.4 -24.3L23.2 -19.8Q19.6 -9.9 19.6 -4Q19.6 1.3 22.5 3.9Q25.3 6.4 31.2 6.4Q36.5 6.4 46.3 4Q45.7 -2.6 44 -9.8Q42.2 -17 40.5 -21.6L55 -27.7L55.8 -27.3Q56.4 -22.7 58.6 -20.2Q60.7 -17.8 63.5 -17.8Q66.7 -17.8 69.6 -20.9Q72.4 -23.9 73.5 -29.2L81.8 -27.9Q81.7 -27.1 81.7 -25.6Q81.7 -17.7 88.2 -17.7Q90 -17.7 93.4 -18.5Q92.5 -22.3 91.2 -26Q90 -29.7 89.7 -30.5L105.8 -34.2Q107.7 -28.2 107.7 -21.2Z" fill="currentColor"/><circle cx="45.2" cy="-45.8" r="8.6" fill="#F39A1E"/><ellipse cx="42.2" cy="-49.1" rx="1.9" ry="1.2" transform="rotate(-30 42.2 -49.1)" fill="#fff" fill-opacity=".5"/><circle cx="65.5" cy="-45.8" r="8.6" fill="#E2412B"/><ellipse cx="62.5" cy="-49.1" rx="1.9" ry="1.2" transform="rotate(-30 62.5 -49.1)" fill="#fff" fill-opacity=".5"/><circle cx="55.4" cy="-64.8" r="8.6" fill="#7BC043"/><ellipse cx="52.4" cy="-68.1" rx="1.9" ry="1.2" transform="rotate(-30 52.4 -68.1)" fill="#fff" fill-opacity=".5"/><path d="M57.1 -73.0q4.7 -6.4 10.8 -4.7q-3.0 6.4 -10.8 4.7z" fill="currentColor"/></svg></div><div style="min-width:0"><h1 id="shopTitle">دفتر ديون ماركت الشهم</h1><small id="today"></small></div></div>
     <nav class="tabs" id="tabs" aria-label="الأقسام"></nav>
     <div class="me" id="meBox"></div>
   </header>
@@ -876,7 +877,7 @@ function renderDetail(){
     <div class="balance-card ${balCls}">
       <div><div class="lbl">${balLbl}</div><div class="amt"><span class="num">${fmt(Math.abs(per.bal))}</span><small>${CUR}</small></div>
         <div class="limit-row">${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
-      ${w?`<div class="actions"><button class="btn paid" type="button" data-act="debt">${I.plus}${sup?"فاتورة شراء":"دين"}</button><button class="btn debt" type="button" data-act="pay">${I.minus}${sup?"دفعة للمورد":"دفعة"}</button>${per.bal!==0?`<button class="btn zero" type="button" data-act="zero">${I.zero}تصفير</button>`:""}</div>`:""}
+      ${w?`<div class="actions"><button class="btn debt" type="button" data-act="debt">${I.plus}${sup?"فاتورة شراء":"دين"}</button><button class="btn paid" type="button" data-act="pay">${I.minus}${sup?"دفعة للمورد":"دفعة"}</button>${per.bal!==0?`<button class="btn zero" type="button" data-act="zero">${I.zero}تصفير</button>`:""}</div>`:""}
     </div>
     ${!sup&&(c.promise||(per.bal>0&&w))?(()=>{const left=promiseLeft(c),pr=c.promise;
       if(!pr)return `<button class="btn block" type="button" data-act="promise">${I.bell}+ موعد وعد بالدفع</button>`;
@@ -935,39 +936,44 @@ function remindersView(){
 }
 
 /* ---------- PDF reports (drawn on canvas so Arabic renders correctly) ---------- */
+// Printed palette = light brand tokens; reports open with a 14px green bar over a 5px orange line.
+const PDFC={green:"#0e5a3a",orange:"#f39a1e",ink:"#1c2421",muted:"#5e6660",line:"#e3ded3",head:"#f4f2ec",shade:"#f8f6f1",rule:"#ece8df",debt:"#c2301e",paid:"#4a7f12"};
+const PDF_BRAND="'Lalezar','Tajawal',sans-serif";
+async function pdfFonts(){try{await Promise.all(["400 40px Lalezar","700 28px Tajawal","400 22px 'IBM Plex Sans Arabic'","700 22px 'IBM Plex Sans Arabic'"].map(f=>document.fonts.load(f)));await document.fonts.ready}catch(e){}}
+const pdfBar=ctx=>{ctx.fillStyle=PDFC.green;ctx.fillRect(0,0,1240,14);ctx.fillStyle=PDFC.orange;ctx.fillRect(0,14,1240,5)};
 function loadScript(src){return new Promise((res,rej)=>{if(document.querySelector(`script[src="${src}"]`)){res();return}const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 async function buildPdf(spec,filename){
   toast("جارِ تجهيز التقرير…");
   try{await loadScript("vendor/jspdf.umd.min.js")}catch(e){toast("تعذّر تحميل أداة PDF. تحقق من الإنترنت.");return}
-  try{await document.fonts.ready}catch(e){}
+  await pdfFonts();
   const W=1240,H=1754,M=80,F="'IBM Plex Sans Arabic',Tahoma,sans-serif";
   const pages=[];let ctx,y;
   const newPage=()=>{const cv=document.createElement("canvas");cv.width=W;cv.height=H;ctx=cv.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,W,H);ctx.direction="rtl";pages.push(cv);y=M;
-    ctx.fillStyle="#0e5a3a";ctx.fillRect(0,0,W,14);ctx.fillStyle="#f39a1e";ctx.fillRect(0,14,W,5);
-    ctx.fillStyle="#171a26";ctx.textAlign="right";ctx.font=`700 40px ${F}`;ctx.fillText(spec.shop,W-M,y+40);
-    ctx.font=`500 24px ${F}`;ctx.fillStyle="#5f6478";ctx.fillText(spec.title,W-M,y+80);
+    pdfBar(ctx);
+    ctx.fillStyle=PDFC.green;ctx.textAlign="right";ctx.font=`400 46px ${PDF_BRAND}`;ctx.fillText(spec.shop,W-M,y+40);
+    ctx.font=`500 24px ${F}`;ctx.fillStyle=PDFC.muted;ctx.fillText(spec.title,W-M,y+80);
     ctx.textAlign="left";ctx.direction="ltr";ctx.fillText(todayISO(),M,y+40);ctx.direction="rtl";
-    y+=110;ctx.strokeStyle="#dcdfea";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(M,y);ctx.lineTo(W-M,y);ctx.stroke();y+=30;};
+    y+=110;ctx.strokeStyle=PDFC.line;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(M,y);ctx.lineTo(W-M,y);ctx.stroke();y+=30;};
   newPage();
   ctx.textAlign="right";
-  for(const [k,v] of spec.info){ctx.font=`500 24px ${F}`;ctx.fillStyle="#5f6478";ctx.fillText(k,W-M,y+24);ctx.font=`700 26px ${F}`;ctx.fillStyle=v.color||"#171a26";ctx.fillText(v.text,W-M-260,y+24);y+=42}
+  for(const [k,v] of spec.info){ctx.font=`500 24px ${F}`;ctx.fillStyle=PDFC.muted;ctx.fillText(k,W-M,y+24);ctx.font=`700 26px ${F}`;ctx.fillStyle=v.color||PDFC.ink;ctx.fillText(v.text,W-M-260,y+24);y+=42}
   y+=16;
   const cols=spec.columns;const tw=W-2*M;let x0;
-  const header=()=>{ctx.fillStyle="#f0f1f7";ctx.fillRect(M,y,tw,48);ctx.fillStyle="#5f6478";ctx.font=`600 22px ${F}`;x0=W-M;for(const c of cols){const cw=c.w*tw;ctx.textAlign="right";ctx.fillText(c.label,x0-14,y+32);x0-=cw}y+=48};
+  const header=()=>{ctx.fillStyle=PDFC.head;ctx.fillRect(M,y,tw,48);ctx.fillStyle=PDFC.muted;ctx.font=`600 22px ${F}`;x0=W-M;for(const c of cols){const cw=c.w*tw;ctx.textAlign="right";ctx.fillText(c.label,x0-14,y+32);x0-=cw}y+=48};
   header();
   for(const r of spec.rows){
     if(y>H-M-120){newPage();header()}
     x0=W-M;ctx.font=`${r.bold?"700":"400"} 22px ${F}`;
-    if(r.shade){ctx.fillStyle="#f7f7fb";ctx.fillRect(M,y,tw,46)}
-    cols.forEach((c,i)=>{const cw=c.w*tw;const val=r.cells[i]??"";ctx.fillStyle=(r.colors&&r.colors[i])||"#171a26";
+    if(r.shade){ctx.fillStyle=PDFC.shade;ctx.fillRect(M,y,tw,46)}
+    cols.forEach((c,i)=>{const cw=c.w*tw;const val=r.cells[i]??"";ctx.fillStyle=(r.colors&&r.colors[i])||PDFC.ink;
       if(c.num){ctx.direction="ltr";ctx.textAlign="right";ctx.fillText(val,x0-14,y+31);ctx.direction="rtl"}
       else{ctx.textAlign="right";let s=String(val);while(s.length>2&&ctx.measureText(s).width>cw-24)s=s.slice(0,-2);if(s!==String(val))s+="…";ctx.fillText(s,x0-14,y+31)}
       x0-=cw});
-    y+=46;ctx.strokeStyle="#eceef4";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(M,y);ctx.lineTo(W-M,y);ctx.stroke();
+    y+=46;ctx.strokeStyle=PDFC.rule;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(M,y);ctx.lineTo(W-M,y);ctx.stroke();
   }
   y+=24;if(y>H-M-60*spec.totals.length){newPage()}
-  for(const [k,v,col] of spec.totals){ctx.textAlign="right";ctx.font=`600 26px ${F}`;ctx.fillStyle="#171a26";ctx.fillText(k,W-M,y+28);ctx.direction="ltr";ctx.textAlign="left";ctx.fillStyle=col||"#171a26";ctx.font=`700 28px ${F}`;ctx.fillText(v,M,y+28);ctx.direction="rtl";y+=46}
-  pages.forEach((cv,i)=>{const cx=cv.getContext("2d");cx.direction="ltr";cx.textAlign="center";cx.fillStyle="#9a9eb0";cx.font=`400 18px ${F}`;cx.fillText(`${i+1} / ${pages.length}`,W/2,H-40)});
+  for(const [k,v,col] of spec.totals){ctx.textAlign="right";ctx.font=`600 26px ${F}`;ctx.fillStyle=PDFC.ink;ctx.fillText(k,W-M,y+28);ctx.direction="ltr";ctx.textAlign="left";ctx.fillStyle=col||PDFC.ink;ctx.font=`700 28px ${F}`;ctx.fillText(v,M,y+28);ctx.direction="rtl";y+=46}
+  pages.forEach((cv,i)=>{const cx=cv.getContext("2d");cx.direction="ltr";cx.textAlign="center";cx.fillStyle=PDFC.green;cx.font=`400 18px ${F}`;cx.fillText(`${i+1} / ${pages.length}`,W/2,H-40)});
   return savePages(pages,filename);
 }
 function pagesBlob(pages){
@@ -1004,10 +1010,10 @@ const iqd=n=>"IQD "+fmt(n);
 async function custPdf(c,opt){
   if(!opt)toast("جارِ تجهيز كشف الحساب…");
   try{await loadScript("vendor/jspdf.umd.min.js")}catch(e){toast("تعذّر تحميل أداة PDF. تحقق من الإنترنت.");return}
-  try{await document.fonts.ready}catch(e){}
+  await pdfFonts();
   const L=ledgerFor(c);const sup=isSup(c);
   const W=1240,H=1754,M=76,F="'IBM Plex Sans Arabic',Tahoma,sans-serif";
-  const INK="#111318",MUTED="#4b5060",LINE="#dfe2ea",GREEN="#2f9e5b",RED="#e04545",HEAD="#f3f5f9";
+  const INK=PDFC.ink,MUTED=PDFC.muted,LINE=PDFC.line,OWED=PDFC.debt,PAID=PDFC.paid,HEAD=PDFC.head;
   const nowMs=Date.now();const nowTxt=dmy(todayISO())+" "+hm12(nowMs);
   const shopPhone=S.settings.phone||"";
   const pl=PERIODS.find(p=>p[0]===S.period)[1];
@@ -1025,8 +1031,8 @@ async function custPdf(c,opt){
   const tableHead=()=>{ctx.fillStyle=HEAD;ctx.fillRect(M,y,tw,RH);let x=W-M;for(const c of cols){const cw=c.w*tw;txt(c.label,x-cw/2,y+35,{w:700,s:21,a:"center"});x-=cw}drawGrid(y,RH);y+=RH};
   const drawGrid=(yy,hh)=>{ctx.strokeStyle=LINE;ctx.lineWidth=2;ctx.strokeRect(M,yy,tw,hh);let x=W-M;for(const c of cols.slice(0,-1)){x-=c.w*tw;ctx.beginPath();ctx.moveTo(x,yy);ctx.lineTo(x,yy+hh);ctx.stroke()}};
   const newPage=first=>{
-    const cv=document.createElement("canvas");cv.width=W;cv.height=H;ctx=cv.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,W,H);pages.push(cv);y=M;
-    txt(shopName(),W-M,y+38,{w:700,s:40});
+    const cv=document.createElement("canvas");cv.width=W;cv.height=H;ctx=cv.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,W,H);pages.push(cv);y=M;pdfBar(ctx);
+    ctx.font=`400 46px ${PDF_BRAND}`;ctx.fillStyle=PDFC.green;ctx.textAlign="right";ctx.direction="rtl";ctx.fillText(shopName(),W-M,y+38);
     if(shopPhone)txt(shopPhone,W-M,y+84,{s:22,c:MUTED,ltr:true,a:"right"});
     txt("كشف حساب",M,y+32,{w:700,s:28,a:"left"});
     txt(nowTxt,M,y+78,{s:22,c:MUTED,a:"left"});
@@ -1041,7 +1047,7 @@ async function custPdf(c,opt){
       y+=116;
       // summary box
       const bh=110;ctx.strokeStyle=LINE;ctx.lineWidth=2;ctx.strokeRect(M,y,tw,bh);
-      const cells=[["الرصيد الافتتاحي",iqd(L.open),INK,500],[sup?"إجمالي المشتريات":"إجمالي الديون",iqd(L.dSum),GREEN,500],["إجمالي المدفوعات",iqd(L.pSum),RED,500],["الرصيد الختامي",iqd(L.close),INK,700]];
+      const cells=[["الرصيد الافتتاحي",iqd(L.open),INK,500],[sup?"إجمالي المشتريات":"إجمالي الديون",iqd(L.dSum),OWED,500],["إجمالي المدفوعات",iqd(L.pSum),PAID,500],["الرصيد الختامي",iqd(L.close),INK,700]];
       const cw=tw/4;cells.forEach(([k,v,col,wt],i)=>{const cx=W-M-cw*i-cw/2;txt(k,cx,y+42,{s:20,c:MUTED,a:"center"});txt(v,cx,y+84,{s:28,w:wt,c:col,a:"center",ltr:true});
         if(i<3){ctx.strokeStyle=LINE;ctx.beginPath();ctx.moveTo(W-M-cw*(i+1),y+20);ctx.lineTo(W-M-cw*(i+1),y+bh-20);ctx.stroke()}});
       y+=bh+48;
@@ -1055,16 +1061,16 @@ async function custPdf(c,opt){
     for(const col of cols){const cw=col.w*tw;const cx=x-cw/2;
       if(col.k==="date"){txt(`${dmy(r.date)} (${wday(r.date)})`,x-14,y+35,{s:21})}
       else if(col.k==="time"){if(r.time)txt(r.time,x-12,y+35,{s:20})}
-      else if(col.k==="op"){txt(r.op,cx,y+35,{w:700,s:21,a:"center",c:r.edge?INK:(r.type==="debt"?GREEN:RED)})}
-      else if(col.k==="amt"){txt(iqd(r.amt),cx,y+35,{s:21,a:"center",ltr:true,c:r.edge?INK:(r.type==="debt"?GREEN:RED)})}
-      else if(col.k==="run"){txt(iqd(r.run),cx,y+35,{s:21,a:"center",ltr:true,c:r.run>0?GREEN:r.run<0?RED:INK})}
+      else if(col.k==="op"){txt(r.op,cx,y+35,{w:700,s:21,a:"center",c:r.edge?INK:(r.type==="debt"?OWED:PAID)})}
+      else if(col.k==="amt"){txt(iqd(r.amt),cx,y+35,{s:21,a:"center",ltr:true,c:r.edge?INK:(r.type==="debt"?OWED:PAID)})}
+      else if(col.k==="run"){txt(iqd(r.run),cx,y+35,{s:21,a:"center",ltr:true,c:r.run>0?OWED:r.run<0?PAID:INK})}
       else{if(r.note)txt(fit(r.note,cw-24,{s:21}),cx,y+35,{s:21,a:"center"})}
       x-=cw}
     drawGrid(y,RH);y+=RH;
   }
   pages.forEach((cv,i)=>{ctx=cv.getContext("2d");const fy=H-110;line(M,fy,W-M,fy);
     txt(shopName()+(shopPhone?"   "+shopPhone:""),W-M,fy+50,{s:19,c:MUTED});
-    txt("دفتر الديون",W/2,fy+50,{w:700,s:22,a:"center",c:"#0e5a3a"});
+    txt("دفتر الديون",W/2,fy+50,{w:700,s:22,a:"center",c:PDFC.green});
     txt(`${i+1} / ${pages.length}`,M+70,fy+40,{s:19,a:"center",ltr:true});
     txt(nowTxt,M,fy+74,{s:19,a:"left"});});
   const fname="كشف حساب "+c.name+" "+todayISO()+".pdf";
@@ -1119,12 +1125,12 @@ function monthReport(ym){
       const nameOf=id=>{const c=S.customers.get(id);return c?c.name:"؟"};
       const topD=[...cur.debtors].sort((a,b)=>b[1]-a[1]).slice(0,3).map(([id,v])=>nameOf(id)+" "+fmt(v)).join("، ");
       buildPdf({shop:shopName(),title:"التقرير الشهري: "+ymLabel(ym),
-        info:[["الديون المضافة",{text:fmt(cur.add)+" "+CUR+pc(cur.add,prev.add),color:"#b4231b"}],["المحصّل",{text:fmt(cur.pay)+" "+CUR+pc(cur.pay,prev.pay),color:"#16794b"}],
+        info:[["الديون المضافة",{text:fmt(cur.add)+" "+CUR+pc(cur.add,prev.add),color:PDFC.debt}],["المحصّل",{text:fmt(cur.pay)+" "+CUR+pc(cur.pay,prev.pay),color:PDFC.paid}],
           ["صافي التغيّر",{text:(cur.add-cur.pay>0?"+":"")+fmt(cur.add-cur.pay)+" "+CUR}],["عدد الحركات",{text:`${cur.nAdd} دين · ${cur.nPay} تسديد`}],["زبائن جدد",{text:String(cur.newCust)}],
-          ...(topD?[["أكثر الديون",{text:topD}]]:[]),["مجموع الدين هسه",{text:fmt(owed)+" "+CUR,color:"#b4231b"}]],
+          ...(topD?[["أكثر الديون",{text:topD}]]:[]),["مجموع الدين هسه",{text:fmt(owed)+" "+CUR,color:PDFC.debt}]],
         columns:[{label:"الشهر",w:.31},{label:"الديون",w:.23,num:true},{label:"التحصيل",w:.23,num:true},{label:"الصافي",w:.23,num:true}],
-        rows:months.slice().reverse().map((mm,i)=>{const x=ms[5-i];return {cells:[ymLabel(mm),fmt(x.add),fmt(x.pay),(x.add-x.pay>0?"+":"")+fmt(x.add-x.pay)],colors:[null,"#b4231b","#16794b",x.add-x.pay>0?"#b4231b":"#16794b"],shade:i%2===1,bold:mm===ym}}),
-        totals:[["مجموع آخر 6 أشهر: ديون",fmt(ms.reduce((a,x)=>a+x.add,0))+" "+CUR,"#b4231b"],["مجموع آخر 6 أشهر: تحصيل",fmt(ms.reduce((a,x)=>a+x.pay,0))+" "+CUR,"#16794b"]]},
+        rows:months.slice().reverse().map((mm,i)=>{const x=ms[5-i];return {cells:[ymLabel(mm),fmt(x.add),fmt(x.pay),(x.add-x.pay>0?"+":"")+fmt(x.add-x.pay)],colors:[null,PDFC.debt,PDFC.paid,x.add-x.pay>0?PDFC.debt:PDFC.paid],shade:i%2===1,bold:mm===ym}}),
+        totals:[["مجموع آخر 6 أشهر: ديون",fmt(ms.reduce((a,x)=>a+x.add,0))+" "+CUR,PDFC.debt],["مجموع آخر 6 أشهر: تحصيل",fmt(ms.reduce((a,x)=>a+x.pay,0))+" "+CUR,PDFC.paid]]},
         "تقرير-شهري-"+ym+".pdf")};
   });
 }
@@ -1133,18 +1139,17 @@ function listPdf(){
   const arr=[...S.customers.values()].filter(c=>kindOf(c)===S.kind).map(c=>({c,p:per.get(c.id)})).sort((a,b)=>b.p.bal-a.p.bal);
   let total=0;for(const x of arr)if(x.p.bal>0)total+=x.p.bal;
   buildPdf({shop:shopName(),title:sup?"تقرير الموردين":"تقرير ديون الزبائن",
-    info:[["عدد الحسابات",{text:String(arr.length)}],[sup?"مجموع ما علينا":"مجموع الديون",{text:fmt(total)+" "+CUR,color:"#b4231b"}]],
+    info:[["عدد الحسابات",{text:String(arr.length)}],[sup?"مجموع ما علينا":"مجموع الديون",{text:fmt(total)+" "+CUR,color:PDFC.debt}]],
     columns:[{label:"الاسم",w:.36},{label:"الهاتف",w:.22,num:true},{label:"آخر حركة",w:.2},{label:"الرصيد",w:.22,num:true}],
-    rows:arr.map(({c,p},i)=>({cells:[c.name,c.phone||"",p.count?shortDate(new Date(p.last).toISOString().slice(0,10)):"—",fmt(p.bal)],colors:[null,null,null,p.bal>0?"#b4231b":"#16794b"],shade:i%2===1})),
-    totals:[[sup?"المجموع علينا":"مجموع الديون",fmt(total)+" "+CUR,"#b4231b"]]},
+    rows:arr.map(({c,p},i)=>({cells:[c.name,c.phone||"",p.count?shortDate(new Date(p.last).toISOString().slice(0,10)):"—",fmt(p.bal)],colors:[null,null,null,p.bal>0?PDFC.debt:PDFC.paid],shade:i%2===1})),
+    totals:[[sup?"المجموع علينا":"مجموع الديون",fmt(total)+" "+CUR,PDFC.debt]]},
     (sup?"تقرير-الموردين-":"تقرير-الزبائن-")+todayISO()+".pdf");
 }
 
 /* ---------- business card: drawn on a canvas so it can be shared as an image ---------- */
-const BIZ_STYLES={shahm:{l:"الشهم",bg:"#0e5a3a",bg2:"#0b4c31",acc:"#f39a1e",tx:"#fff7e8",mu:"#cfe3d6",ic:"#cfe3d6",ln:"#22704d",ft:"#22704d"},
-  gold:{l:"رسمي",bg:"#0b0b0c",bg2:"#151517",acc:"#c9a45c",tx:"#ffffff",mu:"#a9a9ad",ic:"#c4c4c8",ln:"#2b2b2e",ft:"#3a2f1c"},
-  green:{l:"أخضر",bg:"#0d3b2e",bg2:"#124a3a",acc:"#e9c46a",tx:"#ffffff",mu:"#b9d3c8",ic:"#cfe3da",ln:"#22604d",ft:"#2a5a49"},
-  light:{l:"فاتح",bg:"#ffffff",bg2:"#f1f3f8",acc:"#3b4fd8",tx:"#151a2e",mu:"#626a83",ic:"#7a8197",ln:"#e1e4ee",ft:"#e1e4ee"}};
+const BIZ_STYLES={shahm:{l:"الشهم",bg:"#0e5a3a",bg2:"#0c5034",acc:"#f39a1e",tx:"#fff7e8",mu:"#dceee3",ic:"#dceee3",ln:"#2b7152",ft:"#2b7152"},
+  gold:{l:"أسود وذهبي",bg:"#0b0b0c",bg2:"#151517",acc:"#c9a45c",tx:"#ffffff",mu:"#a9a9ad",ic:"#c4c4c8",ln:"#2b2b2e",ft:"#3a2f1c"},
+  light:{l:"فاتح",bg:"#ffffff",bg2:"#f4f2ec",acc:"#0e5a3a",tx:"#1c2421",mu:"#5e6660",ic:"#5e6660",ln:"#e3ded3",ft:"#e3ded3"}};
 function bizData(){
   const st=S.settings,c=st.card||{},d=S.bizDraft||{};
   const v={name:st.shopName||"ماركت الشهم",desc:c.desc||"",manager:c.manager!=null?c.manager:(st.ownerName&&st.ownerName!=="المدير"?st.ownerName:""),phone:st.phone||"",address:st.address||"",social:c.social||"",style:BIZ_STYLES[c.style]?c.style:"shahm"};
@@ -1160,8 +1165,11 @@ const BIZ_IC={
 async function drawBizCard(cv,b){
   const tk=cv._tk=(cv._tk||0)+1;
   try{await loadScript("vendor/qrcode.js");if(!window.qrcode)await new Promise(r=>setTimeout(r,400))}catch(e){}
-  try{await Promise.all(["700 60px 'Tajawal'","500 30px 'IBM Plex Sans Arabic'","600 32px 'IBM Plex Sans Arabic'"].map(f=>document.fonts.load(f)))}catch(e){}
-  const W=1200,H=700,P=BIZ_STYLES[b.style]||BIZ_STYLES.shahm,F="'IBM Plex Sans Arabic',Tahoma,sans-serif",FD="'Tajawal','IBM Plex Sans Arabic',sans-serif";
+  try{await Promise.all(["400 60px Lalezar","500 30px 'IBM Plex Sans Arabic'","600 32px 'IBM Plex Sans Arabic'"].map(f=>document.fonts.load(f)))}catch(e){}
+  const W=1200,H=700,P=BIZ_STYLES[b.style]||BIZ_STYLES.shahm,F="'IBM Plex Sans Arabic',Tahoma,sans-serif",FD="'Lalezar','Tajawal',sans-serif";
+  const P0=BIZ_STYLES[b.style]||BIZ_STYLES.shahm;
+  const mark=await new Promise(res=>{const svg=BRAND_MARK.replace(/currentColor/g,P0.tx).replace("<svg ",'<svg xmlns="http://www.w3.org/2000/svg" width="212" height="212" ');
+    const im=new Image();im.onload=()=>res(im);im.onerror=()=>res(null);im.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg)});
   if(cv._tk!==tk)return cv; // a newer draw started while fonts or the QR library were loading
   cv.width=W;cv.height=H;const x=cv.getContext("2d");x.clearRect(0,0,W,H);
   const rr=(X,Y,w,h,r)=>{x.beginPath();if(x.roundRect){x.roundRect(X,Y,w,h,r);return}
@@ -1176,9 +1184,9 @@ async function drawBizCard(cv,b){
   x.direction="rtl";x.textAlign="right";
   // header: icon box + name + description
   rr(W-190,60,130,130,26);x.fillStyle=P.bg;x.fill();x.lineWidth=3;x.strokeStyle=P.acc;x.stroke();
-  icon("bag",W-160,90,70,P.acc);x.fillStyle=P.bg;x.fillRect(W-160+70/24*3,90+70/24*12.6,70/24*18,5);
+  if(mark)x.drawImage(mark,W-172,72,106,106);else{icon("bag",W-160,90,70,P.acc);x.fillStyle=P.bg;x.fillRect(W-160+70/24*3,90+70/24*12.6,70/24*18,5)}
   const hx=W-230;
-  fit(b.name,`700 %px ${FD}`,62,hx-120);x.fillStyle=P.tx;x.fillText(b.name,hx,b.desc?120:142);
+  fit(b.name,`400 %px ${FD}`,68,hx-120);x.fillStyle=P.tx;x.fillText(b.name,hx,b.desc?120:142);
   if(b.desc){fit(b.desc,`500 %px ${F}`,30,hx-120);x.fillStyle=P.mu;x.fillText(b.desc,hx,172)}
   x.strokeStyle=P.ln;x.lineWidth=2;x.beginPath();x.moveTo(90,262);x.lineTo(W-90,262);x.stroke();
   // contact rows on the right, QR on the left
