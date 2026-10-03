@@ -276,6 +276,14 @@ td.x{width:64px;white-space:nowrap}
 .sr-top b{color:var(--ink)}
 .sr select,.sr input{border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:8px 10px;width:100%;min-width:0;color:var(--ink)}
 .sr-row{display:flex;gap:8px;align-items:center}
+.sr-cust{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:9px 10px;color:var(--ink);cursor:pointer;text-align:right;font:inherit}
+.sr-cust.empty{color:var(--muted)}
+.sr-cust svg{width:16px;height:16px;flex:none;color:var(--muted)}
+.sr-pick{display:flex;flex-direction:column;gap:6px}
+.sr-pick .search input{padding:9px 38px 9px 12px}
+.sr-pick .pick-list{max-height:240px;background:var(--paper)}
+.sr-pick .pick-list li button{color:var(--ink);font:inherit}
+.pick-list li button.new{color:var(--accent);font-weight:600}
 .sr-row .seg{flex:none}
 .sr-row input{font-family:var(--f-display);font-weight:600;font-size:16px;text-align:left;direction:ltr}
 .quick{display:flex;flex-wrap:wrap;gap:6px}
@@ -1156,11 +1164,24 @@ function scanStart(){
 function scanReview(rows,pics){
   const custs=[...S.customers.values()].filter(c=>!isSup(c)).sort((a,b)=>a.name.localeCompare(b.name,"ar"));
   const R=rows.map(r=>({...r,cust:r.customer_id||"",amount:r.amount>0?r.amount:0,gone:false}));
-  const opts=sel=>`<option value="">— اختر الزبون —</option><option value="new" ${sel==="new"?"selected":""}>+ زبون جديد بهذا الاسم</option>${custs.map(c=>`<option value="${esc(c.id)}" ${c.id===sel?"selected":""}>${esc(c.name)}</option>`).join("")}`;
+  // Arabic-tolerant search: ignore hamza forms, ة/ه, ى/ي, diacritics and spaces ("عبدالله" finds "عبد الله").
+  const fold=x=>normDigits(x).toLowerCase().replace(/[أإآٱ]/g,"ا").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/[\u064B-\u0652\u0640]/g,"").replace(/\s+/g," ").trim();
+  const F=custs.map(c=>{const f=fold(c.name);return {c,f,n:f.replace(/ /g,"")}});
+  const custLabel=r=>r.cust==="new"?`+ زبون جديد: ${esc(r.written_name.trim())}`:r.cust&&S.customers.get(r.cust)?esc(S.customers.get(r.cust).name):"— اختر الزبون —";
+  const custBtn=r=>`<button type="button" class="sr-cust ${r.cust?"":"empty"}" data-cpick aria-label="الزبون"><span>${custLabel(r)}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>`;
+  const findCust=(q,written)=>{
+    q=fold(q);
+    if(q){const toks=q.split(" "),nq=q.replace(/ /g,"");return F.filter(x=>x.n.includes(nq)||toks.every(t=>x.f.includes(t))).slice(0,50).map(x=>x.c)}
+    // Empty search: suggest customers sharing a word with the written name, then everyone.
+    const wt=fold(written).split(" ").filter(t=>t.length>1&&!["ابو","ام","حجي","بيت"].includes(t));
+    const sc=F.map(x=>({c:x.c,s:wt.filter(t=>x.f.includes(t)).length})).filter(x=>x.s).sort((a,b)=>b.s-a.s).slice(0,15).map(x=>x.c);
+    return sc.length?sc:custs.slice(0,50)};
+  const pickItems=(r,q)=>{const arr=findCust(q,r.written_name);
+    return `${r.written_name.trim()?`<li><button type="button" class="new" data-pk="new">+ زبون جديد: ${esc(r.written_name.trim())}</button></li>`:""}${arr.map(c=>`<li><button type="button" data-pk="${esc(c.id)}"><span>${esc(c.name)}</span>${c.id===r.cust?"✓":""}</button></li>`).join("")||`<li class="empty">لا يوجد زبون بهذا الاسم</li>`}`};
   const card=(r,i)=>{const warn=r.match!=="sure"||r.amount_unsure||!r.amount;
     return `<div class="sr ${warn?"warn":""}" data-i="${i}">
       <div class="sr-top"><span>مكتوب بالورقة: <b>${esc(r.written_name)||"؟"}</b>${r.match==="unsure"?" · تأكد من الاسم":r.match==="none"?" · ما لكيته بالزبائن":""}${r.amount_unsure?" · تأكد من المبلغ":""}</span><button class="icon-btn del" type="button" aria-label="حذف السطر" data-srdel>${I.trash}</button></div>
-      <select data-f="cust" aria-label="الزبون">${opts(r.cust)}</select>
+      ${custBtn(r)}
       <div class="sr-row"><div class="seg" role="group" aria-label="نوع الحركة"><button type="button" data-t="debt" aria-pressed="${r.type==="debt"}">دين</button><button type="button" data-t="pay" aria-pressed="${r.type==="pay"}">تسديد</button></div><input data-f="amt" inputmode="numeric" aria-label="المبلغ" value="${r.amount?fmt(r.amount):""}" placeholder="المبلغ"></div>
       <input data-f="note" maxlength="140" aria-label="المواد" value="${esc(r.note)}" placeholder="المواد (اختياري)">
     </div>`};
@@ -1180,14 +1201,17 @@ function scanReview(rows,pics){
       m.querySelector("#srSave").textContent=`حفظ ${live.length} حركة`;m.querySelector("#srSave").disabled=!live.length};
     list.addEventListener("click",e=>{const c=e.target.closest(".sr");if(!c)return;const r=R[c.dataset.i];
       if(e.target.closest("[data-srdel]")){r.gone=true;c.remove();sum();return}
+      if(e.target.closest("[data-cpick]")){const open=c.querySelector(".sr-pick");list.querySelectorAll(".sr-pick").forEach(x=>x.remove());if(open)return;
+        c.querySelector("[data-cpick]").insertAdjacentHTML("afterend",`<div class="sr-pick"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="search" data-q placeholder="ابحث باسم الزبون" autocomplete="off"></div><ul class="pick-list">${pickItems(r,"")}</ul></div>`);
+        c.querySelector("[data-q]").focus();return}
+      const pk=e.target.closest("[data-pk]");if(pk){r.cust=pk.dataset.pk;c.querySelector(".sr-pick").remove();c.querySelector("[data-cpick]").outerHTML=custBtn(r);c.classList.remove("warn","bad");sum();return}
       const t=e.target.closest("[data-t]");if(t){r.type=t.dataset.t;c.querySelectorAll("[data-t]").forEach(b=>b.setAttribute("aria-pressed",String(b===t)));sum()}});
     list.addEventListener("input",e=>{const c=e.target.closest(".sr");if(!c)return;const r=R[c.dataset.i],f=e.target.dataset.f;
+      if(e.target.matches("[data-q]")){c.querySelector(".sr-pick .pick-list").innerHTML=pickItems(r,e.target.value);return}
       if(f==="amt"){const v=parseAmt(e.target.value);r.amount=isFinite(v)?Math.round(v):0}
       if(f==="note")r.note=e.target.value;
-      if(f==="cust")r.cust=e.target.value;
       c.classList.remove("bad");sum()});
-    list.addEventListener("change",e=>{if(e.target.dataset.f==="cust"){const c=e.target.closest(".sr");R[c.dataset.i].cust=e.target.value;c.classList.remove("warn");sum()}
-      if(e.target.dataset.f==="amt"&&R[e.target.closest(".sr").dataset.i].amount)e.target.value=fmt(R[e.target.closest(".sr").dataset.i].amount)});
+    list.addEventListener("change",e=>{if(e.target.dataset.f==="amt"&&R[e.target.closest(".sr").dataset.i].amount)e.target.value=fmt(R[e.target.closest(".sr").dataset.i].amount)});
     sum();
     m.querySelector("#srSave").addEventListener("click",()=>{
       const live=R.filter(r=>!r.gone);let bad=0;
