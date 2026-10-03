@@ -1,12 +1,12 @@
 // Telegram reports: signs in to Firebase as the read-only `backup` account, reads every collection the app
 // uses, and sends backups in the same format as the app's «حفظ نسخة» (so «استعادة» accepts them).
-//   MODE=periodic (every 2 hours): what changed in the last two hours, what is still pending, and a backup.
+//   MODE=periodic (every 2 hours): what changed in the last two hours, what is still pending, a backup, and a PDF of those transactions.
 //   MODE=daily (02:00 Baghdad): backup, end-of-day summary, and a PDF with every transaction of the day.
 // Runs from .github/workflows/backup.yml. Needs env: BACKUP_PASSWORD, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
 // The data never touches the repo or the logs.
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { dayPdf } from "./day-report.mjs";
+import { dayPdf, windowPdf } from "./day-report.mjs";
 
 const env = name => {
   const v = (process.env[name] || "").trim();
@@ -178,7 +178,7 @@ function periodicReport(customers, txns, activity, settings, now, manual) {
   const waiting = customers.filter(c => c.kind !== "supplier" && c.promise && c.promise.date && c.promise.date <= today && (bal.get(c.id) || 0) > 0)
     .map(c => `  • ${c.name}${c.promise.amount ? ": " + fmt(c.promise.amount) : ""}${c.promise.date < today ? " (فات موعده)" : ""}`);
   if (waiting.length) lines.push("", "🤝 ما صار بعد: وعدوا يدفعون وما دفعوا", ...waiting.slice(0, 20), ...(waiting.length > 20 ? [`  … و ${waiting.length - 20} غيرهم`] : []));
-  return { text: lines.join("\n").slice(0, 4000), changed: acts.length > 0 || made.length > 0, stamp: `${today}-${hm(end).replace(/[:\s]/g, "")}` };
+  return { text: lines.join("\n").slice(0, 4000), changed: acts.length > 0 || made.length > 0, start, end, stamp: `${today}-${hm(end).replace(/[:\s]/g, "")}` };
 }
 
 async function tg(method, body) {
@@ -214,7 +214,11 @@ async function main() {
     const rep = periodicReport(customers, txns, activity, settings, now, process.env.MANUAL === "true");
     // Quiet slots (usually at night) get a silent one-line message; the last backup is still current.
     await tg("sendMessage", { chat_id: chat, text: rep.text, ...(rep.changed ? {} : { disable_notification: true }) });
-    if (rep.changed) await sendFile(`نسخة-${slug}-${rep.stamp}.json`, backupJson, "application/json", "💾 نسخة احتياطية بعد آخر تحديث");
+    if (rep.changed) {
+      await sendFile(`نسخة-${slug}-${rep.stamp}.json`, backupJson, "application/json", "💾 نسخة احتياطية بعد آخر تحديث");
+      const file = await windowPdf({ start: rep.start, end: rep.end, customers, txns, activity, settings, fmt, isoDay, hm });
+      if (file) await sendFile(file.name, file.data, file.type, `📄 حركات من ${hm(rep.start)} إلى ${hm(rep.end)}`);
+    }
     console.log(`Sent 2-hour report (${rep.changed ? "with" : "no"} changes).`);
     return;
   }
