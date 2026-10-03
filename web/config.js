@@ -10,4 +10,4 @@ window.FIREBASE_CONFIG = {
 };
 
 // Address of the small server that reads ledger photos (worker/). Empty until it is deployed.
-window.AI_URL = "";
+window.AI_URL = "https://shahm-ai.hydrzyd83.workers.dev";
