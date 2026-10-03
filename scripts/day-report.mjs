@@ -1,5 +1,5 @@
 // Transactions file for Telegram as a branded PDF: every transaction recorded on one Baghdad day
-// (end-of-day file), or in one time window (the 2-hour report).
+// (end-of-day file), or in one time window (the 2-hour report sends the day so far).
 // The page is plain HTML printed by headless Chrome (preinstalled on GitHub's Ubuntu runners), so Arabic
 // shapes correctly with the app's own fonts. If no browser is found, a CSV (opens in Excel) is sent instead.
 import { execFileSync } from "node:child_process";
@@ -19,10 +19,10 @@ function findChrome() {
 export const dayPdf = ({ day, isoDay, ...o }) =>
   txnsPdf({ ...o, inRange: ms => isoDay(ms) === day, tag: day, dateText: day, subText: "كل حركات اليوم" });
 
-// Same file for a time window [start, end), e.g. the last two hours.
-export const windowPdf = ({ start, end, isoDay, hm, ...o }) =>
+// Same file for a time window [start, end), e.g. the day so far (2-hour report).
+export const windowPdf = ({ start, end, isoDay, hm, timeText, subText, ...o }) =>
   txnsPdf({ ...o, hm, inRange: ms => ms >= start && ms < end, tag: `${isoDay(end - 1)}-${hm(end).replace(/[:\s]/g, "")}`,
-    dateText: isoDay(end - 1), timeText: `من ${hm(start)} إلى ${hm(end)}`, subText: "حركات آخر ساعتين" });
+    dateText: isoDay(end - 1), timeText: timeText || `من ${hm(start)} إلى ${hm(end)}`, subText: subText || "حركات آخر ساعتين" });
 
 async function txnsPdf({ inRange, tag, dateText, timeText, subText, customers, txns, activity, settings, fmt, hm }) {
   const byId = new Map(customers.map(c => [c.id, c]));

@@ -1,12 +1,15 @@
 // Telegram reports: signs in to Firebase as the read-only `backup` account, reads every collection the app
 // uses, and sends backups in the same format as the app's «حفظ نسخة» (so «استعادة» accepts them).
-//   MODE=periodic (every 2 hours): what changed in the last two hours, what is still pending, a backup, and a PDF of those transactions.
-//   MODE=daily (02:00 Baghdad): backup, end-of-day summary, and a PDF with every transaction of the day.
+//   MODE=periodic (every 2 hours): what changed in the last two hours, what is still pending, a backup, and a PDF of all
+//   of today's transactions so far.
+//   MODE=daily (02:00 Baghdad): backup, end-of-day summary, a PDF with every transaction of the day, and Excel files of
+//   who owes and who has not paid for a month.
 // Runs from .github/workflows/backup.yml. Needs env: BACKUP_PASSWORD, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
 // The data never touches the repo or the logs.
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { dayPdf, windowPdf } from "./day-report.mjs";
+import { xlsx, XLSX_TYPE } from "./xlsx.mjs";
 
 const env = name => {
   const v = (process.env[name] || "").trim();
@@ -244,6 +247,41 @@ function periodicReport(customers, txns, activity, settings, now, manual, sales 
   return { text: lines.join("\n").slice(0, 4000), changed: acts.length > 0 || made.length > 0 || pos.n > 0, start, end, stamp: `${today}-${hm(end).replace(/[:\s]/g, "")}` };
 }
 
+// Two spreadsheets for the daily run, like the shop's old app sent: every customer who owes, and those who have not
+// paid for LATE_DAYS days (same rule as the app's «متأخرين»: counted from the last payment, or the first debt if never paid).
+const LATE_DAYS = 30;
+function debtSheets(customers, txns, today) {
+  const per = new Map();
+  for (const t of txns) {
+    const x = per.get(t.customerId) || { bal: 0, last: "", lastPay: "", firstDebt: "" };
+    const amt = Number(t.amount) || 0, d = t.date || "";
+    x.bal += t.type === "debt" ? amt : -amt;
+    if (d > x.last) x.last = d;
+    if (t.type === "pay") { if (d > x.lastPay) x.lastPay = d; }
+    else if (d && (!x.firstDebt || d < x.firstDebt)) x.firstDebt = d;
+    per.set(t.customerId, x);
+  }
+  const days = iso => Math.round((Date.parse(today + "T12:00:00Z") - Date.parse(iso + "T12:00:00Z")) / 864e5);
+  const owing = customers.filter(c => c.kind !== "supplier" && ((per.get(c.id) || {}).bal || 0) > 0)
+    .map(c => ({ c, ...per.get(c.id) })).sort((a, b) => b.bal - a.bal);
+  const total = list => list.reduce((a, x) => a + x.bal, 0);
+  const all = {
+    name: "ديون الزبائن", widths: [6, 28, 16, 16, 14, 14],
+    head: ["ت", "الاسم", "الهاتف", "الدين (د.ع)", "آخر حركة", "آخر تسديد"],
+    rows: owing.map((x, i) => [i + 1, x.c.name || "؟", x.c.phone || "", x.bal, x.last, x.lastPay || "ما دافع"]),
+    total: ["", `المجموع (${owing.length} زبون)`, "", total(owing), "", ""],
+  };
+  const lateList = owing.map(x => ({ ...x, from: x.lastPay || x.firstDebt })).filter(x => x.from && days(x.from) >= LATE_DAYS)
+    .sort((a, b) => days(b.from) - days(a.from));
+  const late = {
+    name: "لم يسددوا منذ شهر", widths: [6, 28, 16, 16, 14, 12],
+    head: ["ت", "الاسم", "الهاتف", "الدين (د.ع)", "آخر تسديد", "الأيام"],
+    rows: lateList.map((x, i) => [i + 1, x.c.name || "؟", x.c.phone || "", x.bal, x.lastPay || "ما دافع من أول دين", days(x.from)]),
+    total: ["", `المجموع (${lateList.length} زبون)`, "", total(lateList), "", ""],
+  };
+  return { all, late, owing: owing.length, lateCount: lateList.length, lateTotal: total(lateList) };
+}
+
 async function tg(method, body) {
   const isForm = body instanceof FormData;
   const r = await fetch(`${TG_URL}/bot${env("TELEGRAM_TOKEN")}/${method}`, { method: "POST", ...(isForm ? { body } : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }) });
@@ -280,8 +318,11 @@ async function main() {
     await tg("sendMessage", { chat_id: chat, text: rep.text, ...(rep.changed ? {} : { disable_notification: true }) });
     if (rep.changed) {
       await sendFile(`نسخة-${slug}-${rep.stamp}.json`, backupJson, "application/json", "💾 نسخة احتياطية بعد آخر تحديث");
-      const file = await windowPdf({ start: rep.start, end: rep.end, customers, txns, activity, settings, fmt, isoDay, hm });
-      if (file) await sendFile(file.name, file.data, file.type, `📄 حركات من ${hm(rep.start)} إلى ${hm(rep.end)}`);
+      // The PDF grows through the day: every transaction since Baghdad midnight, up to the end of this slot.
+      const dayStart = Date.parse(isoDay(rep.end - 1) + "T00:00:00Z") - BAGHDAD;
+      const file = await windowPdf({ start: dayStart, end: rep.end, customers, txns, activity, settings, fmt, isoDay, hm,
+        subText: "كل حركات اليوم لحد هسه", timeText: `لحد ${hm(rep.end)}` });
+      if (file) await sendFile(file.name, file.data, file.type, `📄 كل حركات اليوم ${isoDay(rep.end - 1)} لحد ${hm(rep.end)}`);
     }
     console.log(`Sent 2-hour report (${rep.changed ? "with" : "no"} changes).`);
     return;
@@ -308,6 +349,11 @@ async function main() {
   const rDay = reportDay(now);
   const file = await dayPdf({ day: rDay, customers, txns, activity, settings, fmt, isoDay, hm });
   if (file) { await sendFile(file.name, file.data, file.type, `📄 كل حركات يوم ${rDay}`); console.log("Sent day file:", file.type); }
+
+  const sh = debtSheets(customers, txns, day);
+  await sendFile(`ديون-الزبائن-${day}.xlsx`, xlsx(sh.all), XLSX_TYPE, `📗 ${day} - ديون الزبائن (${sh.owing} زبون)`);
+  await sendFile(`لم-يسددوا-منذ-شهر-${day}.xlsx`, xlsx(sh.late), XLSX_TYPE, `📕 ${day} - الزبائن اللي ما سددوا من شهر: ${sh.lateCount} زبون، ${fmt(sh.lateTotal)} د.ع`);
+  console.log(`Sent spreadsheets: ${sh.owing} owing, ${sh.lateCount} late.`);
 }
 
 main().catch(async e => {
