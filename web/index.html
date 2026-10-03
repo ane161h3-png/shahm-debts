@@ -271,6 +271,10 @@ td.x{width:64px;white-space:nowrap}
 .field input:focus,.field textarea:focus,.field select:focus,.search input:focus,.sr select:focus,.sr input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
 .field input.big{font-size:24px;font-family:var(--f-display);font-weight:600;text-align:left;direction:ltr}
 .field .help{font-size:12px;color:var(--muted)}
+.c-sug{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.c-sug-i{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--paper-2);color:var(--ink);font:inherit;text-align:start;cursor:pointer}
+.c-sug-i .num{direction:ltr;color:var(--muted);font-size:13px}
+.c-sug-i em{margin-inline-start:auto;font-style:normal;font-weight:700;font-size:13px;color:var(--accent);white-space:nowrap}
 .amt-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .calc-t{border:1px solid var(--line);background:var(--paper-2);border-radius:99px;padding:3px 11px;font-size:12.5px;cursor:pointer;color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:5px}
 .calc-t svg{width:15px;height:15px}
@@ -593,6 +597,21 @@ async function pickContact(){
     return {name:(c.name&&c.name.display)||"",phones:(c.phones||[]).map(p=>p.number).filter(Boolean)}}
   const [c]=await navigator.contacts.select(["name","tel"],{multiple:false});if(!c)return null;
   return {name:(c.name||[])[0]||"",phones:c.tel||[]};
+}
+/* Android app: while a new customer's name is typed, suggest matching phone contacts (read once per session, kept in memory only). */
+let phoneBook=null;
+async function loadPhoneBook(ask){
+  if(phoneBook)return phoneBook;
+  const C=plugin("Contacts");let st=(await C.checkPermissions()).contacts;
+  if(st!=="granted"&&st!=="limited"){if(!ask)return null;st=(await C.requestPermissions()).contacts;if(st!=="granted"&&st!=="limited")return null}
+  const r=await C.getContacts({projection:{name:true,phones:true}});
+  phoneBook=(r.contacts||[]).map(c=>({name:(c.name&&c.name.display)||"",phones:(c.phones||[]).map(x=>x.number).filter(Boolean)}))
+    .filter(c=>c.name&&c.phones.length).map(c=>({...c,f:foldAr(c.name)}));
+  return phoneBook;
+}
+function contactMatches(q){
+  const ws=foldAr(q).split(" ").filter(Boolean);if(!phoneBook||ws.join("").length<2)return [];
+  return phoneBook.filter(c=>ws.every(w=>c.f.includes(w))).slice(0,4);
 }
 function stats(){
   const per=new Map();
@@ -1372,7 +1391,7 @@ function customerForm(c,after){
   const isNew=!c;
   openModal(`<h3>${isNew?(S.kind==="supplier"?"مورد جديد":"زبون جديد"):"تعديل بيانات الحساب"}</h3>
     <form id="cf" class="field" style="gap:10px" novalidate>
-      <div class="field"><label for="cName">الاسم</label><input id="cName" maxlength="80" value="${esc(c&&c.name)}" placeholder="مثال: أبو علي"></div>
+      <div class="field"><label for="cName">الاسم</label><input id="cName" maxlength="80" value="${esc(c&&c.name)}" placeholder="مثال: أبو علي">${isNew&&NATIVE?`<div class="c-sug" id="cSug" hidden></div>`:""}</div>
       <div class="field"><label for="cPhone">رقم الهاتف (لرسائل واتساب)</label><div class="note-row"><input id="cPhone" inputmode="tel" maxlength="20" value="${esc(c&&c.phone)}" placeholder="07xx xxx xxxx" style="direction:ltr;text-align:right">${canPickContact()?`<button class="btn" type="button" id="cPick" style="flex:none">${I.users}جهات الاتصال</button>`:""}</div></div>
       <div class="field"><label for="cNote">ملاحظة (اختياري)</label><input id="cNote" maxlength="120" value="${esc(c&&c.note)}" placeholder="العنوان أو أي تفصيل"></div>
       <div class="field"><label for="cKind">نوع الحساب</label><select id="cKind"><option value="customer" ${(c?kindOf(c):S.kind)==="customer"?"selected":""}>زبون (عليه دين لنا)</option><option value="supplier" ${(c?kindOf(c):S.kind)==="supplier"?"selected":""}>مورد (نحن ندين له)</option></select></div>
@@ -1387,6 +1406,19 @@ function customerForm(c,after){
         $("#cPhone").value=r.phones[0].replace(/[^\d+]/g,"");if(!$("#cName").value.trim()&&r.name)$("#cName").value=r.name;
         if(r.phones.length>1)toast("بيه أكثر من رقم، أخذت الأول. تكدر تعدّله.")}
       catch(e){console.warn(e);if(!/cancel/i.test(String(e&&e.message)))$("#cErr").textContent=/permission/i.test(String(e&&e.message))?"لازم تسمح للبرنامج يوصل لجهات الاتصال.":"تعذّر فتح جهات الاتصال."}});
+    const sug=m.querySelector("#cSug");if(sug){let tm;
+      const show=()=>{
+        if(!phoneBook){sug.hidden=false;sug.innerHTML=`<button class="linkish" type="button" id="cSugOn">${I.users}اقترح من جهات الاتصال وأنا أكتب الاسم</button>`;
+          sug.querySelector("#cSugOn").addEventListener("click",async()=>{try{await loadPhoneBook(true)}catch(e){console.warn(e)}
+            if(!phoneBook){sug.innerHTML=`<span class="help">لازم تسمح للتطبيق يوصل لجهات الاتصال من إعدادات الموبايل.</span>`;return}show()});return}
+        const list=contactMatches($("#cName").value);
+        if(!list.length){sug.hidden=true;sug.innerHTML="";return}
+        sug.hidden=false;sug.innerHTML=`<span class="help">موجود بجهات الاتصال:</span>`+list.map((x,i)=>`<button type="button" class="c-sug-i" data-ci="${i}"><b>${esc(x.name)}</b><span class="num">${esc(x.phones[0])}</span><em>إضافة مع الرقم</em></button>`).join("");
+        sug.querySelectorAll("[data-ci]").forEach(b=>b.addEventListener("click",()=>{const x=list[+b.dataset.ci];
+          $("#cName").value=x.name;$("#cPhone").value=x.phones[0].replace(/[^\d+]/g,"");sug.hidden=true;sug.innerHTML="";
+          if(x.phones.length>1)toast("بيه أكثر من رقم، أخذت الأول. تكدر تعدّله.")}))};
+      loadPhoneBook(false).catch(e=>console.warn(e)).finally(show);
+      $("#cName").addEventListener("input",()=>{clearTimeout(tm);tm=setTimeout(show,150)})}
     const kindSync=()=>{const sup=$("#cKind").value==="supplier";m.querySelector("#cVisitF").hidden=!sup;m.querySelector("#cLimitF").hidden=sup;
       const ol=m.querySelector("label[for=cOpen]");if(ol)ol.textContent=sup?"رصيد سابق علينا له (اختياري)":"دين سابق (اختياري)"};
     $("#cKind").addEventListener("change",kindSync);kindSync();
