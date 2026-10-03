@@ -294,6 +294,10 @@ td.x{width:64px;white-space:nowrap}
 .pic-btn{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);background:var(--paper-2);color:var(--accent);border-radius:7px;padding:1px 6px;font-size:12px;cursor:pointer;vertical-align:middle}
 .pic-btn svg{width:14px;height:14px}
 .pics-view{display:flex;flex-direction:column;gap:10px}.pics-view img{width:100%;border-radius:10px;border:1px solid var(--line)}
+.home-search{padding:12px}
+.home-search .search input{font-size:16px;padding:12px 40px 12px 12px}
+.hs-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:2px;max-height:420px;overflow:auto}
+.hs-list .empty{padding:14px;text-align:center;color:var(--muted)}.hs-list .empty b{display:block;color:var(--ink)}
 .note-row{display:flex;gap:8px}.note-row select{flex:0 0 36%;min-width:0}.note-row input{flex:1;min-width:0}
 .sr-cust{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:9px 10px;color:var(--ink);cursor:pointer;text-align:right;font:inherit}
 .sr-cust.empty{color:var(--muted)}
@@ -505,6 +509,17 @@ function supplierAlerts(){
   due.sort((a,b)=>a.left-b.left);return {due,visits};
 }
 const dueText=left=>left<0?`متأخرة ${-left} يوم`:left===0?"مستحقة اليوم":left===1?"مستحقة باچر":`مستحقة بعد ${left} يوم`;
+/* Flexible customer search: ignores hamza forms, ة/ه, ى/ي, diacritics, "ال" and spaces; every typed word may match anywhere in the name; digits match the phone. */
+const foldAr=x=>normDigits(x).toLowerCase().replace(/[أإآٱ]/g,"ا").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/[\u064B-\u0652\u0640]/g,"").replace(/\s+/g," ").trim();
+function custScore(c,q){
+  const fq=foldAr(q);if(!fq)return 1;
+  const digits=fq.replace(/\D/g,"");
+  if(digits.length>=3&&digits.length===fq.replace(/\s/g,"").length){const ph=normDigits(c.phone).replace(/\D/g,"");return ph.includes(digits)||ph.includes(digits.replace(/^0/,""))?3:0}
+  const fn=foldAr(c.name+" "+(c.note||"")),name=foldAr(c.name),nn=name.replace(/ /g,""),strip=w=>w.replace(/^ال/,"");
+  if(name===fq)return 10;if(name.startsWith(fq))return 8;if(nn.includes(fq.replace(/ /g,"")))return 6;
+  const words=fn.split(" ").map(strip);
+  return fq.split(" ").map(strip).filter(Boolean).every(t=>words.some(w=>w.includes(t)))?4:0;
+}
 function stats(){
   const per=new Map();
   for(const c of S.customers.values())per.set(c.id,{bal:0,debt:0,paid:0,last:c.createdAt||0,count:0});
@@ -647,7 +662,9 @@ function render(){
   $("#bottomNav").innerHTML=NAV.slice(0,2).map(navBtn).join("")+(canWrite()?`<button type="button" class="plus" data-act="quick" aria-label="إضافة دين">${I.plus}</button>`:"")+NAV.slice(2).map(navBtn).join("");
   $("#meBox").innerHTML=`<span class="avatar" aria-hidden="true">${initial(S.me.name)}</span><span class="nm">${esc(S.me.name)}</span><span class="role">${ROLE_LABEL[S.me.role]}</span>`;
   const v=$("#view");
-  if(S.view==="home")v.innerHTML=homeView();
+  // Live data refreshes re-render the page; keep the home search text, results and focus while typing.
+  if(S.view==="home"){const hf=document.activeElement&&document.activeElement.id==="hq";v.innerHTML=homeView();
+    if(S.hq){homeSearch(S.hq);if(hf){const i=$("#hq");i.focus();i.setSelectionRange(i.value.length,i.value.length)}}}
   else if(S.view==="customers"){v.innerHTML=customersView();renderList();renderDetail()}
   else if(S.view==="reminders")v.innerHTML=remindersView();
   else v.innerHTML=settingsView();
@@ -677,6 +694,11 @@ function homeView(){
   const top=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal})).filter(x=>x.b>0).sort((a,b)=>b.b-a.b).slice(0,6);
   const acts=S.activity.filter(a=>a.kind!=="login"&&(S.actFilter==="all"?a.kind!=="remind":a.kind===S.actFilter)).slice(0,60);
   return `<div style="display:flex;flex-direction:column;gap:14px">
+  <section class="pane card-pad home-search" aria-label="بحث عن زبون">
+    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="hq" type="search" placeholder="ابحث عن زبون أو مورد بالاسم أو الرقم" autocomplete="off" enterkeyhint="search" value="${esc(S.hq||"")}"></div>
+    <ul class="hs-list" id="hsList" hidden></ul>
+  </section>
   <section class="pane card-pad"><div class="section-title"><h2>إجراءات سريعة</h2></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button><button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`:""}<button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين (${owing})</button></div>
         ${isAdmin()&&(!S.settings.lastBackupAt||Date.now()-S.settings.lastBackupAt>7*864e5)&&S.customers.size?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${S.settings.lastBackupAt?"مرّ أكثر من أسبوع على آخر نسخة احتياطية.":"لم تحفظ نسخة احتياطية بعد."}</span><button class="btn sm" type="button" data-act="gobackup">${I.save}احفظ نسخة</button></div>`:""}
@@ -743,7 +765,7 @@ function renderList(){
     if(S.filter==="nophone"&&normDigits(c.phone).replace(/\D/g,""))return false;
     if(S.filter==="due"&&!dueIds.has(c.id))return false;
     if(!q)return true;
-    return (c.name||"").toLowerCase().includes(q)||normDigits(c.phone).replace(/\s/g,"").includes(q.replace(/\s/g,""));
+    return custScore(c,q)>0;
   });
   if(S.sort==="bal")arr.sort((a,b)=>per.get(b.id).bal-per.get(a.id).bal);
   else if(S.sort==="recent")arr.sort((a,b)=>per.get(b.id).last-per.get(a.id).last);
@@ -823,7 +845,7 @@ function renderDetail(){
       <button class="btn ghost danger-text" type="button" data-act="delcust">${I.trash}حذف الحساب</button>`:""}
     </div></div>`;
 }
-function openCustomer(id){S.view="customers";S.selected=id;const oc=S.customers.get(id);if(oc)S.kind=kindOf(oc);render();if(window.innerWidth<=820)window.scrollTo(0,0)}
+function openCustomer(id){S.hq="";S.view="customers";S.selected=id;const oc=S.customers.get(id);if(oc)S.kind=kindOf(oc);render();if(window.innerWidth<=820)window.scrollTo(0,0)}
 
 /* ---------- reminders ---------- */
 function lastRemindMap(){const m=new Map();for(const a of S.activity){if(a.kind==="remind"&&a.customerId&&!m.has(a.customerId))m.set(a.customerId,a.at)}return m}
@@ -1542,6 +1564,7 @@ document.addEventListener("click",e=>{
   switch(b.dataset.act){
     case "back":S.selected=null;render();break;
     case "viewpics":{const x=S.txns.get(b.dataset.id);if(x)viewPhotos(x);break}
+    case "newcustq":{const nm=($("#hq")||{}).value||"";S.kind="customer";customerForm(null,id=>openCustomer(id));setTimeout(()=>{const i=$("#cName");if(i&&!i.value)i.value=nm.trim()},0);break}
     case "gosup":S.view="customers";S.kind="supplier";S.filter="due";S.selected=null;render();window.scrollTo(0,0);break;
     case "quick":if(canWrite())pickCustomer("debt");break;
     case "quickpay":if(canWrite())pickCustomer("pay");break;
@@ -1571,7 +1594,21 @@ document.addEventListener("click",e=>{
       for(const x of txnsOf(c.id)){del("txns",x.id);dropPhotos(x.photos)}del("customers",c.id);log("delete","customer",{customerName:c.name});S.selected=null;render();toast("حُذف الزبون")});break;
   }
 });
-document.addEventListener("input",e=>{if(e.target.id==="q"){S.q=e.target.value;renderList()}});
+document.addEventListener("input",e=>{if(e.target.id==="q"){S.q=e.target.value;renderList()}if(e.target.id==="hq"){S.hq=e.target.value;homeSearch(S.hq)}});
+document.addEventListener("keydown",e=>{if(e.target.id==="hq"&&e.key==="Enter"){const f=document.querySelector("#hsList [data-open]");if(f){e.preventDefault();openCustomer(f.dataset.open)}}});
+function homeSearch(q){
+  const ul=$("#hsList");if(!ul)return;
+  if(!foldAr(q)){ul.hidden=true;ul.innerHTML="";return}
+  const per=stats();
+  const arr=[...S.customers.values()].map(c=>({c,s:custScore(c,q)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s||per.get(b.c.id).last-per.get(a.c.id).last).slice(0,8);
+  ul.hidden=false;
+  ul.innerHTML=arr.length?arr.map(({c})=>{const b=per.get(c.id).bal,sup=isSup(c);
+    return `<li class="cust-row"><button class="cust" type="button" data-open="${esc(c.id)}"><span class="avatar" aria-hidden="true">${initial(c.name)}</span>
+      <span class="meta"><span class="name">${esc(c.name)}</span><span class="sub">${sup?"مورد":"زبون"}${c.phone?" · "+esc(c.phone):""}</span></span>
+      <span class="chip ${b>0?"debt":b<0?"paid":"zero"}"><span class="num">${b>0?fmt(b):b<0?"له "+fmt(-b):"مسدد"}</span></span></button>
+      ${canWrite()?`<span class="row-q"><button type="button" class="q-pay" data-qpay="${esc(c.id)}" aria-label="${sup?"دفعة للمورد":"تسديد"} ${esc(c.name)}" title="${sup?"دفعة":"تسديد"}">${I.minus}</button><button type="button" class="q-debt" data-qdebt="${esc(c.id)}" aria-label="${sup?"فاتورة":"دين"} ${esc(c.name)}" title="${sup?"فاتورة":"دين"}">${I.plus}</button></span>`:""}</li>`}).join("")
+    :`<li class="empty"><b>ما لكيت "${esc(q.trim())}"</b>${canWrite()?`<button class="btn sm primary" type="button" data-act="newcustq" style="margin-top:8px">${I.plus}إضافة زبون بهذا الاسم</button>`:""}</li>`;
+}
 document.addEventListener("change",e=>{
   if(e.target.id==="sort"){S.sort=e.target.value;renderList()}
   if(e.target.id==="period"){S.period=e.target.value;renderDetail()}
