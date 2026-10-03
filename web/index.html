@@ -86,7 +86,6 @@ header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .section-title h2{margin:0;font-family:var(--f-display);font-size:17px}
 
 /* stats */
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .stat{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px;min-width:0;display:flex;flex-direction:column;gap:2px}
 .stat .k{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
 .stat .k svg{width:16px;height:16px}
@@ -95,7 +94,28 @@ header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .stat.main{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .stat.main .k,.stat.main .v small{color:inherit;opacity:.85}
 .v.debt{color:var(--debt)} .v.paid{color:var(--paid)}
-@media (max-width:760px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.stat .v{font-size:19px}}
+@media (max-width:760px){.stat .v{font-size:19px}}
+/* home summary: total debt first and largest, month figures, then the quick actions in the same card */
+.summary{overflow:hidden}
+.sum-hero{background:var(--accent);color:var(--accent-ink);border-bottom:4px solid var(--brand-orange);padding:18px 18px 16px;display:flex;flex-direction:column;gap:2px}
+.sum-hero .k{font-size:14px;display:flex;align-items:center;gap:6px;opacity:.9}
+.sum-hero .k svg{width:18px;height:18px}
+.sum-hero .v{font-family:var(--f-display);font-weight:800;font-size:44px;line-height:1.15;overflow-wrap:anywhere}
+.sum-hero .v small{font-size:16px;font-weight:500;opacity:.85;margin-inline-start:6px}
+.sum-hero .s{font-size:13.5px;opacity:.85}
+.sum-mini{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)}
+.sum-mini>div{padding:12px 14px;min-width:0}
+.sum-mini>div+div{border-inline-start:1px solid var(--line)}
+.sum-mini .k{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.sum-mini .k svg{width:15px;height:15px;flex:none}
+.sum-mini .v{font-family:var(--f-display);font-size:20px;font-weight:700;line-height:1.3;overflow-wrap:anywhere}
+.sum-actions{display:flex;gap:8px;flex-wrap:wrap;padding:14px}
+.home-alerts{display:flex;flex-direction:column;gap:8px}
+.home-alerts:not(:has(.banner)){display:none}
+@media (max-width:760px){.sum-hero{padding:16px 16px 14px}.sum-hero .v{font-size:38px}
+  .sum-mini>div{padding:10px 8px}.sum-mini .k{font-size:11.5px;white-space:nowrap}.sum-mini .k svg{display:none}.sum-mini .v{font-size:16px}
+  .sum-actions{display:grid;grid-template-columns:1fr 1fr;padding:12px}.sum-actions .btn{justify-content:center;white-space:nowrap;padding-inline:8px;font-size:14px}
+  .sum-actions .btn svg{width:16px;height:16px}.sum-actions .btn.debt,.sum-actions .btn.paid{font-size:16px}}
 
 .home-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:14px;align-items:start}
 @media (max-width:900px){.home-grid{grid-template-columns:minmax(0,1fr)}}
@@ -748,13 +768,23 @@ function homeView(){
   const top=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal})).filter(x=>x.b>0).sort((a,b)=>b.b-a.b).slice(0,6);
   const acts=S.activity.filter(a=>a.kind!=="login"&&(S.actFilter==="all"?a.kind!=="remind":a.kind===S.actFilter)).slice(0,60);
   return `<div style="display:flex;flex-direction:column;gap:14px">
+  <section class="pane summary" aria-label="ملخص">
+    <div class="sum-hero"><div class="k">${I.wallet}مجموع الدين على الزبائن</div>
+      <div class="v"><span class="num">${fmt(total)}</span><small>${CUR}</small></div>
+      <div class="s"><span class="num">${owing}</span> زبون عليهم دين</div></div>
+    <div class="sum-mini">
+      <div><div class="k">${I.users}الزبائن</div><div class="v num">${custN}</div></div>
+      <div><div class="k">${I.check}المحصّل هذا الشهر</div><div class="v paid num">${fmt(mPay)}</div></div>
+      <div><div class="k">${I.trend}المضاف هذا الشهر</div><div class="v debt num">${fmt(mAdd)}</div></div>
+    </div>
+    <div class="sum-actions" role="group" aria-label="إجراءات سريعة">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button><button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`:""}<button class="btn" type="button" data-act="monthrep">${I.trend}التقرير الشهري</button><button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين (${owing})</button></div>
+  </section>
   <section class="pane card-pad home-search" aria-label="بحث عن زبون">
     <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="hq" type="search" placeholder="ابحث عن زبون أو مورد بالاسم أو الرقم" autocomplete="off" enterkeyhint="search" value="${esc(S.hq||"")}"></div>
     <ul class="hs-list" id="hsList" hidden></ul>
   </section>
-  <section class="pane card-pad"><div class="section-title"><h2>إجراءات سريعة</h2></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button><button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`:""}<button class="btn" type="button" data-act="monthrep">${I.trend}التقرير الشهري</button><button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين (${owing})</button></div>
+  <div class="home-alerts">
         ${isAdmin()&&(!S.settings.lastBackupAt||Date.now()-S.settings.lastBackupAt>7*864e5)&&S.customers.size?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${S.settings.lastBackupAt?"مرّ أكثر من أسبوع على آخر نسخة احتياطية.":"لم تحفظ نسخة احتياطية بعد."}</span><button class="btn sm" type="button" data-act="gobackup">${I.save}احفظ نسخة</button></div>`:""}
         ${(()=>{const due=[...S.customers.values()].filter(c=>!isSup(c)&&c.promise&&promiseLeft(c)<=0&&balanceOf(c.id)>0);if(!due.length)return "";
           const today=due.filter(c=>promiseLeft(c)===0).length,past=due.length-today;
@@ -765,13 +795,7 @@ function homeView(){
           if(due.length){const tot=due.reduce((a,x)=>a+x.rem,0),late=due.filter(x=>x.left<0).length;
             h+=`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${due.length}</b> فاتورة موردين ${late?`(${late} متأخرة)`:"قرب موعد دفعها"} بمجموع <b class="num">${fmt(tot)}</b> ${CUR}</span><button class="btn sm" type="button" data-act="gosup">عرضها</button></div>`}
           return h})()}
-        ${supOwed>0?`<div class="banner warn">علينا للموردين: <b class="num">${fmt(supOwed)}</b> ${CUR}</div>`:""}</section>
-  <section class="stats" aria-label="ملخص">
-    <div class="stat main"><div class="k">${I.wallet}مجموع الدين</div><div class="v"><span class="num">${fmt(total)}</span><small>${CUR}</small></div></div>
-    <div class="stat"><div class="k">${I.users}الزبائن</div><div class="v"><span class="num">${custN}</span><small>${owing} عليهم دين</small></div></div>
-    <div class="stat"><div class="k">${I.check}المحصّل هذا الشهر</div><div class="v paid"><span class="num">${fmt(mPay)}</span><small>${CUR}</small></div></div>
-    <div class="stat"><div class="k">${I.trend}المضاف هذا الشهر</div><div class="v debt"><span class="num">${fmt(mAdd)}</span><small>${CUR}</small></div></div>
-  </section>
+        ${supOwed>0?`<div class="banner warn">علينا للموردين: <b class="num">${fmt(supOwed)}</b> ${CUR}</div>`:""}</div>
   <div class="home-grid">
     <section class="pane card-pad" aria-label="سجل النشاط">
       <div class="section-title"><h2>سجل النشاط</h2></div>
