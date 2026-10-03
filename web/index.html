@@ -153,7 +153,7 @@ select.sort{border:1px solid var(--line);background:var(--paper-2);border-radius
 .period select{border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:6px 10px;font-size:13px}
 tr.edge td{background:var(--paper-2);color:var(--muted);font-size:13px}
 .rem-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;flex-wrap:wrap}
-.rem-row .meta{flex:1;min-width:140px}.rem-row .meta b{display:block}.rem-row .meta span{font-size:12.5px;color:var(--muted)}
+.rem-row .meta{flex:1;min-width:140px}.rem-row .meta b{display:block}.rem-row .meta span{display:block;font-size:12.5px;color:var(--muted)}.rem-row .meta span.late{color:var(--debt);font-weight:600}
 .empty{padding:26px 18px;text-align:center;color:var(--muted)}
 .empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
 
@@ -272,6 +272,8 @@ td.x{width:64px;white-space:nowrap}
 .sr{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px;background:var(--paper)}
 .sr.warn{border-color:var(--warn);background:var(--warn-soft)}
 .sr.bad{border-color:var(--debt)}
+.sr.dup{border-color:var(--debt);background:var(--debt-soft,rgba(224,69,69,.08))}
+.sr-dup{font-size:12.5px;font-weight:600;color:var(--debt)}
 .sr-top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
 .sr-top b{color:var(--ink)}
 .sr select,.sr input{border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:8px 10px;width:100%;min-width:0;color:var(--ink)}
@@ -366,7 +368,7 @@ const DEFAULT_TPL={
   remind:"مرحباً {الاسم}،\nنذكّرك بأن الرصيد المتبقي عليك هو {الرصيد} د.ع.\nنتشرف بزيارتك.\n{المتجر}"
 };
 const S={customers:new Map(),txns:new Map(),accounts:new Map(),activity:[],settings:{},
-  me:null,isOwner:false,view:"home",kind:"customer",period:"all",remTab:"send",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,ready:{c:false,t:false,a:false,s:false}};
+  me:null,isOwner:false,view:"home",kind:"customer",period:"all",remTab:"send",remFilter:"all",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,ready:{c:false,t:false,a:false,s:false}};
 let db=null,auth=null,unsubs=[],dataOn=false,flash=null,REG=null,installEvt=null;
 const NATIVE=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
 const DOMAIN="shahm-debts.app",OWNER_USER="admin";
@@ -457,6 +459,21 @@ function applyTheme(v){if(v==="dark"||v==="light")document.documentElement.setAt
 try{applyTheme(localStorage.getItem(THEME_KEY))}catch(e){}
 
 /* ---------- derived ---------- */
+/* Customers who owe and have not paid for LATE_DAYS days (counted from their last payment, or their first debt if they never paid). */
+const LATE_DAYS=30;
+function lateInfo(){
+  const out=new Map();const firstDebt=new Map(),lastPay=new Map();
+  for(const t of S.txns.values()){const id=t.customerId;if(!t.date)continue;
+    if(t.type==="pay"){if(!lastPay.has(id)||t.date>lastPay.get(id))lastPay.set(id,t.date)}
+    else if(!firstDebt.has(id)||t.date<firstDebt.get(id))firstDebt.set(id,t.date)}
+  const per=stats(),today=new Date(todayISO()+"T12:00:00");
+  for(const c of S.customers.values()){if(isSup(c)||!(per.get(c.id).bal>0))continue;
+    const from=lastPay.get(c.id)||firstDebt.get(c.id);if(!from)continue;
+    const days=Math.round((today-new Date(from+"T12:00:00"))/864e5);
+    out.set(c.id,{days,paid:lastPay.has(c.id),late:days>=LATE_DAYS})}
+  return out;
+}
+const lateText=x=>x?(x.paid?`آخر دفعة قبل ${x.days} يوم`:`ما دافع من أول دين (${x.days} يوم)`):"";
 function stats(){
   const per=new Map();
   for(const c of S.customers.values())per.set(c.id,{bal:0,debt:0,paid:0,last:c.createdAt||0,count:0});
@@ -630,6 +647,7 @@ function homeView(){
   <section class="pane card-pad"><div class="section-title"><h2>إجراءات سريعة</h2></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button><button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`:""}<button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين (${owing})</button></div>
         ${isAdmin()&&(!S.settings.lastBackupAt||Date.now()-S.settings.lastBackupAt>7*864e5)&&S.customers.size?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${S.settings.lastBackupAt?"مرّ أكثر من أسبوع على آخر نسخة احتياطية.":"لم تحفظ نسخة احتياطية بعد."}</span><button class="btn sm" type="button" data-act="gobackup">${I.save}احفظ نسخة</button></div>`:""}
+        ${(()=>{const n=[...lateInfo().values()].filter(x=>x.late).length;return n?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${n}</b> زبون ما دافع من أكثر من ${LATE_DAYS} يوم.</span><button class="btn sm" type="button" data-go="reminders" data-remf="late">${I.bell}عرضهم</button></div>`:""})()}
         ${supOwed>0?`<div class="banner warn">علينا للموردين: <b class="num">${fmt(supOwed)}</b> ${CUR}</div>`:""}</section>
   <section class="stats" aria-label="ملخص">
     <div class="stat main"><div class="k">${I.wallet}مجموع الدين</div><div class="v"><span class="num">${fmt(total)}</span><small>${CUR}</small></div></div>
@@ -665,7 +683,7 @@ function customersView(){
         <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="q" type="search" placeholder="ابحث بالاسم أو رقم الهاتف" autocomplete="off" value="${esc(S.q)}"></div>
         <div class="row-tools">
-          <div class="seg" role="group" aria-label="تصفية">${[["all","الكل"],["owe","عليهم دين"],["clear","مسددين"]].map(([k,l])=>`<button type="button" data-f="${k}" aria-pressed="${S.filter===k}">${l}</button>`).join("")}</div>
+          <div class="seg" role="group" aria-label="تصفية">${[["all","الكل"],["owe","عليهم دين"],["clear","مسددين"],["nophone",`بدون رقم (${[...S.customers.values()].filter(c=>kindOf(c)===S.kind&&!normDigits(c.phone).replace(/\D/g,"")).length})`]].map(([k,l])=>`<button type="button" data-f="${k}" aria-pressed="${S.filter===k}">${l}</button>`).join("")}</div>
           <select class="sort" id="sort" aria-label="ترتيب">${[["bal","الأعلى ديناً"],["recent","آخر حركة"],["name","الاسم"]].map(([k,l])=>`<option value="${k}" ${S.sort===k?"selected":""}>${l}</option>`).join("")}</select>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn primary" type="button" data-act="newcust" style="flex:1">${I.plus}${S.kind==="supplier"?"إضافة مورد":"إضافة زبون"}</button>`:""}<button class="btn" type="button" data-act="listpdf">${I.pdf}تقرير PDF</button></div>
@@ -682,6 +700,7 @@ function renderList(){
     const p=per.get(c.id);
     if(S.filter==="owe"&&!(p.bal>0))return false;
     if(S.filter==="clear"&&p.bal>0)return false;
+    if(S.filter==="nophone"&&normDigits(c.phone).replace(/\D/g,""))return false;
     if(!q)return true;
     return (c.name||"").toLowerCase().includes(q)||normDigits(c.phone).replace(/\s/g,"").includes(q.replace(/\s/g,""));
   });
@@ -763,13 +782,17 @@ function openCustomer(id){S.view="customers";S.selected=id;const oc=S.customers.
 function lastRemindMap(){const m=new Map();for(const a of S.activity){if(a.kind==="remind"&&a.customerId&&!m.has(a.customerId))m.set(a.customerId,a.at)}return m}
 function remindersView(){
   const per=stats();const last=lastRemindMap();
-  const list=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal})).filter(x=>x.b>0).sort((a,b)=>b.b-a.b);
+  const LI=lateInfo();const lateN=[...LI.values()].filter(x=>x.late).length;
+  if(S.remFilter==="late"&&!lateN)S.remFilter="all";
+  const list=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal,li:LI.get(c.id)})).filter(x=>x.b>0&&(S.remFilter!=="late"||(x.li&&x.li.late)))
+    .sort(S.remFilter==="late"?(a,b)=>b.li.days-a.li.days:(a,b)=>b.b-a.b);
   const logs=S.activity.filter(a=>a.kind==="remind");
   return `<section class="pane card-pad">
     <div class="seg kind-seg" role="group" aria-label="التذكيرات"><button type="button" data-remtab="send" aria-pressed="${S.remTab==="send"}">إرسال تذكيرات</button><button type="button" data-remtab="log" aria-pressed="${S.remTab==="log"}">سجل التذكيرات (${logs.length})</button></div>
     ${S.remTab==="send"?`<p class="ro-note" style="margin:0">اضغط «إرسال» يفتح واتساب على رقم الزبون والرسالة جاهزة فيها اسمه والمبلغ المتبقي، وأنت تضغط إرسال. نص الرسالة يتغيّر من الإعدادات ← قوالب الرسائل.</p>
-      ${list.length?list.map(({c,b})=>{const l=c.phone?waLink(c.phone,fillTpl("remind",c)):"";const lr=last.get(c.id);
-        return `<div class="rem-row"><span class="avatar">${initial(c.name)}</span><div class="meta"><b>${esc(c.name)}</b><span>${lr?"آخر تذكير: "+esc(timeAgo(lr)):"لم يُرسل له تذكير"}</span></div>
+      <div class="chips" role="group" aria-label="تصفية المدينين"><button type="button" data-remf="all" aria-pressed="${S.remFilter==="all"}">كل المدينين</button><button type="button" data-remf="late" aria-pressed="${S.remFilter==="late"}">متأخرين أكثر من ${LATE_DAYS} يوم (${lateN})</button></div>
+      ${list.length?list.map(({c,b,li})=>{const l=c.phone?waLink(c.phone,fillTpl("remind",c)):"";const lr=last.get(c.id);
+        return `<div class="rem-row"><span class="avatar">${initial(c.name)}</span><div class="meta"><b>${esc(c.name)}</b>${li?`<span class="${li.late?"late":""}">${lateText(li)}</span>`:""}<span>${lr?"آخر تذكير: "+esc(timeAgo(lr)):"لم يُرسل له تذكير"}</span></div>
         <span class="chip debt"><span class="num">${fmt(b)}</span></span>
         ${l?`<a class="btn wa sm" href="${esc(l)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}">${I.wa}إرسال</a>`:(canWrite()?`<button class="btn sm" type="button" data-open="${esc(c.id)}">أضف رقمه</button>`:`<span class="ro-note">بدون رقم</span>`)}</div>`}).join("")
       :`<div class="empty"><b>لا توجد ديون</b>كل الزبائن مسددين.</div>`}`
@@ -1114,6 +1137,8 @@ function txnForm(type,existing){
       if(isDebt&&!existing&&c.limit>0&&bal+amt>c.limit&&!m.dataset.limitOk){$("#tErr").textContent=`سيصبح الدين ${fmt(bal+amt)} وهو أكثر من الحد ${fmt(c.limit)}. اضغط حفظ مرة ثانية للتأكيد.`;m.dataset.limitOk="1";return}
       const date=$("#tDate").value||todayISO(),note=$("#tNote").value.trim();
       const what=isDebt?"debt":"pay";
+      if(!existing&&!m.dataset.dupOk&&[...S.txns.values()].some(t=>t.customerId===c.id&&t.type===what&&t.amount===amt&&Date.now()-(t.createdAt||0)<5*60e3)){
+        m.dataset.dupOk="1";$("#tErr").textContent=`نفس ال${isDebt?"دين":"تسديد"} (${fmt(amt)}) انسجل لهذا الزبون قبل دقائق. اضغط حفظ مرة ثانية إذا هو جديد.`;return}
       if(existing){
         const obj={...existing,amount:amt,note,date,updatedAt:Date.now(),updatedBy:S.me.name};
         const changed=[existing.amount!==amt?`المبلغ من ${fmt(existing.amount)} إلى ${fmt(amt)}`:"",existing.note!==note?"البيان":"",existing.date!==date?"التاريخ":""].filter(Boolean).join("، ");
@@ -1222,7 +1247,10 @@ function scanReview(rows,pics){
       ${custBtn(r)}
       <div class="sr-row"><div class="seg" role="group" aria-label="نوع الحركة"><button type="button" data-t="debt" aria-pressed="${r.type==="debt"}">دين</button><button type="button" data-t="pay" aria-pressed="${r.type==="pay"}">تسديد</button></div><input data-f="amt" inputmode="numeric" aria-label="المبلغ" value="${r.amount?fmt(r.amount):""}" placeholder="المبلغ"></div>
       <input data-f="note" maxlength="140" aria-label="المواد" value="${esc(r.note)}" placeholder="المواد (اختياري)">
+      <div class="sr-dup" hidden>⚠️ هذي الحركة مسجّلة قبل لنفس الزبون بنفس التاريخ والمبلغ</div>
     </div>`};
+  // Same customer, type, amount and date already in the book: most likely the same sheet photographed twice.
+  const isDup=(r,date)=>!!r.cust&&r.cust!=="new"&&r.amount>0&&[...S.txns.values()].some(t=>t.customerId===r.cust&&t.type===r.type&&t.amount===r.amount&&t.date===date);
   openModal(`<h3>راجع الحركات قبل الحفظ</h3>
     <p class="hint">المظلّل بالأصفر تأكد منه. تكدر تغيّر الزبون أو المبلغ أو تحذف السطر.</p>
     <details><summary>عرض الصورة</summary><div class="scan-thumbs">${pics.map(u=>`<img src="${u}" alt="صورة الورقة">`).join("")}</div></details>
@@ -1233,7 +1261,10 @@ function scanReview(rows,pics){
     <div class="foot"><button class="btn primary" type="button" id="srSave">حفظ</button><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
     m.classList.add("wide");setTimeout(()=>document.activeElement&&document.activeElement.blur(),0);
     const list=m.querySelector("#srList");
-    const sum=()=>{const live=R.filter(r=>!r.gone);let d=0,p=0;for(const r of live)r.type==="pay"?p+=r.amount||0:d+=r.amount||0;
+    const markDups=()=>{const date=m.querySelector("#srDate").value||todayISO();let n=0;
+      list.querySelectorAll(".sr").forEach(c=>{const dup=isDup(R[c.dataset.i],date);c.classList.toggle("dup",dup);c.querySelector(".sr-dup").hidden=!dup;if(dup)n++});return n};
+    m.querySelector("#srDate").addEventListener("change",()=>{delete m.dataset.dupOk;sum()});
+    const sum=()=>{markDups();const live=R.filter(r=>!r.gone);let d=0,p=0;for(const r of live)r.type==="pay"?p+=r.amount||0:d+=r.amount||0;
       const nw=new Set(live.filter(r=>r.cust==="new").map(r=>r.written_name.trim())).size;
       m.querySelector("#srSum").innerHTML=`<span class="chip zero">${live.length} حركة</span><span class="chip debt">ديون ${fmt(d)}</span>${p?`<span class="chip paid">تسديد ${fmt(p)}</span>`:""}${nw?`<span class="chip warn">${nw} زبون جديد</span>`:""}`;
       m.querySelector("#srSave").textContent=`حفظ ${live.length} حركة`;m.querySelector("#srSave").disabled=!live.length};
@@ -1255,6 +1286,8 @@ function scanReview(rows,pics){
       const live=R.filter(r=>!r.gone);let bad=0;
       list.querySelectorAll(".sr").forEach(c=>{const r=R[c.dataset.i];const ok=r.cust&&r.amount>0&&(r.cust!=="new"||r.written_name.trim());c.classList.toggle("bad",!ok);if(!ok)bad++});
       if(bad){m.querySelector("#srErr").textContent=`${bad} سطر ناقص: اختر الزبون واكتب المبلغ، أو احذف السطر.`;list.querySelector(".sr.bad").scrollIntoView({block:"center",behavior:"smooth"});return}
+      const dups=markDups();
+      if(dups&&!m.dataset.dupOk){m.dataset.dupOk="1";m.querySelector("#srErr").textContent=`${dups} حركة مسجّلة قبل بنفس التاريخ والمبلغ، يمكن الورقة انحفظت قبل. احذفها، أو اضغط حفظ مرة ثانية إذا هي حركات جديدة.`;list.querySelector(".sr.dup").scrollIntoView({block:"center",behavior:"smooth"});return}
       const date=m.querySelector("#srDate").value||todayISO();const made=new Map();let t0=Date.now();
       for(const r of live){
         let cid=r.cust;
@@ -1391,12 +1424,13 @@ function restorePreview(text){
 document.addEventListener("click",e=>{
   if(!S.me)return;
   const t=e.target;
-  const g=t.closest("[data-go]");if(g){go(g.dataset.go);return}
+  const g=t.closest("[data-go]");if(g){if(g.dataset.remf){S.remTab="send";S.remFilter=g.dataset.remf}go(g.dataset.go);return}
   const o=t.closest("[data-open]");if(o){openCustomer(o.dataset.open);return}
   const kd=t.closest("[data-kind]");if(kd){S.kind=kd.dataset.kind;S.selected=null;render();return}
   const qd=t.closest("[data-qdebt]");if(qd&&canWrite()){S.selected=qd.dataset.qdebt;render();txnForm("debt");return}
   const qp=t.closest("[data-qpay]");if(qp&&canWrite()){S.selected=qp.dataset.qpay;render();txnForm("pay");return}
   const rt=t.closest("[data-remtab]");if(rt){S.remTab=rt.dataset.remtab;render();return}
+  const rf=t.closest("[data-remf]");if(rf){S.remTab="send";S.remFilter=rf.dataset.remf;render();return}
   const rm=t.closest("[data-remind]");if(rm){const rc=S.customers.get(rm.dataset.remind);if(rc){log("remind","remind",{customerName:rc.name,customerId:rc.id,amount:balanceOf(rc.id)});rm.classList.remove("wa");rm.textContent="✓ أُرسل"}return}
   const af=t.closest("[data-actf]");if(af){S.actFilter=af.dataset.actf;render();return}
   const f=t.closest("[data-f]");if(f){S.filter=f.dataset.f;document.querySelectorAll("[data-f]").forEach(x=>x.setAttribute("aria-pressed",x===f));renderList();return}
