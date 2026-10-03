@@ -1,6 +1,6 @@
 // Offline shell: the page always tries the network first (so updates arrive), everything else is served
 // from cache and refreshed in the background. Firebase traffic is cross-origin and never touched here.
-const CACHE = "shahm-v2";
+const CACHE = "shahm-v3";
 const SHELL = [
   "./", "index.html", "config.js", "manifest.webmanifest",
   "vendor/firebase-app-compat.js", "vendor/firebase-auth-compat.js", "vendor/firebase-firestore-compat.js",
@@ -18,7 +18,9 @@ self.addEventListener("fetch", e => {
   const req = e.request;
   if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
   if (req.mode === "navigate") {
-    e.respondWith(fetch(req).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put("index.html", copy)); return r; })
+    // Only the app page goes into the index.html slot; other pages (the printable sheet) must not replace it.
+    const isApp = /\/(index\.html)?$/.test(new URL(req.url).pathname);
+    e.respondWith(fetch(req).then(r => { if (isApp && r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put("index.html", copy)); } return r; })
       .catch(() => caches.match("index.html")));
     return;
   }

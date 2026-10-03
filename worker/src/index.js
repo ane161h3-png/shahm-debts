@@ -15,6 +15,12 @@ How the ledger is written:
 - Lines that are completely crossed out were cancelled: skip them. Skip headings, dates, page totals and sums.
 - Amounts are Iraqi dinars. Shopkeepers usually write them in thousands: the smallest banknote is 250, so any amount below 250 is in thousands (5 → 5000, 2.5 or 2,5 → 2500, 7½ → 7500, 0.5 → 500). Amounts like 250, 750, 1500 or 25000 are literal. Digits may be Arabic-Indic (٠١٢٣٤٥٦٧٨٩).
 
+The shop may also use its printed form "ماركت الشهم · ورقة اليوميات" (tag "SHAHM DAILY SHEET"). On that form:
+- Each numbered table row (ت 1–22) is one entry. Columns from right to left: ت (printed row number, ignore it), اسم الزبون (name), المبلغ (amount), واصل (a small box), المواد / ملاحظة (note).
+- A tick, cross, dot or scribble inside the واصل box means the customer paid: type "pay". An empty box means "debt". Payment words written anywhere in the row also mean "pay".
+- Skip empty rows, the printed headings and instructions, the date and sheet number at the top, and the مجموع الديون / مجموع الواصل totals at the bottom.
+- A row with a line through it was cancelled: skip it.
+
 For every entry, in the order it appears on the page:
 - written_name: the name exactly as written.
 - customer_id: the id of the same person from the customer list. Allow for spelling variants (ة/ه، ى/ي، أ/إ/ا، with or without ال، shortened names, a nickname that clearly matches a listed name). Use "" when nobody in the list is the same person.

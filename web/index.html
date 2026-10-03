@@ -263,6 +263,7 @@ td.x{width:64px;white-space:nowrap}
 .modal.wide .foot{position:sticky;bottom:-18px;background:var(--paper);padding:10px 0;margin-bottom:-8px}
 .scan-pick{display:flex;flex-direction:column;gap:8px}
 .scan-pick label{cursor:pointer}
+.hint a{color:var(--accent);font-weight:600}
 .scan-wait{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0;color:var(--muted);text-align:center}
 .scan-thumbs{display:flex;gap:6px;overflow-x:auto}
 .scan-thumbs img{height:220px;border-radius:10px;border:1px solid var(--line)}
@@ -1114,6 +1115,7 @@ async function shrinkImage(file){
   const url=cv.toDataURL("image/jpeg",.85);
   return {url,data:url.slice(url.indexOf(",")+1),media_type:"image/jpeg"};
 }
+const SHEET_URL="https://ane161h3-png.github.io/shahm-debts/daily-sheet.pdf";
 function scanStart(){
   if(!window.AI_URL){openModal(`<h3>تصوير ورقة اليوميات</h3><p class="hint">هذي الخاصية بعدها ما مفعّلة. تحتاج ربط خدمة الذكاء الاصطناعي أول مرة.</p><div class="foot"><button class="btn" type="button" data-close>تمام</button></div>`);return}
   openModal(`<h3>تصوير ورقة اليوميات</h3>
@@ -1121,9 +1123,10 @@ function scanStart(){
     <div id="scBody"><div class="scan-pick">
       <label class="btn primary block">${I.camera}تصوير الورقة<input type="file" accept="image/*" capture="environment" hidden id="scCam"></label>
       <label class="btn block">اختيار صور من المعرض (لحد 4)<input type="file" accept="image/*" multiple hidden id="scGal"></label>
-    </div></div>
+    </div><p class="hint">للقراءة الأدق استعمل <a href="#" id="scSheet">ورقة اليوميات الجاهزة للطباعة (A4)</a>.</p></div>
     <p class="err" id="scErr"></p>
     <div class="foot"><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
+    m.querySelector("#scSheet").onclick=e=>{e.preventDefault();openExternal(NATIVE?SHEET_URL:"daily-sheet.pdf")};
     const go=async files=>{
       files=[...files].slice(0,4);if(!files.length)return;
       const err=m.querySelector("#scErr");err.textContent="";
