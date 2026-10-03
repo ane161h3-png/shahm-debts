@@ -626,24 +626,49 @@ function keypadForm(){
   });
 }
 
-/* ---------- barcode: phone camera (BarcodeDetector) and USB scanners that type like a keyboard ---------- */
-const canScan=()=>"BarcodeDetector" in window&&!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
+/* ---------- barcode: phone camera and USB scanners that type like a keyboard ----------
+   The camera uses the browser's own BarcodeDetector where it exists (Chrome on Android) and the bundled ZXing reader
+   everywhere else (iPhone, laptops), so the scan button works on any device with a camera. */
+const canScan=()=>!!(window.isSecureContext&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
+const SCAN_FORMATS=["ean_13","ean_8","upc_a","upc_e","code_128","code_39","code_93","itf","codabar","qr_code"];
+async function nativeDetector(){
+  if(!("BarcodeDetector" in window))return null;
+  try{const fm=await BarcodeDetector.getSupportedFormats();const use=SCAN_FORMATS.filter(f=>fm.includes(f));if(!use.includes("ean_13"))return null;
+    const det=new BarcodeDetector({formats:use});return async v=>{const r=await det.detect(v);return r&&r.length?r[0].rawValue:""}}catch(e){return null}
+}
+async function zxingDetector(){
+  await loadScript("../vendor/zxing.min.js");const Z=window.ZXing;
+  const F=Z.BarcodeFormat,hints=new Map();
+  hints.set(Z.DecodeHintType.POSSIBLE_FORMATS,[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128,F.CODE_39,F.CODE_93,F.ITF,F.CODABAR,F.QR_CODE]);
+  hints.set(Z.DecodeHintType.TRY_HARDER,true);
+  const reader=new Z.MultiFormatReader();reader.setHints(hints);
+  // Each frame is copied to our own canvas (at most 960px wide) and decoded from there.
+  const cv=document.createElement("canvas"),cx=cv.getContext("2d",{willReadFrequently:true});
+  return async v=>{
+    const k=Math.min(1,960/(v.videoWidth||960));cv.width=Math.round((v.videoWidth||640)*k);cv.height=Math.round((v.videoHeight||480)*k);
+    cx.drawImage(v,0,0,cv.width,cv.height);
+    try{return reader.decode(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(cv))),hints).getText()}catch(e){return ""}};
+}
 async function scanBarcode(onCode){
-  openModal(`<h3>مسح الباركود</h3><p class="hint">وجّه الكاميرا على الباركود.</p><video class="scan-video" id="scv" playsinline muted></video><p class="err" id="scErr"></p>
-    <div class="foot"><button class="btn" type="button" data-close>إلغاء</button></div>`);
+  openModal(`<h3>مسح الباركود</h3><p class="hint">وجّه الكاميرا على الباركود وقرّبها لحد ما يوضح.</p><video class="scan-video" id="scv" playsinline muted autoplay></video><p class="err" id="scErr"></p>
+    <form id="scf" class="tool-row" novalidate><div class="field" style="flex:1"><input id="scMan" inputmode="numeric" style="direction:ltr;text-align:right" placeholder="أو اكتب الرقم اللي جوة الباركود" aria-label="رقم الباركود"></div><button class="btn" type="submit">تم</button></form>
+    <div class="foot"><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
+    m.querySelector("#scf").addEventListener("submit",e=>{e.preventDefault();const v=normDigits(m.querySelector("#scMan").value).trim();if(v){closeModal();onCode(v)}});
+  });
+  $("#scMan").blur();
   let stream=null,stop=false,timer=null;
   modalCleanup=()=>{stop=true;clearTimeout(timer);if(stream)stream.getTracks().forEach(t=>t.stop())};
   try{
-    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});
     if(stop){stream.getTracks().forEach(t=>t.stop());return}
     const v=$("#scv");v.srcObject=stream;await v.play();
-    const fm=await BarcodeDetector.getSupportedFormats().catch(()=>[]);
-    const det=new BarcodeDetector(fm.length?{formats:fm}:undefined);
+    const detect=(await nativeDetector())||(await zxingDetector());
     const tick=async()=>{if(stop)return;
-      try{const r=await det.detect(v);if(r&&r.length&&r[0].rawValue){const code=r[0].rawValue.trim();closeModal();if(navigator.vibrate)navigator.vibrate(60);onCode(code);return}}catch(e){}
-      timer=setTimeout(tick,200)};
+      if(v.readyState>=2){let code="";try{code=(await detect(v)||"").trim()}catch(e){}
+        if(code&&!stop){closeModal();if(navigator.vibrate)navigator.vibrate(60);onCode(normDigits(code));return}}
+      timer=setTimeout(tick,150)};
     tick();
-  }catch(e){console.warn(e);const er=$("#scErr");if(er)er.textContent=e&&e.name==="NotAllowedError"?"ما انطت صلاحية الكاميرا. فعّلها من إعدادات المتصفح.":"تعذّر تشغيل الكاميرا."}
+  }catch(e){console.warn(e);const er=$("#scErr");if(er)er.textContent=e&&e.name==="NotAllowedError"?"ما انطت صلاحية الكاميرا. فعّلها من إعدادات المتصفح للموقع، أو اكتب الرقم يدوي.":e&&e.name==="NotFoundError"?"ماكو كاميرا بهذا الجهاز. اكتب الرقم يدوي.":"تعذّر تشغيل الكاميرا. اكتب الرقم يدوي."}
 }
 function sellCode(code){
   const t=normDigits(code).trim();if(!t)return false;
@@ -1015,7 +1040,8 @@ function renderProducts(){
     :`<li class="empty"><b>${S.products.size?"ماكو نتائج":"ماكو مواد بعد"}</b>${S.products.size?"":"اضغط «مادة جديدة» وأضف المواد وأسعارها، وبعدها تطلع بشاشة البيع."}</li>`;
 }
 function productForm(p){
-  const isNew=!p;p=p||{name:"",price:"",category:S.pcat!=="all"?S.pcat:cats()[0],barcode:"",active:true};
+  // A draft coming back from the camera scan carries __new, so a new item stays new.
+  const isNew=!p||!!p.__new;p=p||{name:"",price:"",category:S.pcat!=="all"?S.pcat:cats()[0],barcode:"",active:true};
   const cl=cats().includes(p.category)||!p.category?cats():[p.category,...cats()];
   openModal(`<h3>${isNew?"مادة جديدة":"تعديل مادة"}</h3>
     <form id="pf" class="field" style="gap:12px" novalidate>
@@ -1028,7 +1054,7 @@ function productForm(p){
       <div class="foot"><button class="btn primary" type="submit">${isNew?"إضافة":"حفظ"}</button>${isNew?"":`<button class="btn ghost danger-text" type="button" id="pDel">${I.trash}حذف</button>`}<button class="btn" type="button" data-close>رجوع</button></div>
     </form>`,m=>{
     const sc=m.querySelector("#pScan");
-    if(sc)sc.onclick=()=>{const draft={name:m.querySelector("#pName").value,price:parseAmt(m.querySelector("#pPrice").value)||"",category:m.querySelector("#pCat").value,active:p.active};
+    if(sc)sc.onclick=()=>{const pv=parseAmt(m.querySelector("#pPrice").value);const draft={name:m.querySelector("#pName").value,price:pv>=0?pv:"",category:m.querySelector("#pCat").value,active:p.active};
       scanBarcode(code=>productForm({...p,...draft,barcode:code,__new:isNew}))};
     const d=m.querySelector("#pDel");
     if(d)d.onclick=()=>{if(!confirm(`حذف «${p.name}» من القائمة؟ الفواتير القديمة تبقى مثل ما هي.`))return;
