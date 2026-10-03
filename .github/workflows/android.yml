@@ -28,8 +28,8 @@ jobs:
         run: |
           npx cap add android
           npx @capacitor/assets generate --android \
-            --iconBackgroundColor '#4a46c9' --iconBackgroundColorDark '#4a46c9' \
-            --splashBackgroundColor '#eef0f6' --splashBackgroundColorDark '#121318'
+            --iconBackgroundColor '#0e5a3a' --iconBackgroundColorDark '#0e5a3a' \
+            --splashBackgroundColor '#f4f2ec' --splashBackgroundColorDark '#0f1512'
           npx cap sync android
           # Contact picker for customer phone numbers (Android shows one "Contacts" permission prompt).
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.READ_CONTACTS" />\n    <uses-permission android:name="android.permission.WRITE_CONTACTS" />#' android/app/src/main/AndroidManifest.xml

@@ -16,7 +16,9 @@ const RANGES = {
 };
 const fonts = [
   ["IBM Plex Sans Arabic", "ibm-plex-sans-arabic", [400, 500, 600, 700]],
-  ["Readex Pro", "readex-pro", [500, 600, 700]],
+  // Brand fonts (see BRAND.md): Tajawal for headings and amounts, Lalezar only for the shop name.
+  ["Tajawal", "tajawal", [500, 700, 800]],
+  ["Lalezar", "lalezar", [400]],
 ];
 let css = "";
 for (const [family, pkg, weights] of fonts)

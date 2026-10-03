@@ -15,6 +15,9 @@
 - Android عبر Capacitor: `.github/workflows/android.yml` يبني APK مع كل تحديث وينشره في Releases.
 - `.github/workflows/pages.yml` ينشر `web/` على GitHub Pages.
 
+## الهوية البصرية
+الألوان والخطوط والشعار موثقة في `BRAND.md`، وملفات الشعار ودليل الهوية في `brand/`.
+
 ## تحديث المكتبات
 `npm install && npm run vendor` ينسخ Firebase وjsPDF والخطوط إلى `web/vendor` حتى يشتغل البرنامج بدون CDN.
 
