@@ -90,14 +90,39 @@ function salesSummary(sales, inRange) {
   const list = sales.filter(s => s.status !== "void" && inRange(Number(s.at) || 0));
   const sum = k => list.reduce((a, s) => a + (Number(s[k]) || 0), 0);
   const items = new Map();
+  // Profit counts only items sold with a known purchase price (cost per sold unit), minus the discounts.
+  let margin = 0, costed = 0, uncosted = 0;
   for (const s of list) for (const i of s.items || []) {
     const x = items.get(i.name) || { qty: 0, total: 0 };
     x.qty += Number(i.qty) || 0; x.total += Number(i.total) || 0; items.set(i.name, x);
+    if (Number(i.cost) > 0) { costed++; margin += (Number(i.total) || 0) - Number(i.cost) * (Number(i.qty) || 0); }
+    else uncosted += Number(i.total) || 0;
   }
   return { n: list.length, total: sum("total"), cash: sum("cash"), debt: sum("debt"), discount: sum("discount"),
+    profit: costed ? margin - sum("discount") : null, uncosted,
     top: [...items].sort((a, b) => b[1].total - a[1].total).slice(0, 5) };
 }
 const salesLine = p => `🛒 مبيعات الكاشير: ${fmt(p.total)} د.ع (${p.n} فاتورة) · كاش ${fmt(p.cash)}${p.debt ? ` · دين ${fmt(p.debt)}` : ""}`;
+
+const profitLine = p => p.profit === null ? "" : `💰 الربح: ${fmt(p.profit)} د.ع${p.uncosted ? ` (مبيعات ${fmt(p.uncosted)} بدون سعر شراء ما محسوبة)` : ""}`;
+
+// Items to reorder or check: out of stock, at or under their minimum, expired or expiring within 30 days.
+function stockAlerts(products, today) {
+  const out = [];
+  const days = iso => Math.round((Date.parse(iso + "T12:00:00Z") - Date.parse(today + "T12:00:00Z")) / 864e5);
+  for (const p of products) {
+    if (p.active === false) continue;
+    const w = [];
+    if (p.track === true) {
+      const s = Number(p.stock) || 0, u = p.unit || "حبة";
+      if (s <= 0) w.push("خلصت");
+      else if (Number(p.min) > 0 && s <= Number(p.min)) w.push(`باقي ${Math.round(s * 1000) / 1000} ${u}`);
+    }
+    if (p.expiry) { const d = days(p.expiry); if (d < 0) w.push(`انتهت ${p.expiry}`); else if (d <= 30) w.push(`تنتهي ${p.expiry}`); }
+    if (w.length) out.push(`  • ${p.name}: ${w.join("، ")}`);
+  }
+  return out;
+}
 
 const BAGHDAD = 3 * 3600e3;
 const isoDay = ms => new Date(ms + BAGHDAD).toISOString().slice(0, 10);
@@ -108,7 +133,7 @@ function reportDay(now) {
   const local = new Date(now.getTime() + BAGHDAD);
   return isoDay(now.getTime() - (local.getUTCHours() < 12 ? 24 * 3600e3 : 0));
 }
-function daySummary(customers, txns, settings, now, sales = []) {
+function daySummary(customers, txns, settings, now, sales = [], products = []) {
   const day = reportDay(now);
   const next = isoDay(Date.parse(day + "T12:00:00Z") + 24 * 3600e3);
   const byId = new Map(customers.map(c => [c.id, c]));
@@ -135,6 +160,7 @@ function daySummary(customers, txns, settings, now, sales = []) {
   const pos = salesSummary(sales, ms => isoDay(ms) === day);
   if (pos.n) {
     lines.push(salesLine(pos));
+    if (profitLine(pos)) lines.push(profitLine(pos));
     if (pos.discount) lines.push(`🏷 خصومات: ${fmt(pos.discount)} د.ع`);
     if (pos.top.length) lines.push("أكثر المواد مبيعاً:", ...pos.top.map(([n, x]) => `  • ${n}: ${fmt(x.total)}`));
     lines.push("");
@@ -151,6 +177,8 @@ function daySummary(customers, txns, settings, now, sales = []) {
     if (who.size) lines.push("", "منو سجّل:", ...[...who].sort((a, b) => b[1] - a[1]).map(([k, v]) => `  • ${k}: ${v}`));
   }
   if (promised.length) lines.push("", `🤝 وعدوا يدفعون يوم ${next}:`, ...promised);
+  const alerts = stockAlerts(products, isoDay(now.getTime()));
+  if (alerts.length) lines.push("", "📦 تنبيهات المخزن:", ...alerts.slice(0, 15), ...(alerts.length > 15 ? [`  … و ${alerts.length - 15} غيرها (تبويب المواد بالكاشير)`] : []));
   return lines.join("\n");
 }
 
@@ -267,7 +295,7 @@ async function main() {
   await sendFile(`نسخة-ديون-${slug}-${day}.json`, backupJson, "application/json", caption);
   console.log(`Sent backup: ${customers.length} accounts, ${txns.length} transactions, ${activity.length} activity entries.`);
 
-  await tg("sendMessage", { chat_id: chat, text: daySummary(customers, txns, settings, now, sales) });
+  await tg("sendMessage", { chat_id: chat, text: daySummary(customers, txns, settings, now, sales, products).slice(0, 4000) });
   console.log("Sent end-of-day summary.");
 
   // Every transaction of the reported day in one PDF (CSV if no browser is available to print it).

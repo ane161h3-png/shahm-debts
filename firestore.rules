@@ -19,7 +19,12 @@ service cloud.firestore {
     }
     match /settings/{id}  { allow read: if active(); allow write: if isOwner(); }
     // Cashier (web/pos/): the owner manages items and prices; editors sell; only the owner cancels a sale.
-    match /products/{id}  { allow read: if active(); allow write: if isOwner(); }
+    // A sale lowers the stock of what it sold, so editors may change the stock field and nothing else.
+    match /products/{id}  {
+      allow read: if active();
+      allow write: if isOwner();
+      allow update: if writer() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']);
+    }
     match /sales/{id} {
       allow read: if active();
       allow create: if writer();
