@@ -33,9 +33,7 @@ col.c-n{width:6mm}
 col.c-name{width:auto}
 col.c-items{width:25mm}
 col.c-amt{width:28mm}
-footer{display:flex;justify-content:space-between;align-items:center;gap:4mm;border:.5mm solid #000;border-radius:2mm;padding:1.5mm 3mm;font-size:11pt;font-weight:700}
-footer>div{display:flex;align-items:flex-end;gap:1.5mm;white-space:nowrap}
-footer .hint{font-size:7.5pt;font-weight:500;color:#333;white-space:normal;line-height:1.35;max-width:62mm}
+header .hint{flex:1;white-space:nowrap;font-size:8pt;font-weight:500;color:#333;line-height:1.35;text-align:center}
 .print{position:fixed;inset:auto 16px 16px auto;padding:10px 18px;font:600 15px "IBM Plex Sans Arabic",sans-serif;background:#0e5a3a;color:#fff7e8;border:0;border-radius:10px;cursor:pointer}
 @media screen{body{background:#ddd}.page{margin:10px auto;background:#fff;box-shadow:0 2px 12px #0003}}
 @media screen and (max-width:820px){.page{zoom:.45}}
@@ -47,6 +45,7 @@ footer .hint{font-size:7.5pt;font-weight:500;color:#333;white-space:normal;line-
 <div class="page">
   <header>
     <h1>ماركت الشهم<small>ورقة اليوميات</small></h1>
+    <div class="hint">التسديد: اكتب «واصل» جنب المبلغ<br>السطر الملغي: اشطبه بخط</div>
     <div class="fields">
       <div class="field">التاريخ: <span class="line" style="width:9mm"></span><i>/</i><span class="line" style="width:9mm"></span><i>/</i><span class="line" style="width:14mm"></span></div>
       <div class="field">ورقة رقم: <span class="line" style="width:11mm"></span></div>
@@ -56,11 +55,6 @@ footer .hint{font-size:7.5pt;font-weight:500;color:#333;white-space:normal;line-
     <table id="t1"></table>
     <table id="t2"></table>
   </div>
-  <footer>
-    <div>مجموع الديون: <span class="line" style="width:32mm"></span></div>
-    <div>مجموع الواصل: <span class="line" style="width:32mm"></span></div>
-    <div class="hint">زبون واحد بكل سطر · المبلغ كامل أو بالألف · إذا سدّد اكتب «واصل» جنب المبلغ · السطر الملغي اشطبه بخط</div>
-  </footer>
 </div>
 <script>
 // Two tables side by side: the right table holds rows 1-30, the left 31-60 (read right first).
