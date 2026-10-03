@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="ديون الشهم">
 <link rel="stylesheet" href="vendor/fonts/fonts.css">
 <style>
-/* Layout: shop debt app. Gate (login) -> app with Home / Customers / Settings. Wide: top tabs, list + account side by side. Narrow: bottom nav, one pane. Brand green, red = owed, green = paid. */
+/* Layout: shop debt app. Gate (login) -> app with Home / Customers / Settings. Wide: top tabs, list + account side by side. Narrow: bottom nav, one pane. Colors and fonts follow BRAND.md: brand green chrome, red = owed, green = paid. */
 :root{
   /* Al-Shahm Market brand tokens (brand spec §2). paper = surface, line = border, ink = text, accent = primary, debt = danger, paid = success. */
   --bg:#f4f2ec; --paper:#ffffff; --paper-2:#f8f6f1; --line:#e3ded3; --ink:#1c2421; --muted:#5e6660;
@@ -48,8 +48,9 @@ h1,h2,h3{text-wrap:balance}
 .gate{min-height:100vh;display:grid;place-items:center;padding-inline:16px;padding-block:24px}
 .gate-card{width:100%;max-width:420px;background:var(--paper);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:26px 22px;display:flex;flex-direction:column;gap:14px}
 .gate-head{text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px}
-.logo{width:64px;height:64px;border-radius:18px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:20px}
-.gate-head h1{margin:6px 0 0;font-family:var(--f-brand);font-weight:400;font-size:30px;color:var(--accent);line-height:1.3}
+.logo{width:64px;height:64px;border-radius:18px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
+.logo svg{width:74%;height:74%;display:block}
+.gate-head h1{margin:6px 0 0;font-family:var(--f-brand);font-weight:400;font-size:26px;color:var(--accent)}
 .gate-head p{margin:0;color:var(--muted)}
 .banner{border-radius:12px;padding:10px 14px;font-size:14px}
 .banner.bad{background:var(--debt-soft);color:var(--debt)}
@@ -68,8 +69,8 @@ h1,h2,h3{text-wrap:balance}
 .app{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:12px 100px;display:flex;flex-direction:column;gap:14px}
 header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
-.brand .logo{width:42px;height:42px;border-radius:12px;font-size:14px}
-.brand h1{margin:0;font-family:var(--f-brand);font-weight:400;font-size:23px;line-height:1.3;color:var(--accent)}
+.brand .logo{width:42px;height:42px;border-radius:12px}
+.brand h1{margin:0;font-family:var(--f-brand);font-weight:400;font-size:21px;line-height:1.3;color:var(--accent)}
 .brand small{display:block;color:var(--muted);font-size:12.5px}
 .me{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 12px;border:1px solid var(--line);border-radius:99px;background:var(--paper);font-size:13.5px}
 .me .avatar{width:30px;height:30px;font-size:13px}
@@ -370,11 +371,11 @@ td.x{width:64px;white-space:nowrap}
 </head>
 <body>
 
-<div id="gate" class="gate"><div class="gate-card"><div class="gate-head"><div class="logo">د.ع</div><h1>دفتر ديون ماركت الشهم</h1><p>جارِ التحميل…</p></div><div class="spinner" aria-hidden="true"></div></div></div>
+<div id="gate" class="gate"><div class="gate-card"><div class="gate-head"><div class="logo"><svg viewBox="1.0 -81.5 108.7 108.7" aria-hidden="true"><path d="M107.7 -21.2Q107.7 -15.9 106.6 -11Q105.5 -6.1 103.5 -2.9Q96.3 0.3 90.4 0.3Q85.9 0.3 82.2 -1.6Q78.6 -3.4 76.1 -7H75.3Q73.2 -3.7 69.7 -1.7Q66.1 0.3 62 0.3H61.9Q61.5 6.6 59.9 11.8Q58.3 17 55.7 20.6Q41.5 24.8 30.8 24.8Q16.8 24.8 9.9 18.9Q3 12.9 3 2Q3 -9.1 9.4 -24.3L23.2 -19.8Q19.6 -9.9 19.6 -4Q19.6 1.3 22.5 3.9Q25.3 6.4 31.2 6.4Q36.5 6.4 46.3 4Q45.7 -2.6 44 -9.8Q42.2 -17 40.5 -21.6L55 -27.7L55.8 -27.3Q56.4 -22.7 58.6 -20.2Q60.7 -17.8 63.5 -17.8Q66.7 -17.8 69.6 -20.9Q72.4 -23.9 73.5 -29.2L81.8 -27.9Q81.7 -27.1 81.7 -25.6Q81.7 -17.7 88.2 -17.7Q90 -17.7 93.4 -18.5Q92.5 -22.3 91.2 -26Q90 -29.7 89.7 -30.5L105.8 -34.2Q107.7 -28.2 107.7 -21.2Z" fill="currentColor"/><circle cx="45.2" cy="-45.8" r="8.6" fill="#F39A1E"/><circle cx="65.5" cy="-45.8" r="8.6" fill="#E2412B"/><circle cx="55.4" cy="-64.8" r="8.6" fill="#7BC043"/><path d="M57.1 -73.0q4.7 -6.4 10.8 -4.7q-3.0 6.4 -10.8 4.7z" fill="currentColor"/></svg></div><h1>دفتر ديون ماركت الشهم</h1><p>جارِ التحميل…</p></div><div class="spinner" aria-hidden="true"></div></div></div>
 
 <div id="app" class="app" hidden>
   <header class="top">
-    <div class="brand"><div class="logo" aria-hidden="true">د.ع</div><div style="min-width:0"><h1 id="shopTitle">دفتر ديون ماركت الشهم</h1><small id="today"></small></div></div>
+    <div class="brand"><div class="logo" aria-hidden="true"><svg viewBox="1.0 -81.5 108.7 108.7" aria-hidden="true"><path d="M107.7 -21.2Q107.7 -15.9 106.6 -11Q105.5 -6.1 103.5 -2.9Q96.3 0.3 90.4 0.3Q85.9 0.3 82.2 -1.6Q78.6 -3.4 76.1 -7H75.3Q73.2 -3.7 69.7 -1.7Q66.1 0.3 62 0.3H61.9Q61.5 6.6 59.9 11.8Q58.3 17 55.7 20.6Q41.5 24.8 30.8 24.8Q16.8 24.8 9.9 18.9Q3 12.9 3 2Q3 -9.1 9.4 -24.3L23.2 -19.8Q19.6 -9.9 19.6 -4Q19.6 1.3 22.5 3.9Q25.3 6.4 31.2 6.4Q36.5 6.4 46.3 4Q45.7 -2.6 44 -9.8Q42.2 -17 40.5 -21.6L55 -27.7L55.8 -27.3Q56.4 -22.7 58.6 -20.2Q60.7 -17.8 63.5 -17.8Q66.7 -17.8 69.6 -20.9Q72.4 -23.9 73.5 -29.2L81.8 -27.9Q81.7 -27.1 81.7 -25.6Q81.7 -17.7 88.2 -17.7Q90 -17.7 93.4 -18.5Q92.5 -22.3 91.2 -26Q90 -29.7 89.7 -30.5L105.8 -34.2Q107.7 -28.2 107.7 -21.2Z" fill="currentColor"/><circle cx="45.2" cy="-45.8" r="8.6" fill="#F39A1E"/><circle cx="65.5" cy="-45.8" r="8.6" fill="#E2412B"/><circle cx="55.4" cy="-64.8" r="8.6" fill="#7BC043"/><path d="M57.1 -73.0q4.7 -6.4 10.8 -4.7q-3.0 6.4 -10.8 4.7z" fill="currentColor"/></svg></div><div style="min-width:0"><h1 id="shopTitle">دفتر ديون ماركت الشهم</h1><small id="today"></small></div></div>
     <nav class="tabs" id="tabs" aria-label="الأقسام"></nav>
     <div class="me" id="meBox"></div>
   </header>
@@ -392,6 +393,7 @@ td.x{width:64px;white-space:nowrap}
 (function(){
 "use strict";
 const CUR="د.ع";
+const BRAND_MARK=document.querySelector("header.top .logo").innerHTML; // brand mark (ش with produce dots), reused by the login gate
 const SESSION_KEY="shahm-session-v1",THEME_KEY="shahm-theme",CACHE_KEY="shahm-debts-cache-v1";
 const ROLE_LABEL={owner:"المدير",editor:"محرر",viewer:"مشاهد"};
 const PDF_AUTO_KEY="shahm-pdf-auto";
@@ -608,7 +610,7 @@ async function saveSettings(patch){
 
 /* ---------- gate ---------- */
 function gateCard(inner){$("#gate").hidden=false;$("#app").hidden=true;$("#bottomNav").hidden=true;
-  $("#gate").innerHTML=`<div class="gate-card"><div class="gate-head"><div class="logo">د.ع</div><h1>سجل ديون ${esc(shopName())}</h1>${inner.sub?`<p>${inner.sub}</p>`:""}</div>${inner.body}</div>`;
+  $("#gate").innerHTML=`<div class="gate-card"><div class="gate-head"><div class="logo">${BRAND_MARK}</div><h1>سجل ديون ${esc(shopName())}</h1>${inner.sub?`<p>${inner.sub}</p>`:""}</div>${inner.body}</div>`;
   inner.mount&&inner.mount($("#gate"));
 }
 function showError(msg){gateCard({sub:"",body:`<div class="banner bad">${esc(msg)}</div>`})}
@@ -1145,12 +1147,12 @@ function listPdf(){
 }
 
 /* ---------- business card: drawn on a canvas so it can be shared as an image ---------- */
-const BIZ_STYLES={brand:{l:"هوية المحل",bg:"#0e5a3a",bg2:"#0c5034",acc:"#f39a1e",tx:"#fff7e8",mu:"#dceee3",ic:"#dceee3",ln:"#2b7152",ft:"#2b7152"},
+const BIZ_STYLES={shahm:{l:"الشهم",bg:"#0e5a3a",bg2:"#0c5034",acc:"#f39a1e",tx:"#fff7e8",mu:"#dceee3",ic:"#dceee3",ln:"#2b7152",ft:"#2b7152"},
   gold:{l:"أسود وذهبي",bg:"#0b0b0c",bg2:"#151517",acc:"#c9a45c",tx:"#ffffff",mu:"#a9a9ad",ic:"#c4c4c8",ln:"#2b2b2e",ft:"#3a2f1c"},
   light:{l:"فاتح",bg:"#ffffff",bg2:"#f4f2ec",acc:"#0e5a3a",tx:"#1c2421",mu:"#5e6660",ic:"#5e6660",ln:"#e3ded3",ft:"#e3ded3"}};
 function bizData(){
   const st=S.settings,c=st.card||{},d=S.bizDraft||{};
-  const v={name:st.shopName||"ماركت الشهم",desc:c.desc||"",manager:c.manager!=null?c.manager:(st.ownerName&&st.ownerName!=="المدير"?st.ownerName:""),phone:st.phone||"",address:st.address||"",social:c.social||"",style:BIZ_STYLES[c.style]?c.style:"brand"};
+  const v={name:st.shopName||"ماركت الشهم",desc:c.desc||"",manager:c.manager!=null?c.manager:(st.ownerName&&st.ownerName!=="المدير"?st.ownerName:""),phone:st.phone||"",address:st.address||"",social:c.social||"",style:BIZ_STYLES[c.style]?c.style:"shahm"};
   return {...v,...d};
 }
 const bizVcard=b=>["BEGIN:VCARD","VERSION:3.0",`FN:${b.manager||b.name}`,`ORG:${b.name}`,b.phone?`TEL;TYPE=CELL:${b.phone.replace(/[^\d+]/g,"")}`:"",b.address?`ADR:;;${b.address};;;;`:"",b.desc?`NOTE:${b.desc}`:"",/^https?:\/\//i.test(b.social)?`URL:${b.social}`:"","END:VCARD"].filter(Boolean).join("\n");
@@ -1164,7 +1166,10 @@ async function drawBizCard(cv,b){
   const tk=cv._tk=(cv._tk||0)+1;
   try{await loadScript("vendor/qrcode.js");if(!window.qrcode)await new Promise(r=>setTimeout(r,400))}catch(e){}
   try{await Promise.all(["400 60px Lalezar","500 30px 'IBM Plex Sans Arabic'","600 32px 'IBM Plex Sans Arabic'"].map(f=>document.fonts.load(f)))}catch(e){}
-  const W=1200,H=700,P=BIZ_STYLES[b.style]||BIZ_STYLES.brand,F="'IBM Plex Sans Arabic',Tahoma,sans-serif",FD="'Lalezar','Tajawal',sans-serif";
+  const W=1200,H=700,P=BIZ_STYLES[b.style]||BIZ_STYLES.shahm,F="'IBM Plex Sans Arabic',Tahoma,sans-serif",FD="'Lalezar','Tajawal',sans-serif";
+  const P0=BIZ_STYLES[b.style]||BIZ_STYLES.shahm;
+  const mark=await new Promise(res=>{const svg=BRAND_MARK.replace(/currentColor/g,P0.tx).replace("<svg ",'<svg xmlns="http://www.w3.org/2000/svg" width="212" height="212" ');
+    const im=new Image();im.onload=()=>res(im);im.onerror=()=>res(null);im.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg)});
   if(cv._tk!==tk)return cv; // a newer draw started while fonts or the QR library were loading
   cv.width=W;cv.height=H;const x=cv.getContext("2d");x.clearRect(0,0,W,H);
   const rr=(X,Y,w,h,r)=>{x.beginPath();if(x.roundRect){x.roundRect(X,Y,w,h,r);return}
@@ -1179,7 +1184,7 @@ async function drawBizCard(cv,b){
   x.direction="rtl";x.textAlign="right";
   // header: icon box + name + description
   rr(W-190,60,130,130,26);x.fillStyle=P.bg;x.fill();x.lineWidth=3;x.strokeStyle=P.acc;x.stroke();
-  icon("bag",W-160,90,70,P.acc);x.fillStyle=P.bg;x.fillRect(W-160+70/24*3,90+70/24*12.6,70/24*18,5);
+  if(mark)x.drawImage(mark,W-172,72,106,106);else{icon("bag",W-160,90,70,P.acc);x.fillStyle=P.bg;x.fillRect(W-160+70/24*3,90+70/24*12.6,70/24*18,5)}
   const hx=W-230;
   fit(b.name,`400 %px ${FD}`,68,hx-120);x.fillStyle=P.tx;x.fillText(b.name,hx,b.desc?120:142);
   if(b.desc){fit(b.desc,`500 %px ${F}`,30,hx-120);x.fillStyle=P.mu;x.fillText(b.desc,hx,172)}
