@@ -123,6 +123,7 @@ header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .seg{display:flex;background:var(--paper-2);border:1px solid var(--line);border-radius:9px;padding:2px}
 .seg button{border:0;background:none;padding:5px 10px;border-radius:7px;font-size:13px;cursor:pointer;color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--paper);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12);font-weight:600}
+.row-tools .seg{max-width:100%;overflow-x:auto;scrollbar-width:none}.row-tools .seg::-webkit-scrollbar{display:none}.row-tools .seg button{white-space:nowrap;flex:none}
 select.sort{border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:5px 8px;font-size:13px;margin-inline-start:auto}
 .cust-list{list-style:none;margin:0;padding:6px;overflow:auto;flex:1}
 .cust{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;cursor:pointer;border:1px solid transparent;width:100%;background:none;text-align:right}
@@ -278,6 +279,14 @@ td.x{width:64px;white-space:nowrap}
 .sr-top b{color:var(--ink)}
 .sr select,.sr input{border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:8px 10px;width:100%;min-width:0;color:var(--ink)}
 .sr-row{display:flex;gap:8px;align-items:center}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.inv-box{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.inv-box h3{margin:0 0 6px;font-size:15px}
+.inv-box ul{list-style:none;margin:0;padding:0}
+.inv-box li{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line);font-size:13.5px}
+.inv-box li:first-child{border-top:0}
+.inv-r{display:flex;align-items:center;gap:6px}.inv-r small{color:var(--muted)}
+.sup-sum{display:flex;flex-wrap:wrap;gap:6px}
 .note-row{display:flex;gap:8px}.note-row select{flex:0 0 36%;min-width:0}.note-row input{flex:1;min-width:0}
 .sr-cust{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:9px 10px;color:var(--ink);cursor:pointer;text-align:right;font:inherit}
 .sr-cust.empty{color:var(--muted)}
@@ -474,6 +483,21 @@ function lateInfo(){
   return out;
 }
 const lateText=x=>x?(x.paid?`آخر دفعة قبل ${x.days} يوم`:`ما دافع من أول دين (${x.days} يوم)`):"";
+/* Suppliers: payments settle the oldest purchase invoices first, so each invoice shows what is still owed on it. */
+function openInvoices(c){
+  const rows=txnsOf(c.id);let paid=rows.filter(t=>t.type==="pay").reduce((a,t)=>a+t.amount,0);const out=[];
+  for(const t of rows){if(t.type!=="debt")continue;const used=Math.min(paid,t.amount);paid-=used;if(t.amount-used>0)out.push({t,rem:t.amount-used})}
+  return out;
+}
+const daysBetween=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5);
+function supplierAlerts(){
+  const today=todayISO(),wd=new Date(today+"T12:00:00").getDay(),per=stats();const due=[],visits=[];
+  for(const c of S.customers.values()){if(!isSup(c))continue;
+    if(Array.isArray(c.visit)&&c.visit.includes(wd))visits.push({c,bal:per.get(c.id).bal});
+    for(const x of openInvoices(c))if(x.t.due&&daysBetween(today,x.t.due)<=2)due.push({c,...x,left:daysBetween(today,x.t.due)})}
+  due.sort((a,b)=>a.left-b.left);return {due,visits};
+}
+const dueText=left=>left<0?`متأخرة ${-left} يوم`:left===0?"مستحقة اليوم":left===1?"مستحقة باچر":`مستحقة بعد ${left} يوم`;
 function stats(){
   const per=new Map();
   for(const c of S.customers.values())per.set(c.id,{bal:0,debt:0,paid:0,last:c.createdAt||0,count:0});
@@ -627,8 +651,10 @@ function navBtn([k,l,ic]){return `<button type="button" data-go="${k}" aria-curr
 const ACT_TEXT=a=>{
   const amt=a.amount?` ${fmt(a.amount)} ${CUR}`:"";const c=a.customerName?esc(a.customerName):"";
   switch(a.what){
-    case "debt":return a.kind==="add"?`سجّل دين${amt} على ${c}`:a.kind==="edit"?`عدّل دين ${c}${amt?" إلى"+amt:""}`:`حذف دين${amt} من حساب ${c}`;
-    case "pay":return a.kind==="add"?`سجّل تسديد${amt} من ${c}`:a.kind==="edit"?`عدّل تسديد ${c}${amt?" إلى"+amt:""}`:`حذف تسديد${amt} من حساب ${c}`;
+    case "debt":if(a.sup)return a.kind==="add"?`سجّل فاتورة شراء${amt} من المورد ${c}`:a.kind==="edit"?`عدّل فاتورة المورد ${c}${amt?" إلى"+amt:""}`:`حذف فاتورة${amt} من حساب المورد ${c}`;
+      return a.kind==="add"?`سجّل دين${amt} على ${c}`:a.kind==="edit"?`عدّل دين ${c}${amt?" إلى"+amt:""}`:`حذف دين${amt} من حساب ${c}`;
+    case "pay":if(a.sup)return a.kind==="add"?`دفع${amt} للمورد ${c}`:a.kind==="edit"?`عدّل دفعة المورد ${c}${amt?" إلى"+amt:""}`:`حذف دفعة${amt} من حساب المورد ${c}`;
+      return a.kind==="add"?`سجّل تسديد${amt} من ${c}`:a.kind==="edit"?`عدّل تسديد ${c}${amt?" إلى"+amt:""}`:`حذف تسديد${amt} من حساب ${c}`;
     case "customer":return a.kind==="add"?`أضاف الزبون ${c}`:a.kind==="edit"?`عدّل بيانات ${c}`:`حذف الزبون ${c}`;
     case "remind":return `أرسل تذكير واتساب إلى ${c}${amt?" (الرصيد"+amt+")":""}`;
     case "account":return esc(a.detail||"");
@@ -648,6 +674,11 @@ function homeView(){
         <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button><button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`:""}<button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين (${owing})</button></div>
         ${isAdmin()&&(!S.settings.lastBackupAt||Date.now()-S.settings.lastBackupAt>7*864e5)&&S.customers.size?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${S.settings.lastBackupAt?"مرّ أكثر من أسبوع على آخر نسخة احتياطية.":"لم تحفظ نسخة احتياطية بعد."}</span><button class="btn sm" type="button" data-act="gobackup">${I.save}احفظ نسخة</button></div>`:""}
         ${(()=>{const n=[...lateInfo().values()].filter(x=>x.late).length;return n?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${n}</b> زبون ما دافع من أكثر من ${LATE_DAYS} يوم.</span><button class="btn sm" type="button" data-go="reminders" data-remf="late">${I.bell}عرضهم</button></div>`:""})()}
+        ${(()=>{const {due,visits}=supplierAlerts();let h="";
+          if(visits.length)h+=`<div class="banner info"><b>اليوم يزورك:</b> ${visits.map(v=>`<button class="linkish" type="button" data-open="${esc(v.c.id)}">${esc(v.c.name)}</button>${v.bal>0?` (علينا له <span class="num">${fmt(v.bal)}</span>)`:""}`).join("، ")}</div>`;
+          if(due.length){const tot=due.reduce((a,x)=>a+x.rem,0),late=due.filter(x=>x.left<0).length;
+            h+=`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${due.length}</b> فاتورة موردين ${late?`(${late} متأخرة)`:"قرب موعد دفعها"} بمجموع <b class="num">${fmt(tot)}</b> ${CUR}</span><button class="btn sm" type="button" data-act="gosup">عرضها</button></div>`}
+          return h})()}
         ${supOwed>0?`<div class="banner warn">علينا للموردين: <b class="num">${fmt(supOwed)}</b> ${CUR}</div>`:""}</section>
   <section class="stats" aria-label="ملخص">
     <div class="stat main"><div class="k">${I.wallet}مجموع الدين</div><div class="v"><span class="num">${fmt(total)}</span><small>${CUR}</small></div></div>
@@ -683,7 +714,7 @@ function customersView(){
         <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="q" type="search" placeholder="ابحث بالاسم أو رقم الهاتف" autocomplete="off" value="${esc(S.q)}"></div>
         <div class="row-tools">
-          <div class="seg" role="group" aria-label="تصفية">${[["all","الكل"],["owe","عليهم دين"],["clear","مسددين"],["nophone",`بدون رقم (${[...S.customers.values()].filter(c=>kindOf(c)===S.kind&&!normDigits(c.phone).replace(/\D/g,"")).length})`]].map(([k,l])=>`<button type="button" data-f="${k}" aria-pressed="${S.filter===k}">${l}</button>`).join("")}</div>
+          <div class="seg" role="group" aria-label="تصفية">${[["all","الكل"],["owe",S.kind==="supplier"?"علينا لهم":"عليهم دين"],["clear","مسددين"],...(S.kind==="supplier"?[["due","فواتير مستحقة"]]:[]),["nophone",`بدون رقم (${[...S.customers.values()].filter(c=>kindOf(c)===S.kind&&!normDigits(c.phone).replace(/\D/g,"")).length})`]].map(([k,l])=>`<button type="button" data-f="${k}" aria-pressed="${S.filter===k}">${l}</button>`).join("")}</div>
           <select class="sort" id="sort" aria-label="ترتيب">${[["bal","الأعلى ديناً"],["recent","آخر حركة"],["name","الاسم"]].map(([k,l])=>`<option value="${k}" ${S.sort===k?"selected":""}>${l}</option>`).join("")}</select>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn primary" type="button" data-act="newcust" style="flex:1">${I.plus}${S.kind==="supplier"?"إضافة مورد":"إضافة زبون"}</button>`:""}<button class="btn" type="button" data-act="listpdf">${I.pdf}تقرير PDF</button></div>
@@ -695,12 +726,15 @@ function customersView(){
 }
 function renderList(){
   const ul=$("#list");if(!ul)return;const per=stats();const q=normDigits(S.q).trim().toLowerCase();
+  const dueMap=new Map();if(S.kind==="supplier")for(const x of supplierAlerts().due){const p=dueMap.get(x.c.id);if(!p||x.left<p)dueMap.set(x.c.id,x.left)}
+  const dueIds=new Set(dueMap.keys());if(S.filter==="due"&&S.kind!=="supplier")S.filter="all";
   let arr=[...S.customers.values()].filter(c=>{
     if(kindOf(c)!==S.kind)return false;
     const p=per.get(c.id);
     if(S.filter==="owe"&&!(p.bal>0))return false;
     if(S.filter==="clear"&&p.bal>0)return false;
     if(S.filter==="nophone"&&normDigits(c.phone).replace(/\D/g,""))return false;
+    if(S.filter==="due"&&!dueIds.has(c.id))return false;
     if(!q)return true;
     return (c.name||"").toLowerCase().includes(q)||normDigits(c.phone).replace(/\s/g,"").includes(q.replace(/\s/g,""));
   });
@@ -717,11 +751,15 @@ function renderList(){
     const over=c.limit>0&&p.bal>c.limit;
     return `<li class="cust-row"><button class="cust" type="button" data-open="${esc(c.id)}" aria-current="${S.selected===c.id}">
       <span class="avatar" aria-hidden="true">${initial(c.name)}</span>
-      <span class="meta"><span class="name">${esc(c.name)}${over?' <span class="chip warn" style="font-size:11px;padding:0 6px">تجاوز الحد</span>':""}</span><span class="sub">${esc(sub)}</span></span>
+      <span class="meta"><span class="name">${esc(c.name)}${over?' <span class="chip warn" style="font-size:11px;padding:0 6px">تجاوز الحد</span>':""}</span><span class="sub">${esc(sub)}${dueMap.has(c.id)?` <span class="chip ${dueMap.get(c.id)<0?"debt":"warn"}" style="font-size:11px;padding:0 6px">${dueText(dueMap.get(c.id))}</span>`:""}</span></span>
       <span class="chip ${cls}"><span class="num">${esc(label)}</span></span></button>
       ${canWrite()?`<span class="row-q"><button type="button" class="q-pay" data-qpay="${esc(c.id)}" aria-label="دفعة من ${esc(c.name)}" title="دفعة">${I.minus}</button><button type="button" class="q-debt" data-qdebt="${esc(c.id)}" aria-label="دين على ${esc(c.name)}" title="دين">${I.plus}</button></span>`:""}</li>`;
   }).join("");
   ul.insertAdjacentHTML("afterbegin",`<li class="ro-note" style="padding:2px 10px 6px">${arr.length} ${S.kind==="supplier"?"مورد":"حساب"}</li>`);
+  if(S.kind==="supplier"){const m=monthISO();let owe=0,buy=0,paid=0;
+    for(const c of S.customers.values())if(isSup(c)){const b=per.get(c.id).bal;if(b>0)owe+=b}
+    for(const t of S.txns.values()){const c=S.customers.get(t.customerId);if(c&&isSup(c)&&(t.date||"").startsWith(m))t.type==="debt"?buy+=t.amount:paid+=t.amount}
+    ul.insertAdjacentHTML("afterbegin",`<li class="sup-sum" style="padding:4px 10px 8px"><span class="chip debt">علينا <span class="num">${fmt(owe)}</span></span><span class="chip zero">مشتريات الشهر <span class="num">${fmt(buy)}</span></span><span class="chip paid">دفعنا الشهر <span class="num">${fmt(paid)}</span></span></li>`)}
 }
 function periodStart(c){
   const rows=txnsOf(c.id);
@@ -748,26 +786,28 @@ function renderDetail(){
   el.innerHTML=`<div class="detail">
     <div class="detail-head">
       <button class="btn ghost back" type="button" data-act="back">${I.back}رجوع</button>
-      <div class="who"><h2>${esc(c.name)}</h2><div class="phone">${sup?"مورد":"زبون"} · ${c.phone?'<span class="num">'+esc(c.phone)+'</span>':"بدون رقم هاتف"}${c.note?" · "+esc(c.note):""}</div></div>
+      <div class="who"><h2>${esc(c.name)}</h2><div class="phone">${sup?"مورد":"زبون"}${sup&&c.visit&&c.visit.length?" · يزورك: "+c.visit.slice().sort().map(i=>AR_DAYS[i]).join("، "):""} · ${c.phone?'<span class="num">'+esc(c.phone)+'</span>':"بدون رقم هاتف"}${c.note?" · "+esc(c.note):""}</div></div>
     </div>
     <div class="balance-card ${balCls}">
       <div><div class="lbl">${balLbl}</div><div class="amt"><span class="num">${fmt(Math.abs(per.bal))}</span><small>${CUR}</small></div>
-        <div class="limit-row">${c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
-      ${w?`<div class="actions"><button class="btn paid" type="button" data-act="debt">${I.plus}دين</button><button class="btn debt" type="button" data-act="pay">${I.minus}دفعة</button>${per.bal!==0?`<button class="btn zero" type="button" data-act="zero">${I.zero}تصفير</button>`:""}</div>`:""}
+        <div class="limit-row">${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
+      ${w?`<div class="actions"><button class="btn paid" type="button" data-act="debt">${I.plus}${sup?"فاتورة شراء":"دين"}</button><button class="btn debt" type="button" data-act="pay">${I.minus}${sup?"دفعة للمورد":"دفعة"}</button>${per.bal!==0?`<button class="btn zero" type="button" data-act="zero">${I.zero}تصفير</button>`:""}</div>`:""}
     </div>
     ${per.bal>0&&!sup?(remind?`<a class="btn wa block" href="${esc(remind)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}">${I.bell}إرسال تذكير بالدين على واتساب</a>`:(w?`<button class="btn wa block" type="button" data-act="addphone">${I.bell}إرسال تذكير (أضف رقم واتساب أولاً)</button>`:"")):""}
+    ${sup?(()=>{const oi=openInvoices(c),t0=todayISO();return oi.length?`<div class="inv-box"><h3>فواتير غير مسددة (${oi.length})</h3><ul>${oi.slice().reverse().map(({t,rem})=>{const left=t.due?daysBetween(t0,t.due):null;
+      return `<li><span>${t.inv?`فاتورة <b class="num">#${esc(t.inv)}</b>`:"فاتورة"} · ${esc(shortDate(t.date))}${t.note?" · "+esc(t.note):""}</span><span class="inv-r">${left!==null?`<span class="chip ${left<0?"debt":left<=2?"warn":"zero"}">${left<=2?dueText(left):"تستحق "+esc(shortDate(t.due))}</span>`:""}<b class="num">${fmt(rem)}</b>${rem<t.amount?`<small> من ${fmt(t.amount)}</small>`:""}</span></li>`}).join("")}</ul></div>`:""})():""}
     <div class="ledger">
       <div class="period"><h3>الحركات</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><select id="period" aria-label="المدة">${PERIODS.map(([k,l])=>`<option value="${k}" ${S.period===k?"selected":""}>${l}</option>`).join("")}</select><button class="btn sm primary" type="button" data-act="custpdf">${I.pdf}تقرير PDF</button></div></div>
-      ${L.list.length||L.from?`<div class="ledger-scroll"><table><thead><tr><th>التاريخ والبيان</th><th>دين</th><th>دفعة</th><th>الرصيد</th>${w?"<th></th>":""}</tr></thead><tbody>
+      ${L.list.length||L.from?`<div class="ledger-scroll"><table><thead><tr><th>التاريخ والبيان</th><th>${sup?"فاتورة":"دين"}</th><th>دفعة</th><th>الرصيد</th>${w?"<th></th>":""}</tr></thead><tbody>
       ${L.from?`<tr class="edge"><td colspan="3">رصيد نهاية المدة · ${esc(shortDate(todayISO()))}</td><td class="run"><span class="num">${fmt(L.close)}</span></td>${w?"<td></td>":""}</tr>`:""}
-      ${L.list.slice().reverse().map(({t,run})=>`<tr><td class="desc">${esc(t.note||(t.type==="debt"?(sup?"بضاعة بالآجل":"مشتريات"):"دفعة"))}<span class="d">${esc(shortDate(t.date))}${t.by?" · "+esc(t.by):""}</span></td>
+      ${L.list.slice().reverse().map(({t,run})=>`<tr><td class="desc">${t.inv?`<b class="num">#${esc(t.inv)}</b> `:""}${esc(t.note||(t.type==="debt"?(sup?"بضاعة بالآجل":"مشتريات"):"دفعة"))}<span class="d">${esc(shortDate(t.date))}${t.by?" · "+esc(t.by):""}</span></td>
         <td class="amt-d">${t.type==="debt"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="amt-p">${t.type==="pay"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="run"><span class="num">${fmt(run)}</span></td>
         ${w?`<td class="x"><button class="icon-btn" type="button" title="تعديل" aria-label="تعديل الحركة" data-act="edittx" data-id="${esc(t.id)}">${I.edit}</button><button class="icon-btn del" type="button" title="حذف" aria-label="حذف الحركة" data-act="deltx" data-id="${esc(t.id)}">${I.trash}</button></td>`:""}</tr>`).join("")}
       ${L.from?`<tr class="edge"><td colspan="3">رصيد بداية المدة · ${esc(shortDate(L.from))}</td><td class="run"><span class="num">${fmt(L.open)}</span></td>${w?"<td></td>":""}</tr>`:""}
       </tbody></table></div>`:`<div class="empty"><b>لا توجد حركات</b>${w?"سجّل أول دين بالضغط على «دين».":""}</div>`}
-      <div class="mini-sums" style="margin-top:8px"><span>ديون المدة: <b class="num">${fmt(L.dSum)}</b></span><span>دفعات المدة: <b class="num">${fmt(L.pSum)}</b></span><span>عدد الحركات: <b class="num">${L.list.length}</b></span></div>
+      <div class="mini-sums" style="margin-top:8px"><span>${sup?"مشتريات المدة":"ديون المدة"}: <b class="num">${fmt(L.dSum)}</b></span><span>دفعات المدة: <b class="num">${fmt(L.pSum)}</b></span><span>عدد الحركات: <b class="num">${L.list.length}</b></span></div>
     </div>
     <div class="tools-row">
       ${c.phone?`<a class="btn" href="${esc(waLink(c.phone,statementText(c)))}" target="_blank" rel="noopener">${I.wa}إرسال الكشف واتساب</a>`:""}
@@ -1068,11 +1108,16 @@ function customerForm(c,after){
       <div class="field"><label for="cPhone">رقم الهاتف (لرسائل واتساب)</label><input id="cPhone" inputmode="tel" maxlength="20" value="${esc(c&&c.phone)}" placeholder="07xx xxx xxxx" style="direction:ltr;text-align:right"></div>
       <div class="field"><label for="cNote">ملاحظة (اختياري)</label><input id="cNote" maxlength="120" value="${esc(c&&c.note)}" placeholder="العنوان أو أي تفصيل"></div>
       <div class="field"><label for="cKind">نوع الحساب</label><select id="cKind"><option value="customer" ${(c?kindOf(c):S.kind)==="customer"?"selected":""}>زبون (عليه دين لنا)</option><option value="supplier" ${(c?kindOf(c):S.kind)==="supplier"?"selected":""}>مورد (نحن ندين له)</option></select></div>
-      <div class="field"><label for="cLimit">حد الدين (اختياري)</label><input id="cLimit" inputmode="numeric" value="${c&&c.limit?fmt(c.limit):""}" placeholder="بدون حد" style="direction:ltr;text-align:right"><span class="help">ينبهك البرنامج إذا تجاوز الدين هذا المبلغ.</span></div>
+      <div class="field" id="cVisitF"><label>أيام زيارة المورد (اختياري)</label><div class="chips" role="group" aria-label="أيام الزيارة">${AR_DAYS.map((d,i)=>`<button type="button" data-vd="${i}" aria-pressed="${!!(c&&Array.isArray(c.visit)&&c.visit.includes(i))}">${d}</button>`).join("")}</div><span class="help">باليوم اللي يجي بيه المورد، الرئيسية تذكرك بيه وبالمبلغ اللي علينا له.</span></div>
+      <div class="field" id="cLimitF"><label for="cLimit">حد الدين (اختياري)</label><input id="cLimit" inputmode="numeric" value="${c&&c.limit?fmt(c.limit):""}" placeholder="بدون حد" style="direction:ltr;text-align:right"><span class="help">ينبهك البرنامج إذا تجاوز الدين هذا المبلغ.</span></div>
       ${isNew?`<div class="field"><label for="cOpen">دين سابق (اختياري)</label><input id="cOpen" inputmode="numeric" placeholder="0" style="direction:ltr;text-align:right"></div>`:""}
       <p class="err" id="cErr"></p>
       <div class="foot"><button class="btn primary" type="submit">${isNew?"إضافة الزبون":"حفظ"}</button><button class="btn" type="button" data-close>إلغاء</button></div>
     </form>`,m=>{
+    const kindSync=()=>{const sup=$("#cKind").value==="supplier";m.querySelector("#cVisitF").hidden=!sup;m.querySelector("#cLimitF").hidden=sup;
+      const ol=m.querySelector("label[for=cOpen]");if(ol)ol.textContent=sup?"رصيد سابق علينا له (اختياري)":"دين سابق (اختياري)"};
+    $("#cKind").addEventListener("change",kindSync);kindSync();
+    m.querySelectorAll("[data-vd]").forEach(b=>b.addEventListener("click",()=>b.setAttribute("aria-pressed",String(b.getAttribute("aria-pressed")!=="true"))));
     m.querySelector("#cf").addEventListener("submit",e=>{
       e.preventDefault();
       const name=$("#cName").value.trim();if(!name){$("#cErr").textContent="اكتب اسم الزبون.";return}
@@ -1081,7 +1126,8 @@ function customerForm(c,after){
       let open=0;
       if(isNew){const v=$("#cOpen").value.trim();if(v){open=parseAmt(v);if(!(open>0)){$("#cErr").textContent="الدين السابق يجب أن يكون رقماً أكبر من صفر.";return}}}
       const lv=$("#cLimit").value.trim();const limit=lv?parseAmt(lv):0;if(lv&&!(limit>0)){$("#cErr").textContent="حد الدين يجب أن يكون رقماً أكبر من صفر.";return}
-      const obj={...(c||{}),id:c?c.id:uid(),name,kind:$("#cKind").value,limit:Math.round(limit||0),phone:$("#cPhone").value.trim(),note:$("#cNote").value.trim(),createdAt:c?c.createdAt:Date.now(),by:c?c.by:S.me.name};
+      const kd=$("#cKind").value,visit=kd==="supplier"?[...m.querySelectorAll("[data-vd][aria-pressed=true]")].map(b=>Number(b.dataset.vd)):[];
+      const obj={...(c||{}),id:c?c.id:uid(),name,kind:kd,visit,limit:kd==="supplier"?0:Math.round(limit||0),phone:$("#cPhone").value.trim(),note:$("#cNote").value.trim(),createdAt:c?c.createdAt:Date.now(),by:c?c.by:S.me.name};
       S.kind=obj.kind;
       put("customers",obj);log(isNew?"add":"edit","customer",{customerName:name});
       if(open>0){put("txns",{id:uid(),customerId:obj.id,type:"debt",amount:Math.round(open),note:"دين سابق",date:todayISO(),createdAt:Date.now(),by:S.me.name});log("add","debt",{customerName:name,amount:Math.round(open)})}
@@ -1094,19 +1140,24 @@ function customerForm(c,after){
 function txnForm(type,existing){
   const c=S.customers.get(existing?existing.customerId:S.selected);if(!c)return;
   const isDebt=(existing?existing.type:type)==="debt";const bal=balanceOf(c.id);
-  const quick=isDebt?[250,500,1000,2000,5000,10000,25000]:[1000,5000,10000,25000];
-  openModal(`<h3>${existing?(isDebt?"تعديل دين ":"تعديل تسديد "):(isDebt?"تسجيل دين على ":"تسديد من ")}${esc(c.name)}</h3>
-    <p class="hint">الرصيد الحالي: <span class="num">${fmt(bal)}</span> ${CUR}${c.limit>0?` · حد الدين: <span class="num">${fmt(c.limit)}</span>`:""}</p>
+  const sup=isSup(c);
+  const quick=sup?[10000,25000,50000,100000,250000]:isDebt?[250,500,1000,2000,5000,10000,25000]:[1000,5000,10000,25000];
+  const title=sup?(existing?(isDebt?"تعديل فاتورة ":"تعديل دفعة "):(isDebt?"فاتورة شراء من ":"دفعة إلى ")):(existing?(isDebt?"تعديل دين ":"تعديل تسديد "):(isDebt?"تسجيل دين على ":"تسديد من "));
+  openModal(`<h3>${title}${esc(c.name)}</h3>
+    <p class="hint">${sup?"علينا له":"الرصيد الحالي"}: <span class="num">${fmt(bal)}</span> ${CUR}${!sup&&c.limit>0?` · حد الدين: <span class="num">${fmt(c.limit)}</span>`:""}</p>
     <form id="tf" class="field" style="gap:10px" novalidate>
       <div class="field"><div class="amt-head"><label for="tAmt">المبلغ (${CUR})</label><button type="button" class="calc-t" id="calcT" aria-expanded="false" aria-controls="calc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8.5 6.5h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h.01M12 18h.01M15.5 18h.01"/></svg>حاسبة</button></div><input id="tAmt" class="big" inputmode="numeric" autocomplete="off" placeholder="0" value="${existing?fmt(existing.amount):""}"></div>
       <div class="calc" id="calc" hidden><span class="calc-exp num" id="cExp"></span><div class="calc-keys">${[["C","fn"],["⌫","fn"],["÷","op","/"],["×","op","*"],["7"],["8"],["9"],["−","op","-"],["4"],["5"],["6"],["+","op"],["1"],["2"],["3"],["=","eq"],["0"],["000"],["."]].map(([l,c,v])=>`<button type="button" class="${c||""}" data-k="${v||l}">${l}</button>`).join("")}</div></div>
-      <div class="quick">${quick.map(q=>`<button type="button" data-q="${q}">+${fmt(q)}</button>`).join("")}${!isDebt&&!existing&&bal>0?`<button type="button" data-all="${bal}">سداد كامل ${fmt(bal)}</button>`:""}</div>
-      <div class="field"><label for="tNote">${isDebt?"المواد / البيان":"ملاحظة"} (اختياري)</label><div class="note-row">${isDebt?`<select id="tCat" aria-label="اختر صنف"><option value="">الأصناف</option>${cats().map(x=>`<option>${esc(x)}</option>`).join("")}</select>`:""}<input id="tNote" maxlength="140" value="${esc(existing&&existing.note)}" placeholder="${isDebt?"اختر صنف أو اكتب":"مثال: دفعة نقداً"}"></div></div>
+      <div class="quick">${quick.map(q=>`<button type="button" data-q="${q}">+${fmt(q)}</button>`).join("")}${!isDebt&&!existing&&bal>0?`<button type="button" data-all="${bal}">${sup?"دفع الكل":"سداد كامل"} ${fmt(bal)}</button>`:""}</div>
+      ${sup&&isDebt?`<div class="two"><div class="field"><label for="tInv">رقم الفاتورة (اختياري)</label><input id="tInv" maxlength="30" inputmode="numeric" value="${esc(existing&&existing.inv)}" style="direction:ltr;text-align:right"></div>
+        <div class="field"><label for="tDue">موعد الدفع (اختياري)</label><input id="tDue" type="date" value="${esc(existing&&existing.due)}"></div></div>
+        <div class="quick" id="dueQ">${[["بعد أسبوع",7],["بعد أسبوعين",14],["بعد شهر",30]].map(([l,d])=>`<button type="button" data-due="${d}">${l}</button>`).join("")}</div>`:""}
+      <div class="field"><label for="tNote">${isDebt?(sup?"البضاعة / البيان":"المواد / البيان"):"ملاحظة"} (اختياري)</label><div class="note-row">${isDebt?`<select id="tCat" aria-label="اختر صنف"><option value="">الأصناف</option>${cats().map(x=>`<option>${esc(x)}</option>`).join("")}</select>`:""}<input id="tNote" maxlength="140" value="${esc(existing&&existing.note)}" placeholder="${isDebt?"اختر صنف أو اكتب":"مثال: دفعة نقداً"}"></div></div>
       <div class="field"><label for="tDate">التاريخ</label><input id="tDate" type="date" value="${existing?esc(existing.date):todayISO()}"></div>
       ${!existing&&!isDebt&&!isSup(c)?`<label class="wa-auto"><input type="checkbox" id="tPdf" ${(()=>{try{return localStorage.getItem(PDF_AUTO_KEY)==="0"?"":"checked"}catch(e){return "checked"}})()}>تجهيز كشف حساب PDF بعد الحفظ حتى ترسله</label>`:""}
       ${existing||isSup(c)?"":c.phone?`<label class="wa-auto"><input type="checkbox" id="tWa" ${(()=>{try{return localStorage.getItem(WA_AUTO_KEY)==="0"?"":"checked"}catch(e){return "checked"}})()}>فتح واتساب بعد الحفظ والرسالة جاهزة</label>`:`<span class="wa-auto off">الزبون بدون رقم، أضف رقمه حتى ترسل له واتساب.</span>`}
       <p class="err" id="tErr"></p>
-      <div class="foot"><button class="btn ${isDebt?"debt":"paid"}" type="submit">${existing?"حفظ التعديل":isDebt?"حفظ الدين":"حفظ التسديد"}</button><button class="btn" type="button" data-close>إلغاء</button></div>
+      <div class="foot"><button class="btn ${isDebt?"debt":"paid"}" type="submit">${existing?"حفظ التعديل":sup?(isDebt?"حفظ الفاتورة":"حفظ الدفعة"):isDebt?"حفظ الدين":"حفظ التسديد"}</button><button class="btn" type="button" data-close>إلغاء</button></div>
     </form>`,m=>{
     const a=m.querySelector("#tAmt"),calc=m.querySelector("#calc"),cT=m.querySelector("#calcT"),cExp=m.querySelector("#cExp");
     let expr="";
@@ -1127,6 +1178,8 @@ function txnForm(type,existing){
     a.addEventListener("input",()=>{if(!calc.hidden){expr=normDigits(a.value).replace(/[,،\s]/g,"").replace(/[×xX]/g,"*").replace(/÷/g,"/");cExp.textContent=expr&&/[+\-*/]/.test(expr.slice(1))?pretty(expr):""}});
     a.addEventListener("blur",()=>{if(/[+\-*/×÷xX]/.test(a.value.slice(1))){const v=calcEval(a.value);if(isFinite(v))a.value=fmt(v)}});
     m.querySelectorAll("[data-q]").forEach(b=>b.addEventListener("click",()=>{const cur=parseAmt(a.value)||0;a.value=fmt(cur+Number(b.dataset.q));if(!calc.hidden){expr=String(cur+Number(b.dataset.q));showCalc()}a.focus()}));
+    m.querySelectorAll("[data-due]").forEach(b=>b.addEventListener("click",()=>{const base=$("#tDate").value||todayISO();const d=new Date(base+"T12:00:00");d.setDate(d.getDate()+Number(b.dataset.due));
+      $("#tDue").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}));
     const tCat=m.querySelector("#tCat");
     if(tCat)tCat.addEventListener("change",()=>{const v=tCat.value,n=m.querySelector("#tNote");tCat.value="";if(!v)return;
       const parts=n.value.split(/[،,]/).map(x=>x.trim()).filter(Boolean);if(!parts.includes(v))parts.push(v);n.value=parts.join("، ").slice(0,140)});
@@ -1137,23 +1190,25 @@ function txnForm(type,existing){
       if(isDebt&&!existing&&c.limit>0&&bal+amt>c.limit&&!m.dataset.limitOk){$("#tErr").textContent=`سيصبح الدين ${fmt(bal+amt)} وهو أكثر من الحد ${fmt(c.limit)}. اضغط حفظ مرة ثانية للتأكيد.`;m.dataset.limitOk="1";return}
       const date=$("#tDate").value||todayISO(),note=$("#tNote").value.trim();
       const what=isDebt?"debt":"pay";
+      const inv=sup&&isDebt?$("#tInv").value.trim():"",due=sup&&isDebt?$("#tDue").value:"";
+      if(due&&due<date){$("#tErr").textContent="موعد الدفع لازم يكون بعد تاريخ الفاتورة.";return}
       if(!existing&&!m.dataset.dupOk&&[...S.txns.values()].some(t=>t.customerId===c.id&&t.type===what&&t.amount===amt&&Date.now()-(t.createdAt||0)<5*60e3)){
         m.dataset.dupOk="1";$("#tErr").textContent=`نفس ال${isDebt?"دين":"تسديد"} (${fmt(amt)}) انسجل لهذا الزبون قبل دقائق. اضغط حفظ مرة ثانية إذا هو جديد.`;return}
       if(existing){
-        const obj={...existing,amount:amt,note,date,updatedAt:Date.now(),updatedBy:S.me.name};
+        const obj={...existing,amount:amt,note,date,updatedAt:Date.now(),updatedBy:S.me.name,...(sup&&isDebt?{inv,due}:{})};
         const changed=[existing.amount!==amt?`المبلغ من ${fmt(existing.amount)} إلى ${fmt(amt)}`:"",existing.note!==note?"البيان":"",existing.date!==date?"التاريخ":""].filter(Boolean).join("، ");
-        closeModal();put("txns",obj);log("edit",what,{customerName:c.name,amount:amt,detail:changed});toast("تم حفظ التعديل");return;
+        closeModal();put("txns",obj);log("edit",what,{customerName:c.name,amount:amt,detail:changed,...(sup?{sup:true}:{})});toast("تم حفظ التعديل");return;
       }
-      const obj={id:uid(),customerId:c.id,type:what,amount:amt,note,date,createdAt:Date.now(),by:S.me.name};
+      const obj={id:uid(),customerId:c.id,type:what,amount:amt,note,date,createdAt:Date.now(),by:S.me.name,...(inv?{inv}:{}),...(due?{due}:{})};
       const waBox=m.querySelector("#tWa"),autoWa=!!(waBox&&waBox.checked);
       if(waBox)try{localStorage.setItem(WA_AUTO_KEY,autoWa?"1":"0")}catch(e){}
       const pdfBox=m.querySelector("#tPdf"),autoPdf=!!(pdfBox&&pdfBox.checked);
       if(pdfBox)try{localStorage.setItem(PDF_AUTO_KEY,autoPdf?"1":"0")}catch(e){}
-      closeModal();await put("txns",obj);log("add",what,{customerName:c.name,amount:amt});
+      closeModal();await put("txns",obj);log("add",what,{customerName:c.name,amount:amt,...(sup?{sup:true}:{})});
       const link=c.phone&&!isSup(c)?waLink(c.phone,fillTpl(what,c,{amount:amt,date,note})):"";
       if(autoPdf){sendStatementPdf(c,link);return}
       if(link&&autoWa)openExternal(link);
-      toast((isDebt?"سُجّل دين ":"سُجّل تسديد ")+fmt(amt)+" "+CUR,link?{href:link,label:"إرسال واتساب"}:null);
+      toast((sup?(isDebt?"سُجّلت فاتورة ":"سُجّلت دفعة للمورد "):isDebt?"سُجّل دين ":"سُجّل تسديد ")+fmt(amt)+" "+CUR,link?{href:link,label:"إرسال واتساب"}:null);
     });
   });
 }
@@ -1443,6 +1498,7 @@ document.addEventListener("click",e=>{
   const c=S.customers.get(S.selected);
   switch(b.dataset.act){
     case "back":S.selected=null;render();break;
+    case "gosup":S.view="customers";S.kind="supplier";S.filter="due";S.selected=null;render();window.scrollTo(0,0);break;
     case "quick":if(canWrite())pickCustomer("debt");break;
     case "quickpay":if(canWrite())pickCustomer("pay");break;
     case "scan":if(canWrite())scanStart();break;
@@ -1466,7 +1522,7 @@ document.addEventListener("click",e=>{
     case "resetcats":if(isAdmin())$("#catsTa").value=DEFAULT_CATS.join("\n");break;
     case "savetpl":if(isAdmin()){const tp={};for(const k of Object.keys(DEFAULT_TPL))tp[k]=document.getElementById("tpl-"+k).value;saveSettings({templates:tp}).then(ok=>ok&&toast("تم حفظ القوالب"))}break;
     case "edittx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())txnForm(null,x);break}
-    case "deltx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())confirmBox("حذف الحركة",`حذف ${x.type==="debt"?"دين":"تسديد"} بمبلغ ${fmt(x.amount)} ${CUR} بتاريخ ${x.date}؟`,"حذف",()=>{del("txns",x.id);log("delete",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount});toast("حُذفت الحركة")});break}
+    case "deltx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())confirmBox("حذف الحركة",`حذف ${c&&isSup(c)?(x.type==="debt"?"فاتورة":"دفعة"):(x.type==="debt"?"دين":"تسديد")} بمبلغ ${fmt(x.amount)} ${CUR} بتاريخ ${x.date}؟`,"حذف",()=>{del("txns",x.id);log("delete",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount,...(c&&isSup(c)?{sup:true}:{})});toast("حُذفت الحركة")});break}
     case "delcust":if(canWrite()&&c)confirmBox("حذف الزبون",`سيُحذف ${c.name} وكل حركاته نهائياً. صدّر نسخة احتياطية أولاً إذا كنت تحتاج السجل.`,"حذف نهائي",()=>{
       for(const x of txnsOf(c.id))del("txns",x.id);del("customers",c.id);log("delete","customer",{customerName:c.name});S.selected=null;render();toast("حُذف الزبون")});break;
   }
