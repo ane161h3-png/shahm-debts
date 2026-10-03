@@ -1,5 +1,5 @@
 # Deploys worker/ (reads ledger photos with AI) to Cloudflare Workers.
-# Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, and GEMINI_API_KEY (free) or ANTHROPIC_API_KEY (Claude; wins if set).
+# Secrets: CLOUDFLARE_API_TOKEN, and GEMINI_API_KEY (free) or ANTHROPIC_API_KEY (Claude; wins if set).
 name: AI worker
 on:
   push:
@@ -16,7 +16,6 @@ jobs:
         working-directory: worker
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
@@ -26,7 +25,6 @@ jobs:
       - name: Check secrets
         run: |
           [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::Missing secret CLOUDFLARE_API_TOKEN"; exit 1; }
-          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Missing secret CLOUDFLARE_ACCOUNT_ID"; exit 1; }
           [ -n "$GEMINI_API_KEY$ANTHROPIC_API_KEY" ] || { echo "::error::Add GEMINI_API_KEY or ANTHROPIC_API_KEY"; exit 1; }
       - name: Check the Gemini model is available
         if: env.GEMINI_API_KEY != '' && env.ANTHROPIC_API_KEY == ''

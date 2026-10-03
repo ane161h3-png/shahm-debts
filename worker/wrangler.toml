@@ -5,6 +5,7 @@ name = "shahm-ai"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
+account_id = "08cdcd54bf3baea5c7e88e21b4aa6743"
 
 [vars]
 FIREBASE_API_KEY = "AIzaSyA8ZcghTnu-k3iQ01JuBeXPl44Pj0pwDDg"

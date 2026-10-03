@@ -27,5 +27,5 @@
 
 زر «تصوير اليوميات» بالرئيسية يصوّر ورقة الديون المكتوبة باليد، والذكاء الاصطناعي يقرأ الأسماء والمبالغ ويطابقها مع الزبائن، وتطلع شاشة مراجعة قبل الحفظ.
 - السيرفر بمجلد `worker/` (Cloudflare Workers) يحمي مفتاح الذكاء الاصطناعي، ويقبل بس المدير والمحررين.
-- النشر عن طريق `.github/workflows/ai-worker.yml`. الأسرار المطلوبة: `CLOUDFLARE_API_TOKEN` و`CLOUDFLARE_ACCOUNT_ID` و`GEMINI_API_KEY` (مجاني). إذا أضفت `ANTHROPIC_API_KEY` يتحول السيرفر لـ Claude.
+- النشر عن طريق `.github/workflows/ai-worker.yml`. الأسرار المطلوبة: `CLOUDFLARE_API_TOKEN` و`GEMINI_API_KEY` (مجاني). إذا أضفت `ANTHROPIC_API_KEY` يتحول السيرفر لـ Claude.
 - بعد أول نشر، عنوان السيرفر ينحط بـ `window.AI_URL` بملف `web/config.js`.
