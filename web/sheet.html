@@ -25,21 +25,21 @@ header{display:flex;align-items:flex-end;justify-content:space-between;gap:6mm;b
 .hint{display:flex;flex-wrap:wrap;gap:1.5mm 5mm;margin:2.5mm 0;font-size:9.5pt;color:#222}
 .hint b{font-weight:700}
 .hint span::before{content:"●";font-size:6pt;margin-left:1.5mm;vertical-align:middle;color:#666}
-table{width:100%;border-collapse:collapse;table-layout:fixed;flex:1}
+.cols{flex:1;display:flex;gap:4mm;min-height:0}
+table{flex:1;width:50%;border-collapse:collapse;table-layout:fixed}
 th,td{border:.3mm solid #000}
-thead th{background:#000;color:#fff;font-size:11.5pt;font-weight:700;height:9mm;padding:0 1mm}
-thead th small{display:block;font-size:7.5pt;font-weight:500;line-height:1.1;color:#ddd}
-tbody td{height:9.6mm;padding:0}
+thead th{background:#000;color:#fff;font-size:11pt;font-weight:700;height:9mm;padding:0 1mm}
+thead th small{display:block;font-size:7pt;font-weight:500;line-height:1.1;color:#ddd}
+tbody td{height:8.15mm;padding:0}
 tbody tr:nth-child(even) td{background:#f1f1f1}
-td.n{text-align:center;font-size:9pt;font-weight:600;color:#555}
+td.n{text-align:center;font-size:8.5pt;font-weight:600;color:#555}
 td.box{position:relative}
-td.box::after{content:"";position:absolute;inset:50% auto auto 50%;width:5.5mm;height:5.5mm;margin:-2.75mm 0 0 -2.75mm;border:.45mm solid #000;background:#fff}
+td.box::after{content:"";position:absolute;inset:50% auto auto 50%;width:5mm;height:5mm;margin:-2.5mm 0 0 -2.5mm;border:.45mm solid #000;background:#fff}
 td.amt{border-right:.7mm solid #000;border-left:.7mm solid #000}
-col.c-n{width:8mm}
+col.c-n{width:7.5mm}
 col.c-name{width:auto}
-col.c-amt{width:34mm}
-col.c-pay{width:15mm}
-col.c-note{width:52mm}
+col.c-amt{width:25mm}
+col.c-pay{width:12mm}
 footer{display:flex;justify-content:space-between;align-items:flex-end;gap:6mm;margin-top:3.5mm;font-size:11pt;font-weight:600}
 footer>div{display:flex;align-items:flex-end;gap:2mm;white-space:nowrap}
 footer .line{display:inline-block;border-bottom:.35mm solid #000;height:7mm}
@@ -69,19 +69,13 @@ footer .tag{font-size:7.5pt;font-weight:500;color:#777;direction:ltr;letter-spac
     <span><b>زبون واحد</b> بكل سطر</span>
     <span>المبلغ كامل <b>5000</b> أو بالألف <b>5</b></span>
     <span>إذا الزبون سدّد: <b>✓ بمربع واصل</b></span>
+    <span>المواد (اختياري) <b>بعد الاسم</b></span>
     <span>السطر الملغي: <b>اشطبه بخط</b></span>
   </div>
-  <table>
-    <colgroup><col class="c-n"><col class="c-name"><col class="c-amt"><col class="c-pay"><col class="c-note"></colgroup>
-    <thead><tr>
-      <th>ت</th>
-      <th>اسم الزبون</th>
-      <th>المبلغ</th>
-      <th>واصل<small>✓ إذا سدّد</small></th>
-      <th>المواد / ملاحظة</th>
-    </tr></thead>
-    <tbody id="rows"></tbody>
-  </table>
+  <div class="cols">
+    <table id="t1"></table>
+    <table id="t2"></table>
+  </div>
   <footer>
     <div>مجموع الديون: <span class="line" style="width:36mm"></span></div>
     <div>مجموع الواصل: <span class="line" style="width:36mm"></span></div>
@@ -89,9 +83,14 @@ footer .tag{font-size:7.5pt;font-weight:500;color:#777;direction:ltr;letter-spac
   </footer>
 </div>
 <script>
-const ROWS = 22;
-document.getElementById("rows").innerHTML = Array.from({ length: ROWS }, (_, i) =>
-  `<tr><td class="n">${i + 1}</td><td></td><td class="amt"></td><td class="box"></td><td></td></tr>`).join("");
+// Two tables side by side to save paper: the right table holds rows 1-26, the left 27-52 (read right first).
+const ROWS = 26;
+const head = `<colgroup><col class="c-n"><col class="c-name"><col class="c-amt"><col class="c-pay"></colgroup>
+  <thead><tr><th>ت</th><th>اسم الزبون</th><th>المبلغ</th><th>واصل<small>✓ إذا سدّد</small></th></tr></thead>`;
+const body = start => "<tbody>" + Array.from({ length: ROWS }, (_, i) =>
+  `<tr><td class="n">${start + i}</td><td></td><td class="amt"></td><td class="box"></td></tr>`).join("") + "</tbody>";
+document.getElementById("t1").innerHTML = head + body(1);
+document.getElementById("t2").innerHTML = head + body(ROWS + 1);
 </script>
 </body>
 </html>
