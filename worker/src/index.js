@@ -17,9 +17,9 @@ How the ledger is written:
 
 The shop may also use its printed form "ماركت الشهم · ورقة اليوميات" (tag "SHAHM DAILY SHEET"). On that form:
 - The page has two tables side by side. Read the right-hand table first (printed rows ت 1–30, top to bottom), then the left-hand table (rows 31–60). Never join a name from one table with an amount from the other.
-- Each numbered row is one entry. Columns in each table from right to left: ت (printed row number, ignore it), اسم الزبون (name), المواد (goods taken), المبلغ (amount), واصل (a small box). Put whatever is written in المواد into note, never into written_name or amount. Goods written after the name in the name cell also go in note.
-- Older printouts of the form have 26 rows per table and no المواد column: read them the same way.
-- A tick, cross, dot or scribble inside the واصل box means the customer paid: type "pay". An empty box means "debt". Payment words written anywhere in the row also mean "pay".
+- Each numbered row is one entry. Columns in each table from right to left: ت (printed row number, ignore it), اسم الزبون (name), المواد (goods taken), المبلغ (amount). Put whatever is written in المواد into note, never into written_name or amount. Goods written after the name in the name cell also go in note.
+- A row is "debt" unless it says the customer paid: a payment word (واصل، وصل، دفع، سدد) or a minus sign written anywhere in the row, usually next to the amount, means "pay".
+- Older printouts of the form have 26 rows per table, no المواد column, and a small واصل box after the amount: there a tick, cross, dot or scribble inside the box also means "pay".
 - Skip empty rows, the printed headings and instructions, the date and sheet number at the top, and the مجموع الديون / مجموع الواصل totals at the bottom.
 - A row with a line through it was cancelled: skip it.
 

@@ -28,14 +28,11 @@ thead th small{display:block;font-size:6.5pt;font-weight:500;color:#ddd}
 tbody td{padding:0}
 tbody tr:nth-child(even) td{background:#efefef}
 td.n{text-align:center;font-size:8pt;font-weight:600;color:#555}
-td.amt{border-inline:.6mm solid #000}
-td.box{position:relative}
-td.box::after{content:"";position:absolute;inset:50% auto auto 50%;width:5mm;height:5mm;margin:-2.5mm 0 0 -2.5mm;border:.45mm solid #000;background:#fff}
+td.amt{border-inline-start:.6mm solid #000}
 col.c-n{width:6mm}
 col.c-name{width:auto}
-col.c-items{width:24mm}
-col.c-amt{width:19mm}
-col.c-pay{width:11mm}
+col.c-items{width:25mm}
+col.c-amt{width:28mm}
 footer{display:flex;justify-content:space-between;align-items:center;gap:4mm;border:.5mm solid #000;border-radius:2mm;padding:1.5mm 3mm;font-size:11pt;font-weight:700}
 footer>div{display:flex;align-items:flex-end;gap:1.5mm;white-space:nowrap}
 footer .hint{font-size:7.5pt;font-weight:500;color:#333;white-space:normal;line-height:1.35;max-width:62mm}
@@ -62,16 +59,16 @@ footer .hint{font-size:7.5pt;font-weight:500;color:#333;white-space:normal;line-
   <footer>
     <div>مجموع الديون: <span class="line" style="width:32mm"></span></div>
     <div>مجموع الواصل: <span class="line" style="width:32mm"></span></div>
-    <div class="hint">زبون واحد بكل سطر · المبلغ كامل أو بالألف · ✓ بمربع واصل إذا سدّد · السطر الملغي اشطبه بخط</div>
+    <div class="hint">زبون واحد بكل سطر · المبلغ كامل أو بالألف · إذا سدّد اكتب «واصل» جنب المبلغ · السطر الملغي اشطبه بخط</div>
   </footer>
 </div>
 <script>
 // Two tables side by side: the right table holds rows 1-30, the left 31-60 (read right first).
 const ROWS = 30;
-const head = `<colgroup><col class="c-n"><col class="c-name"><col class="c-items"><col class="c-amt"><col class="c-pay"></colgroup>
-  <thead><tr><th>ت</th><th>اسم الزبون</th><th>المواد</th><th>المبلغ</th><th>واصل</th></tr></thead>`;
+const head = `<colgroup><col class="c-n"><col class="c-name"><col class="c-items"><col class="c-amt"></colgroup>
+  <thead><tr><th>ت</th><th>اسم الزبون</th><th>المواد</th><th>المبلغ</th></tr></thead>`;
 const body = start => "<tbody>" + Array.from({ length: ROWS }, (_, i) =>
-  `<tr><td class="n">${start + i}</td><td></td><td></td><td class="amt"></td><td class="box"></td></tr>`).join("") + "</tbody>";
+  `<tr><td class="n">${start + i}</td><td></td><td></td><td class="amt"></td></tr>`).join("") + "</tbody>";
 document.getElementById("t1").innerHTML = head + body(1);
 document.getElementById("t2").innerHTML = head + body(ROWS + 1);
 </script>
