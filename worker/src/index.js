@@ -135,33 +135,39 @@ function geminiSchema(x) {
   return o;
 }
 
+// Free-tier models get busy (503) or hit their own daily quota (429), so try the next one before giving up.
+const GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash"];
+
 async function readWithGemini(env, input) {
   const base = env.GEMINI_URL || "https://generativelanguage.googleapis.com";
-  const model = env.GEMINI_MODEL || "gemini-flash-latest";
-  const r = await fetch(`${base}/v1beta/models/${model}:generateContent`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM }] },
-      contents: [{
-        role: "user",
-        parts: [
-          { text: `Customer list (id|name):\n${customerList(input)}` },
-          ...input.images.map(im => ({ inline_data: { mime_type: im.media_type, data: im.data } })),
-          { text: ASK },
-        ],
-      }],
-      generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema(SCHEMA), temperature: 0 },
-    }),
+  const models = env.GEMINI_MODEL ? [env.GEMINI_MODEL] : GEMINI_MODELS;
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: SYSTEM }] },
+    contents: [{
+      role: "user",
+      parts: [
+        { text: `Customer list (id|name):\n${customerList(input)}` },
+        ...input.images.map(im => ({ inline_data: { mime_type: im.media_type, data: im.data } })),
+        { text: ASK },
+      ],
+    }],
+    generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema(SCHEMA), temperature: 0 },
   });
-  const j = await r.json().catch(() => ({}));
+  let r, j, lastStatus = 0;
+  for (const model of models) {
+    r = await fetch(`${base}/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY }, body });
+    j = await r.json().catch(() => ({}));
+    if (r.ok) break;
+    lastStatus = r.status;
+    console.error("gemini", model, r.status, j.error && j.error.status, j.error && j.error.message);
+    if (![404, 429, 500, 503].includes(r.status)) break;
+  }
   if (!r.ok) {
-    const status = (j.error && j.error.status) || "";
-    console.error("gemini", r.status, status, j.error && j.error.message);
-    if (r.status === 429) throw new UserError("خلص الحد المجاني لهاليوم من Gemini. حاول باچر أو بعد شوية.");
-    if (r.status === 400 && /API_KEY_INVALID|API key/i.test(JSON.stringify(j))) throw new UserError("مفتاح Gemini غير صحيح.");
-    if (r.status === 403) throw new UserError("مفتاح Gemini ما عنده صلاحية. تأكد إنه مفعّل.");
-    if (r.status === 404) throw new UserError("موديل Gemini غير متوفر. لازم يتحدث السيرفر.");
+    if (lastStatus === 429) throw new UserError("خلص الحد المجاني لهاليوم من Gemini. حاول باچر أو بعد شوية.");
+    if (lastStatus === 503 || lastStatus === 500) throw new UserError("خدمة Gemini مضغوطة هسه. انتظر دقيقة وحاول مرة ثانية.");
+    if (lastStatus === 400 && /API_KEY_INVALID|API key/i.test(JSON.stringify(j))) throw new UserError("مفتاح Gemini غير صحيح.");
+    if (lastStatus === 401 || lastStatus === 403) throw new UserError("مفتاح Gemini مرفوض. تأكد منه.");
+    if (lastStatus === 404) throw new UserError("موديل Gemini غير متوفر. لازم يتحدث السيرفر.");
     throw new UserError("تعذّر الاتصال بـ Gemini. حاول مرة ثانية.");
   }
   if (j.promptFeedback && j.promptFeedback.blockReason) return { error: "ما كدر يقرأ الصورة. جرّب صورة ثانية." };
