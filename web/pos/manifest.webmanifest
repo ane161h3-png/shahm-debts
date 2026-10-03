@@ -4,7 +4,7 @@
   "description": "بيع كاش أو بالدين على حساب الزبون بدفتر الديون، وتقرير مبيعات يومي.",
   "lang": "ar",
   "dir": "rtl",
-  "id": "./",
+  "id": "shahm-pos",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
