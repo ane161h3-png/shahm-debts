@@ -276,6 +276,7 @@ td.x{width:64px;white-space:nowrap}
 .sr-top b{color:var(--ink)}
 .sr select,.sr input{border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:8px 10px;width:100%;min-width:0;color:var(--ink)}
 .sr-row{display:flex;gap:8px;align-items:center}
+.note-row{display:flex;gap:8px}.note-row select{flex:0 0 36%;min-width:0}.note-row input{flex:1;min-width:0}
 .sr-cust{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:1px solid var(--line);background:var(--paper-2);border-radius:9px;padding:9px 10px;color:var(--ink);cursor:pointer;text-align:right;font:inherit}
 .sr-cust.empty{color:var(--muted)}
 .sr-cust svg{width:16px;height:16px;flex:none;color:var(--muted)}
@@ -356,6 +357,9 @@ td.x{width:64px;white-space:nowrap}
 const CUR="د.ع";
 const SESSION_KEY="shahm-session-v1",THEME_KEY="shahm-theme",CACHE_KEY="shahm-debts-cache-v1";
 const ROLE_LABEL={owner:"المدير",editor:"محرر",viewer:"مشاهد"};
+const PDF_AUTO_KEY="shahm-pdf-auto";
+const DEFAULT_CATS=["مشكل","مواد غذائية","خضروات","فواكه","أجبان وألبان","لحوم ودجاج","معلبات","حلويات","مشروبات","منظفات","خبز ومعجنات","سكائر","كارت رصيد","غاز"];
+const cats=()=>Array.isArray(S.settings.categories)&&S.settings.categories.length?S.settings.categories:DEFAULT_CATS;
 const DEFAULT_TPL={
   debt:"مرحباً {الاسم}،\nتم تسجيل دين جديد بمبلغ {المبلغ} د.ع ({البيان}) بتاريخ {التاريخ}.\nالرصيد المتبقي عليك: {الرصيد} د.ع.\n{المتجر}",
   pay:"مرحباً {الاسم}،\nاستلمنا منك {المبلغ} د.ع بتاريخ {التاريخ}. شكراً لك.\nالرصيد المتبقي: {الرصيد} د.ع.\n{المتجر}",
@@ -810,25 +814,28 @@ async function buildPdf(spec,filename){
   pages.forEach((cv,i)=>{const cx=cv.getContext("2d");cx.direction="ltr";cx.textAlign="center";cx.fillStyle="#9a9eb0";cx.font=`400 18px ${F}`;cx.fillText(`${i+1} / ${pages.length}`,W/2,H-40)});
   return savePages(pages,filename);
 }
-async function savePages(pages,filename){
+function pagesBlob(pages){
   const {jsPDF}=window.jspdf;const pdf=new jsPDF({unit:"pt",format:"a4"});
   pages.forEach((cv,i)=>{if(i)pdf.addPage();pdf.addImage(cv.toDataURL("image/jpeg",0.92),"JPEG",0,0,595.28,841.89)});
-  const blob=pdf.output("blob");
+  return pdf.output("blob");
+}
+async function savePages(pages,filename){
+  const blob=pagesBlob(pages);
   try{if(await saveFile(filename,blob))toast("تم حفظ التقرير")}catch(e){console.warn(e);toast("تعذّر حفظ الملف.")}
 }
 function blobToB64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(blob)})}
 /* Saves a file: the Android app writes it and opens the share sheet (WhatsApp, Drive, Files); phones' browsers share it; laptops download it. Returns false if the person cancelled. */
-async function saveFile(filename,data,mime){
+async function saveFile(filename,data,mime,text){
   const blob=data instanceof Blob?data:new Blob([data],{type:mime||"application/octet-stream"});
   if(NATIVE){
     const r=await plugin("Filesystem").writeFile({path:filename,data:await blobToB64(blob),directory:"CACHE"});
-    try{await plugin("Share").share({title:filename,files:[r.uri]})}catch(e){if(/cancel/i.test(String(e&&e.message)))return false;throw e}
+    try{await plugin("Share").share({title:filename,files:[r.uri],...(text?{text}:{})})}catch(e){if(/cancel/i.test(String(e&&e.message)))return false;throw e}
     return true;
   }
   const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   if(mobile&&navigator.canShare){
     const file=new File([blob],filename,{type:blob.type});
-    if(navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:filename});return true}catch(e){if(e&&e.name==="AbortError")return false}}
+    if(navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:filename,...(text?{text}:{})});return true}catch(e){if(e&&e.name==="AbortError")return false}}
   }
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},5000);return true;
@@ -838,8 +845,8 @@ const dmy=iso=>{const [y,m,d]=iso.split("-");return `${d}/${m}/${y}`};
 const wday=iso=>AR_DAYS[new Date(iso+"T12:00:00").getDay()];
 const hm12=ms=>{const d=new Date(ms);let hr=d.getHours();const ap=hr<12?"ص":"م";hr=hr%12||12;return String(hr).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+" "+ap};
 const iqd=n=>"IQD "+fmt(n);
-async function custPdf(c){
-  toast("جارِ تجهيز كشف الحساب…");
+async function custPdf(c,opt){
+  if(!opt)toast("جارِ تجهيز كشف الحساب…");
   try{await loadScript("vendor/jspdf.umd.min.js")}catch(e){toast("تعذّر تحميل أداة PDF. تحقق من الإنترنت.");return}
   try{await document.fonts.ready}catch(e){}
   const L=ledgerFor(c);const sup=isSup(c);
@@ -848,6 +855,7 @@ async function custPdf(c){
   const nowMs=Date.now();const nowTxt=dmy(todayISO())+" "+hm12(nowMs);
   const shopPhone=S.settings.phone||"";
   const pl=PERIODS.find(p=>p[0]===S.period)[1];
+  if(opt&&opt.blob)await new Promise(r=>setTimeout(r,0));
   const startIso=L.from||(L.list.length?L.list[0].t.date:todayISO());
   const rows=[{date:startIso,time:"",op:"رصيد افتتاحي",amt:L.open,run:L.open,note:"رصيد بداية المدة",edge:true}];
   for(const {t,run} of L.list)rows.push({date:t.date,time:t.createdAt?hm12(t.createdAt):"",op:t.type==="debt"?"دين":"دفعة",type:t.type,amt:t.amount,run,note:t.note||""});
@@ -903,7 +911,9 @@ async function custPdf(c){
     txt("دفتر الديون",W/2,fy+50,{w:700,s:22,a:"center",c:"#4a46c9"});
     txt(`${i+1} / ${pages.length}`,M+70,fy+40,{s:19,a:"center",ltr:true});
     txt(nowTxt,M,fy+74,{s:19,a:"left"});});
-  return savePages(pages,"كشف حساب "+c.name+" "+todayISO()+".pdf");
+  const fname="كشف حساب "+c.name+" "+todayISO()+".pdf";
+  if(opt&&opt.blob)return {blob:pagesBlob(pages),fname};
+  return savePages(pages,fname);
 }
 function listPdf(){
   const per=stats();const sup=S.kind==="supplier";
@@ -918,7 +928,7 @@ function listPdf(){
 }
 
 /* ---------- settings ---------- */
-const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false]];
+const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["cats","أصناف المواد",I.edit,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false]];
 function settingsView(){
   const pages=SET_PAGES.filter(p=>!p[3]||isAdmin());
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
@@ -972,6 +982,9 @@ function setPage(k){
       ${box("debt","إضافة دين جديد","ترسل بعد تسجيل دين")}${box("pay","إضافة دفعة","ترسل بعد تسجيل تسديد")}${box("remind","تذكير بالرصيد","زر «تذكير واتساب» في صفحة الزبون")}
       <div><button class="btn primary" type="button" data-act="savetpl">حفظ القوالب</button></div>`;
   }
+  if(k==="cats")return `<h2>أصناف المواد</h2><p class="lead">تطلع بقائمة «الأصناف» بنافذة الدين الجديد. اكتب كل صنف بسطر.</p>
+    <div class="field"><textarea id="catsTa" aria-label="الأصناف" style="min-height:260px">${esc(cats().join("\n"))}</textarea></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="savecats">حفظ الأصناف</button><button class="btn ghost" type="button" data-act="resetcats">رجوع للقائمة الافتراضية</button></div>`;
   if(k==="backup"){const lb=st.lastBackupAt;const sups=[...S.customers.values()].filter(isSup).length;
     return `<h2>النسخ الاحتياطي والاستعادة</h2>
     <div class="banner info">بياناتك محفوظة على السحابة (Firebase)، فإذا حذفت البرنامج أو بدّلت الموبايل ثبّته من جديد وسجّل دخول وكل شي يرجع. ملف النسخة الاحتياطية للأمان الإضافي: إذا انحذف شي بالغلط تقدر ترجّعه منه.</div>
@@ -1065,8 +1078,9 @@ function txnForm(type,existing){
       <div class="field"><div class="amt-head"><label for="tAmt">المبلغ (${CUR})</label><button type="button" class="calc-t" id="calcT" aria-expanded="false" aria-controls="calc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8.5 6.5h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h.01M12 18h.01M15.5 18h.01"/></svg>حاسبة</button></div><input id="tAmt" class="big" inputmode="numeric" autocomplete="off" placeholder="0" value="${existing?fmt(existing.amount):""}"></div>
       <div class="calc" id="calc" hidden><span class="calc-exp num" id="cExp"></span><div class="calc-keys">${[["C","fn"],["⌫","fn"],["÷","op","/"],["×","op","*"],["7"],["8"],["9"],["−","op","-"],["4"],["5"],["6"],["+","op"],["1"],["2"],["3"],["=","eq"],["0"],["000"],["."]].map(([l,c,v])=>`<button type="button" class="${c||""}" data-k="${v||l}">${l}</button>`).join("")}</div></div>
       <div class="quick">${quick.map(q=>`<button type="button" data-q="${q}">+${fmt(q)}</button>`).join("")}${!isDebt&&!existing&&bal>0?`<button type="button" data-all="${bal}">سداد كامل ${fmt(bal)}</button>`:""}</div>
-      <div class="field"><label for="tNote">${isDebt?"المواد / البيان":"ملاحظة"} (اختياري)</label><input id="tNote" maxlength="140" value="${esc(existing&&existing.note)}" placeholder="${isDebt?"مثال: رز، زيت، سكر":"مثال: دفعة نقداً"}"></div>
+      <div class="field"><label for="tNote">${isDebt?"المواد / البيان":"ملاحظة"} (اختياري)</label><div class="note-row">${isDebt?`<select id="tCat" aria-label="اختر صنف"><option value="">الأصناف</option>${cats().map(x=>`<option>${esc(x)}</option>`).join("")}</select>`:""}<input id="tNote" maxlength="140" value="${esc(existing&&existing.note)}" placeholder="${isDebt?"اختر صنف أو اكتب":"مثال: دفعة نقداً"}"></div></div>
       <div class="field"><label for="tDate">التاريخ</label><input id="tDate" type="date" value="${existing?esc(existing.date):todayISO()}"></div>
+      ${!existing&&!isDebt&&!isSup(c)?`<label class="wa-auto"><input type="checkbox" id="tPdf" ${(()=>{try{return localStorage.getItem(PDF_AUTO_KEY)==="0"?"":"checked"}catch(e){return "checked"}})()}>تجهيز كشف حساب PDF بعد الحفظ حتى ترسله</label>`:""}
       ${existing||isSup(c)?"":c.phone?`<label class="wa-auto"><input type="checkbox" id="tWa" ${(()=>{try{return localStorage.getItem(WA_AUTO_KEY)==="0"?"":"checked"}catch(e){return "checked"}})()}>فتح واتساب بعد الحفظ والرسالة جاهزة</label>`:`<span class="wa-auto off">الزبون بدون رقم، أضف رقمه حتى ترسل له واتساب.</span>`}
       <p class="err" id="tErr"></p>
       <div class="foot"><button class="btn ${isDebt?"debt":"paid"}" type="submit">${existing?"حفظ التعديل":isDebt?"حفظ الدين":"حفظ التسديد"}</button><button class="btn" type="button" data-close>إلغاء</button></div>
@@ -1090,6 +1104,9 @@ function txnForm(type,existing){
     a.addEventListener("input",()=>{if(!calc.hidden){expr=normDigits(a.value).replace(/[,،\s]/g,"").replace(/[×xX]/g,"*").replace(/÷/g,"/");cExp.textContent=expr&&/[+\-*/]/.test(expr.slice(1))?pretty(expr):""}});
     a.addEventListener("blur",()=>{if(/[+\-*/×÷xX]/.test(a.value.slice(1))){const v=calcEval(a.value);if(isFinite(v))a.value=fmt(v)}});
     m.querySelectorAll("[data-q]").forEach(b=>b.addEventListener("click",()=>{const cur=parseAmt(a.value)||0;a.value=fmt(cur+Number(b.dataset.q));if(!calc.hidden){expr=String(cur+Number(b.dataset.q));showCalc()}a.focus()}));
+    const tCat=m.querySelector("#tCat");
+    if(tCat)tCat.addEventListener("change",()=>{const v=tCat.value,n=m.querySelector("#tNote");tCat.value="";if(!v)return;
+      const parts=n.value.split(/[،,]/).map(x=>x.trim()).filter(Boolean);if(!parts.includes(v))parts.push(v);n.value=parts.join("، ").slice(0,140)});
     m.querySelectorAll("[data-all]").forEach(b=>b.addEventListener("click",()=>{a.value=fmt(Number(b.dataset.all));if(!calc.hidden){expr=String(b.dataset.all);showCalc()}a.focus()}));
     m.querySelector("#tf").addEventListener("submit",async e=>{
       e.preventDefault();const raw=parseAmt(a.value),amt=Math.round(isFinite(raw)?raw:calcEval(a.value));
@@ -1105,11 +1122,32 @@ function txnForm(type,existing){
       const obj={id:uid(),customerId:c.id,type:what,amount:amt,note,date,createdAt:Date.now(),by:S.me.name};
       const waBox=m.querySelector("#tWa"),autoWa=!!(waBox&&waBox.checked);
       if(waBox)try{localStorage.setItem(WA_AUTO_KEY,autoWa?"1":"0")}catch(e){}
+      const pdfBox=m.querySelector("#tPdf"),autoPdf=!!(pdfBox&&pdfBox.checked);
+      if(pdfBox)try{localStorage.setItem(PDF_AUTO_KEY,autoPdf?"1":"0")}catch(e){}
       closeModal();await put("txns",obj);log("add",what,{customerName:c.name,amount:amt});
       const link=c.phone&&!isSup(c)?waLink(c.phone,fillTpl(what,c,{amount:amt,date,note})):"";
+      if(autoPdf){sendStatementPdf(c,link);return}
       if(link&&autoWa)openExternal(link);
       toast((isDebt?"سُجّل دين ":"سُجّل تسديد ")+fmt(amt)+" "+CUR,link?{href:link,label:"إرسال واتساب"}:null);
     });
+  });
+}
+/* After a payment: build the PDF statement up front, so the share sheet opens straight from the button tap (phones require a fresh tap). */
+function sendStatementPdf(c,textLink){
+  const canShareFiles=NATIVE||(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)&&!!navigator.canShare);
+  openModal(`<h3>كشف حساب ${esc(c.name)}</h3>
+    <p class="hint">تم تسجيل التسديد. الرصيد المتبقي: <b class="num">${fmt(balanceOf(c.id))}</b> ${CUR}</p>
+    <p class="hint" id="spState">جاري تجهيز الكشف…</p>
+    <div class="foot"><button class="btn wa" type="button" id="spSend" disabled>${I.wa}${canShareFiles?"إرسال الكشف PDF":"تنزيل الكشف وفتح واتساب"}</button>${textLink?`<button class="btn" type="button" id="spText">رسالة نصية فقط</button>`:""}<button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
+    let ready=null;const st=m.querySelector("#spState"),send=m.querySelector("#spSend");
+    const caption=fillTpl("pay",c,{amount:0}).split("\n")[0]+"\nمرفق كشف حسابك. الرصيد المتبقي: "+fmt(balanceOf(c.id))+" "+CUR+"\n"+shopName();
+    custPdf(c,{blob:true}).then(r=>{if(!r)throw 0;ready=r;send.disabled=false;
+      st.textContent=canShareFiles?"اضغط إرسال، اختار واتساب، وبعدين اختار الزبون.":"ينزل الملف وينفتح واتساب على رقم الزبون، اسحب الملف للمحادثة."}).catch(()=>{st.textContent="تعذّر تجهيز الكشف."});
+    send.addEventListener("click",async()=>{if(!ready)return;
+      try{const ok=await saveFile(ready.fname,ready.blob,"application/pdf",caption);
+        if(ok&&!canShareFiles&&c.phone)openExternal(waLink(c.phone,caption));
+        if(ok)closeModal()}catch(e){console.warn(e);toast("تعذّر إرسال الملف.")}});
+    const tx=m.querySelector("#spText");if(tx)tx.addEventListener("click",()=>{openExternal(textLink);closeModal()});
   });
 }
 /* ---------- ledger photo: read the paper notebook with AI, review, save ---------- */
@@ -1390,6 +1428,8 @@ document.addEventListener("click",e=>{
     case "logout":signOut("تم تسجيل الخروج.","ok");break;
     case "pwainstall":if(installEvt){installEvt.prompt();installEvt.userChoice.finally(()=>{installEvt=null;render()})}break;
     case "copylinks":copyText(b.dataset.txt,document.createElement("textarea"));break;
+    case "savecats":if(isAdmin()){const list=[...new Set($("#catsTa").value.split("\n").map(x=>x.trim().slice(0,30)).filter(Boolean))].slice(0,60);saveSettings({categories:list}).then(ok=>ok&&toast("تم حفظ الأصناف"))}break;
+    case "resetcats":if(isAdmin())$("#catsTa").value=DEFAULT_CATS.join("\n");break;
     case "savetpl":if(isAdmin()){const tp={};for(const k of Object.keys(DEFAULT_TPL))tp[k]=document.getElementById("tpl-"+k).value;saveSettings({templates:tp}).then(ok=>ok&&toast("تم حفظ القوالب"))}break;
     case "edittx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())txnForm(null,x);break}
     case "deltx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())confirmBox("حذف الحركة",`حذف ${x.type==="debt"?"دين":"تسديد"} بمبلغ ${fmt(x.amount)} ${CUR} بتاريخ ${x.date}؟`,"حذف",()=>{del("txns",x.id);log("delete",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount});toast("حُذفت الحركة")});break}
