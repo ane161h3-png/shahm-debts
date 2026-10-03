@@ -15,12 +15,15 @@ How the ledger is written:
 - Lines that are completely crossed out were cancelled: skip them. Skip headings, dates, page totals and sums.
 - Amounts are Iraqi dinars. Shopkeepers usually write them in thousands: the smallest banknote is 250, so any amount below 250 is in thousands (5 → 5000, 2.5 or 2,5 → 2500, 7½ → 7500, 0.5 → 500). Amounts like 250, 750, 1500 or 25000 are literal. Digits may be Arabic-Indic (٠١٢٣٤٥٦٧٨٩).
 
-The shop may also use its printed form "ماركت الشهم · ورقة اليوميات" (tag "SHAHM DAILY SHEET"). On that form:
-- The page has two tables side by side. Read the right-hand table first (printed rows ت 1–26, top to bottom), then the left-hand table (rows 27–52). Never join a name from one table with an amount from the other.
-- Each numbered row is one entry. Columns in each table from right to left: ت (printed row number, ignore it), اسم الزبون (name), المبلغ (amount), واصل (a small box). Goods may be written after the name in the name cell: put them in note, not in written_name.
-- A tick, cross, dot or scribble inside the واصل box means the customer paid: type "pay". An empty box means "debt". Payment words written anywhere in the row also mean "pay".
-- Skip empty rows, the printed headings and instructions, the date and sheet number at the top, and the مجموع الديون / مجموع الواصل totals at the bottom.
+The shop may also use its printed form "ماركت الشهم · ورقة الديون اليومية" (tag "SHAHM DAILY SHEET v2", black squares in the four corners). On that form:
+- The page has two tables side by side. Read the right-hand table first (printed rows ت 1–25, top to bottom), then the left-hand table (rows 26–50). Never join a name from one table with an amount from the other, and never join a name with the amount of the row above or below it.
+- Each numbered row is one entry. Columns in each table from right to left: ت (printed row number, ignore it), اسم الزبون (name), المبلغ (amount), المواد (goods, optional: put it in note). Goods written after the name in the name cell also go in note, not in written_name.
+- The form is for debts: every row is "debt" unless payment words or a minus sign are written in the row.
+- The form asks for full amounts in dinars (5000, not 5), but still apply the thousands rule if someone wrote a short amount.
+- Skip empty rows, the printed headings and instructions, the date and sheet number boxes at the top, and the عدد الزبائن / مجموع الديون boxes at the bottom.
 - A row with a line through it was cancelled: skip it.
+
+The older version of the form (tag "SHAHM DAILY SHEET" without v2) has rows 1–26 on the right, 27–52 on the left, and a واصل box as the last column: a tick, cross, dot or scribble in that box means type "pay".
 
 For every entry, in the order it appears on the page:
 - written_name: the name exactly as written.
