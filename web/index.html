@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>دفتر ديون ماركت الشهم</title>
 <meta name="description" content="دفتر ديون ماركت الشهم: ديون الزبائن والموردين، كشوف حساب PDF، وتذكير واتساب.">
-<meta name="theme-color" content="#4a46c9">
+<meta name="theme-color" content="#0e5a3a">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -14,22 +14,25 @@
 <meta name="apple-mobile-web-app-title" content="ديون الشهم">
 <link rel="stylesheet" href="vendor/fonts/fonts.css">
 <style>
-/* Layout: shop debt app. Gate (login) -> app with Home / Customers / Settings. Wide: top tabs, list + account side by side. Narrow: bottom nav, one pane. Indigo ink, red = owed, green = paid. */
+/* Layout: shop debt app. Gate (login) -> app with Home / Customers / Settings. Wide: top tabs, list + account side by side. Narrow: bottom nav, one pane.
+   Colors and fonts follow BRAND.md (Al-Shahm identity): forest green chrome, tomato red = owed, leaf green = paid, orange = warning. */
 :root{
-  --bg:#eef0f6; --paper:#ffffff; --paper-2:#f5f6fa; --line:#dcdfea; --ink:#171a26; --muted:#5f6478;
-  --accent:#4a46c9; --accent-ink:#ffffff; --accent-soft:#e7e6fb; --debt:#b4231b; --debt-soft:#fbe9e7; --paid:#16794b; --paid-soft:#e1f3e9; --warn:#a86a00; --warn-soft:#fbf0d9;
-  --shadow:0 1px 2px rgba(23,26,38,.06),0 8px 24px rgba(23,26,38,.06);
-  --f-display:"Readex Pro","IBM Plex Sans Arabic",Tahoma,sans-serif;
+  --bg:#f4f2ec; --paper:#ffffff; --paper-2:#f8f6f1; --line:#e3ded3; --ink:#1c2421; --muted:#5e6660;
+  --accent:#0e5a3a; --accent-ink:#fff7e8; --accent-soft:#dceee3; --debt:#c2301e; --debt-soft:#fce9e5; --paid:#4a7f12; --paid-soft:#edf5e0; --warn:#a55f00; --warn-soft:#fdf0dc;
+  --brand-orange:#f39a1e; --brand-red:#e2412b; --brand-leaf:#7bc043;
+  --shadow:0 1px 2px rgba(28,36,33,.06),0 8px 24px rgba(28,36,33,.07);
+  --f-display:"Tajawal","IBM Plex Sans Arabic",Tahoma,sans-serif;
+  --f-brand:"Lalezar","Tajawal",Tahoma,sans-serif;
   --f-body:"IBM Plex Sans Arabic",Tahoma,"Segoe UI",sans-serif;
   --r:14px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#121318; --paper:#1c1d24; --paper-2:#24252e; --line:#30323d; --ink:#eceef5; --muted:#9a9eb0;
-  --accent:#8f8cf6; --accent-ink:#14142a; --accent-soft:#2a2950; --debt:#f28b82; --debt-soft:#3b1f1d; --paid:#74d6a2; --paid-soft:#18332a; --warn:#f0c060; --warn-soft:#3a2f17;
+  --bg:#0f1512; --paper:#172019; --paper-2:#1e2921; --line:#2c3830; --ink:#ecf1ec; --muted:#9aa59d;
+  --accent:#5fc48c; --accent-ink:#06200f; --accent-soft:#1b3527; --debt:#ff8a78; --debt-soft:#3a1f1b; --paid:#a6d86a; --paid-soft:#243319; --warn:#f5b654; --warn-soft:#3a2c14;
   --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#121318; --paper:#1c1d24; --paper-2:#24252e; --line:#30323d; --ink:#eceef5; --muted:#9a9eb0;
-  --accent:#8f8cf6; --accent-ink:#14142a; --accent-soft:#2a2950; --debt:#f28b82; --debt-soft:#3b1f1d; --paid:#74d6a2; --paid-soft:#18332a; --warn:#f0c060; --warn-soft:#3a2f17;
+  --bg:#0f1512; --paper:#172019; --paper-2:#1e2921; --line:#2c3830; --ink:#ecf1ec; --muted:#9aa59d;
+  --accent:#5fc48c; --accent-ink:#06200f; --accent-soft:#1b3527; --debt:#ff8a78; --debt-soft:#3a1f1b; --paid:#a6d86a; --paid-soft:#243319; --warn:#f5b654; --warn-soft:#3a2c14;
   --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -45,8 +48,9 @@ h1,h2,h3{text-wrap:balance}
 .gate{min-height:100vh;display:grid;place-items:center;padding-inline:16px;padding-block:24px}
 .gate-card{width:100%;max-width:420px;background:var(--paper);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:26px 22px;display:flex;flex-direction:column;gap:14px}
 .gate-head{text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px}
-.logo{width:64px;height:64px;border-radius:18px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:20px}
-.gate-head h1{margin:6px 0 0;font-family:var(--f-display);font-size:22px}
+.logo{width:64px;height:64px;border-radius:18px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
+.logo svg{width:74%;height:74%;display:block}
+.gate-head h1{margin:6px 0 0;font-family:var(--f-brand);font-weight:400;font-size:26px;color:var(--accent)}
 .gate-head p{margin:0;color:var(--muted)}
 .banner{border-radius:12px;padding:10px 14px;font-size:14px}
 .banner.bad{background:var(--debt-soft);color:var(--debt)}
@@ -65,8 +69,8 @@ h1,h2,h3{text-wrap:balance}
 .app{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:12px 100px;display:flex;flex-direction:column;gap:14px}
 header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
-.brand .logo{width:42px;height:42px;border-radius:12px;font-size:14px}
-.brand h1{margin:0;font-family:var(--f-display);font-size:19px;line-height:1.25}
+.brand .logo{width:42px;height:42px;border-radius:12px}
+.brand h1{margin:0;font-family:var(--f-brand);font-weight:400;font-size:21px;line-height:1.3;color:var(--accent)}
 .brand small{display:block;color:var(--muted);font-size:12.5px}
 .me{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 12px;border:1px solid var(--line);border-radius:99px;background:var(--paper);font-size:13.5px}
 .me .avatar{width:30px;height:30px;font-size:13px}
@@ -345,7 +349,7 @@ td.x{width:64px;white-space:nowrap}
   .bottom-nav button{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--muted);cursor:pointer;padding:4px 6px;border-radius:12px;font-weight:600;min-width:56px}
   .bottom-nav button svg{width:22px;height:22px}
   .bottom-nav button[aria-current="page"]{color:var(--accent);background:var(--accent-soft)}
-  .bottom-nav .plus{background:var(--accent);color:var(--accent-ink);width:52px;height:52px;min-width:0;border-radius:50%;justify-content:center;margin-top:-22px;box-shadow:0 6px 18px rgba(74,70,201,.4)}
+  .bottom-nav .plus{background:var(--accent);color:var(--accent-ink);width:52px;height:52px;min-width:0;border-radius:50%;justify-content:center;margin-top:-22px;box-shadow:0 6px 18px rgba(14,90,58,.35)}
   .bottom-nav .plus svg{width:26px;height:26px}
   .layout{grid-template-columns:minmax(0,1fr)}
   .list-pane{position:static;max-height:none}
@@ -366,11 +370,11 @@ td.x{width:64px;white-space:nowrap}
 </head>
 <body>
 
-<div id="gate" class="gate"><div class="gate-card"><div class="gate-head"><div class="logo">د.ع</div><h1>دفتر ديون ماركت الشهم</h1><p>جارِ التحميل…</p></div><div class="spinner" aria-hidden="true"></div></div></div>
+<div id="gate" class="gate"><div class="gate-card"><div class="gate-head"><div class="logo"><svg viewBox="1.0 -81.5 108.7 108.7" aria-hidden="true"><path d="M107.7 -21.2Q107.7 -15.9 106.6 -11Q105.5 -6.1 103.5 -2.9Q96.3 0.3 90.4 0.3Q85.9 0.3 82.2 -1.6Q78.6 -3.4 76.1 -7H75.3Q73.2 -3.7 69.7 -1.7Q66.1 0.3 62 0.3H61.9Q61.5 6.6 59.9 11.8Q58.3 17 55.7 20.6Q41.5 24.8 30.8 24.8Q16.8 24.8 9.9 18.9Q3 12.9 3 2Q3 -9.1 9.4 -24.3L23.2 -19.8Q19.6 -9.9 19.6 -4Q19.6 1.3 22.5 3.9Q25.3 6.4 31.2 6.4Q36.5 6.4 46.3 4Q45.7 -2.6 44 -9.8Q42.2 -17 40.5 -21.6L55 -27.7L55.8 -27.3Q56.4 -22.7 58.6 -20.2Q60.7 -17.8 63.5 -17.8Q66.7 -17.8 69.6 -20.9Q72.4 -23.9 73.5 -29.2L81.8 -27.9Q81.7 -27.1 81.7 -25.6Q81.7 -17.7 88.2 -17.7Q90 -17.7 93.4 -18.5Q92.5 -22.3 91.2 -26Q90 -29.7 89.7 -30.5L105.8 -34.2Q107.7 -28.2 107.7 -21.2Z" fill="currentColor"/><circle cx="45.2" cy="-45.8" r="8.6" fill="#F39A1E"/><circle cx="65.5" cy="-45.8" r="8.6" fill="#E2412B"/><circle cx="55.4" cy="-64.8" r="8.6" fill="#7BC043"/><path d="M57.1 -73.0q4.7 -6.4 10.8 -4.7q-3.0 6.4 -10.8 4.7z" fill="currentColor"/></svg></div><h1>دفتر ديون ماركت الشهم</h1><p>جارِ التحميل…</p></div><div class="spinner" aria-hidden="true"></div></div></div>
 
 <div id="app" class="app" hidden>
   <header class="top">
-    <div class="brand"><div class="logo" aria-hidden="true">د.ع</div><div style="min-width:0"><h1 id="shopTitle">دفتر ديون ماركت الشهم</h1><small id="today"></small></div></div>
+    <div class="brand"><div class="logo" aria-hidden="true"><svg viewBox="1.0 -81.5 108.7 108.7" aria-hidden="true"><path d="M107.7 -21.2Q107.7 -15.9 106.6 -11Q105.5 -6.1 103.5 -2.9Q96.3 0.3 90.4 0.3Q85.9 0.3 82.2 -1.6Q78.6 -3.4 76.1 -7H75.3Q73.2 -3.7 69.7 -1.7Q66.1 0.3 62 0.3H61.9Q61.5 6.6 59.9 11.8Q58.3 17 55.7 20.6Q41.5 24.8 30.8 24.8Q16.8 24.8 9.9 18.9Q3 12.9 3 2Q3 -9.1 9.4 -24.3L23.2 -19.8Q19.6 -9.9 19.6 -4Q19.6 1.3 22.5 3.9Q25.3 6.4 31.2 6.4Q36.5 6.4 46.3 4Q45.7 -2.6 44 -9.8Q42.2 -17 40.5 -21.6L55 -27.7L55.8 -27.3Q56.4 -22.7 58.6 -20.2Q60.7 -17.8 63.5 -17.8Q66.7 -17.8 69.6 -20.9Q72.4 -23.9 73.5 -29.2L81.8 -27.9Q81.7 -27.1 81.7 -25.6Q81.7 -17.7 88.2 -17.7Q90 -17.7 93.4 -18.5Q92.5 -22.3 91.2 -26Q90 -29.7 89.7 -30.5L105.8 -34.2Q107.7 -28.2 107.7 -21.2Z" fill="currentColor"/><circle cx="45.2" cy="-45.8" r="8.6" fill="#F39A1E"/><circle cx="65.5" cy="-45.8" r="8.6" fill="#E2412B"/><circle cx="55.4" cy="-64.8" r="8.6" fill="#7BC043"/><path d="M57.1 -73.0q4.7 -6.4 10.8 -4.7q-3.0 6.4 -10.8 4.7z" fill="currentColor"/></svg></div><div style="min-width:0"><h1 id="shopTitle">دفتر ديون ماركت الشهم</h1><small id="today"></small></div></div>
     <nav class="tabs" id="tabs" aria-label="الأقسام"></nav>
     <div class="me" id="meBox"></div>
   </header>
@@ -388,6 +392,7 @@ td.x{width:64px;white-space:nowrap}
 (function(){
 "use strict";
 const CUR="د.ع";
+const BRAND_MARK=document.querySelector("header.top .logo").innerHTML; // brand mark (ش with produce dots), reused by the login gate
 const SESSION_KEY="shahm-session-v1",THEME_KEY="shahm-theme",CACHE_KEY="shahm-debts-cache-v1";
 const ROLE_LABEL={owner:"المدير",editor:"محرر",viewer:"مشاهد"};
 const PDF_AUTO_KEY="shahm-pdf-auto";
@@ -604,7 +609,7 @@ async function saveSettings(patch){
 
 /* ---------- gate ---------- */
 function gateCard(inner){$("#gate").hidden=false;$("#app").hidden=true;$("#bottomNav").hidden=true;
-  $("#gate").innerHTML=`<div class="gate-card"><div class="gate-head"><div class="logo">د.ع</div><h1>سجل ديون ${esc(shopName())}</h1>${inner.sub?`<p>${inner.sub}</p>`:""}</div>${inner.body}</div>`;
+  $("#gate").innerHTML=`<div class="gate-card"><div class="gate-head"><div class="logo">${BRAND_MARK}</div><h1>سجل ديون ${esc(shopName())}</h1>${inner.sub?`<p>${inner.sub}</p>`:""}</div>${inner.body}</div>`;
   inner.mount&&inner.mount($("#gate"));
 }
 function showError(msg){gateCard({sub:"",body:`<div class="banner bad">${esc(msg)}</div>`})}
@@ -938,7 +943,7 @@ async function buildPdf(spec,filename){
   const W=1240,H=1754,M=80,F="'IBM Plex Sans Arabic',Tahoma,sans-serif";
   const pages=[];let ctx,y;
   const newPage=()=>{const cv=document.createElement("canvas");cv.width=W;cv.height=H;ctx=cv.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,W,H);ctx.direction="rtl";pages.push(cv);y=M;
-    ctx.fillStyle="#4a46c9";ctx.fillRect(0,0,W,14);
+    ctx.fillStyle="#0e5a3a";ctx.fillRect(0,0,W,14);ctx.fillStyle="#f39a1e";ctx.fillRect(0,14,W,5);
     ctx.fillStyle="#171a26";ctx.textAlign="right";ctx.font=`700 40px ${F}`;ctx.fillText(spec.shop,W-M,y+40);
     ctx.font=`500 24px ${F}`;ctx.fillStyle="#5f6478";ctx.fillText(spec.title,W-M,y+80);
     ctx.textAlign="left";ctx.direction="ltr";ctx.fillText(todayISO(),M,y+40);ctx.direction="rtl";
@@ -1059,7 +1064,7 @@ async function custPdf(c,opt){
   }
   pages.forEach((cv,i)=>{ctx=cv.getContext("2d");const fy=H-110;line(M,fy,W-M,fy);
     txt(shopName()+(shopPhone?"   "+shopPhone:""),W-M,fy+50,{s:19,c:MUTED});
-    txt("دفتر الديون",W/2,fy+50,{w:700,s:22,a:"center",c:"#4a46c9"});
+    txt("دفتر الديون",W/2,fy+50,{w:700,s:22,a:"center",c:"#0e5a3a"});
     txt(`${i+1} / ${pages.length}`,M+70,fy+40,{s:19,a:"center",ltr:true});
     txt(nowTxt,M,fy+74,{s:19,a:"left"});});
   const fname="كشف حساب "+c.name+" "+todayISO()+".pdf";
@@ -1136,12 +1141,13 @@ function listPdf(){
 }
 
 /* ---------- business card: drawn on a canvas so it can be shared as an image ---------- */
-const BIZ_STYLES={gold:{l:"رسمي",bg:"#0b0b0c",bg2:"#151517",acc:"#c9a45c",tx:"#ffffff",mu:"#a9a9ad",ic:"#c4c4c8",ln:"#2b2b2e",ft:"#3a2f1c"},
+const BIZ_STYLES={shahm:{l:"الشهم",bg:"#0e5a3a",bg2:"#0b4c31",acc:"#f39a1e",tx:"#fff7e8",mu:"#cfe3d6",ic:"#cfe3d6",ln:"#22704d",ft:"#22704d"},
+  gold:{l:"رسمي",bg:"#0b0b0c",bg2:"#151517",acc:"#c9a45c",tx:"#ffffff",mu:"#a9a9ad",ic:"#c4c4c8",ln:"#2b2b2e",ft:"#3a2f1c"},
   green:{l:"أخضر",bg:"#0d3b2e",bg2:"#124a3a",acc:"#e9c46a",tx:"#ffffff",mu:"#b9d3c8",ic:"#cfe3da",ln:"#22604d",ft:"#2a5a49"},
   light:{l:"فاتح",bg:"#ffffff",bg2:"#f1f3f8",acc:"#3b4fd8",tx:"#151a2e",mu:"#626a83",ic:"#7a8197",ln:"#e1e4ee",ft:"#e1e4ee"}};
 function bizData(){
   const st=S.settings,c=st.card||{},d=S.bizDraft||{};
-  const v={name:st.shopName||"ماركت الشهم",desc:c.desc||"",manager:c.manager!=null?c.manager:(st.ownerName&&st.ownerName!=="المدير"?st.ownerName:""),phone:st.phone||"",address:st.address||"",social:c.social||"",style:BIZ_STYLES[c.style]?c.style:"gold"};
+  const v={name:st.shopName||"ماركت الشهم",desc:c.desc||"",manager:c.manager!=null?c.manager:(st.ownerName&&st.ownerName!=="المدير"?st.ownerName:""),phone:st.phone||"",address:st.address||"",social:c.social||"",style:BIZ_STYLES[c.style]?c.style:"shahm"};
   return {...v,...d};
 }
 const bizVcard=b=>["BEGIN:VCARD","VERSION:3.0",`FN:${b.manager||b.name}`,`ORG:${b.name}`,b.phone?`TEL;TYPE=CELL:${b.phone.replace(/[^\d+]/g,"")}`:"",b.address?`ADR:;;${b.address};;;;`:"",b.desc?`NOTE:${b.desc}`:"",/^https?:\/\//i.test(b.social)?`URL:${b.social}`:"","END:VCARD"].filter(Boolean).join("\n");
@@ -1154,8 +1160,8 @@ const BIZ_IC={
 async function drawBizCard(cv,b){
   const tk=cv._tk=(cv._tk||0)+1;
   try{await loadScript("vendor/qrcode.js");if(!window.qrcode)await new Promise(r=>setTimeout(r,400))}catch(e){}
-  try{await Promise.all(["700 60px 'Readex Pro'","500 30px 'IBM Plex Sans Arabic'","600 32px 'IBM Plex Sans Arabic'"].map(f=>document.fonts.load(f)))}catch(e){}
-  const W=1200,H=700,P=BIZ_STYLES[b.style]||BIZ_STYLES.gold,F="'IBM Plex Sans Arabic',Tahoma,sans-serif",FD="'Readex Pro','IBM Plex Sans Arabic',sans-serif";
+  try{await Promise.all(["700 60px 'Tajawal'","500 30px 'IBM Plex Sans Arabic'","600 32px 'IBM Plex Sans Arabic'"].map(f=>document.fonts.load(f)))}catch(e){}
+  const W=1200,H=700,P=BIZ_STYLES[b.style]||BIZ_STYLES.shahm,F="'IBM Plex Sans Arabic',Tahoma,sans-serif",FD="'Tajawal','IBM Plex Sans Arabic',sans-serif";
   if(cv._tk!==tk)return cv; // a newer draw started while fonts or the QR library were loading
   cv.width=W;cv.height=H;const x=cv.getContext("2d");x.clearRect(0,0,W,H);
   const rr=(X,Y,w,h,r)=>{x.beginPath();if(x.roundRect){x.roundRect(X,Y,w,h,r);return}
