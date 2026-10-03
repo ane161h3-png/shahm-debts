@@ -7,43 +7,33 @@
 <link rel="stylesheet" href="vendor/fonts/fonts.css">
 <!-- Printable A4 daily sheet. The AI worker's prompt describes this exact layout, so keep the two in sync. -->
 <style>
+/* Fills the page: 5 mm edges (the smallest margin home printers print reliably), rows stretch to the bottom. */
 @page{size:A4;margin:0}
 *{box-sizing:border-box}
 html,body{margin:0;background:#fff;color:#000}
 body{font-family:"IBM Plex Sans Arabic",sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.page{width:210mm;height:297mm;padding:9mm 10mm 8mm;display:flex;flex-direction:column;overflow:hidden}
-header{display:flex;align-items:flex-end;justify-content:space-between;gap:6mm;border-bottom:1.2mm solid #000;padding-bottom:4mm}
-.brand h1{margin:0;font-family:"Lalezar",sans-serif;font-size:26pt;font-weight:400;line-height:1.1}
-.brand p{margin:1mm 0 0;font-size:10.5pt;font-weight:600;color:#333}
-.fields{display:flex;gap:5mm;font-size:12pt;font-weight:600}
-.field{display:flex;align-items:flex-end;gap:2mm;white-space:nowrap}
-.field .line{display:inline-block;border-bottom:.35mm solid #000;height:7mm}
-.date .seg{display:inline-flex;align-items:flex-end;gap:1mm}
-.date .seg i{font-style:normal;font-size:14pt;color:#555}
-.date .seg .line{position:relative}
-.date .seg .line::after{content:attr(data-l);position:absolute;top:100%;inset-inline:0;text-align:center;font-size:6.5pt;font-weight:500;color:#777;line-height:1.4}
-.hint{display:flex;flex-wrap:wrap;gap:1.5mm 5mm;margin:2.5mm 0;font-size:9.5pt;color:#222}
-.hint b{font-weight:700}
-.hint span::before{content:"●";font-size:6pt;margin-left:1.5mm;vertical-align:middle;color:#666}
-.cols{flex:1;display:flex;gap:4mm;min-height:0}
-table{flex:1;width:50%;border-collapse:collapse;table-layout:fixed}
-th,td{border:.3mm solid #000}
-thead th{background:#000;color:#fff;font-size:11pt;font-weight:700;height:9mm;padding:0 1mm}
-thead th small{display:block;font-size:7pt;font-weight:500;line-height:1.1;color:#ddd}
-tbody td{height:8.15mm;padding:0}
-tbody tr:nth-child(even) td{background:#f1f1f1}
-td.n{text-align:center;font-size:8.5pt;font-weight:600;color:#555}
-td.box{position:relative}
-td.box::after{content:"";position:absolute;inset:50% auto auto 50%;width:5mm;height:5mm;margin:-2.5mm 0 0 -2.5mm;border:.45mm solid #000;background:#fff}
-td.amt{border-right:.7mm solid #000;border-left:.7mm solid #000}
-col.c-n{width:7.5mm}
+.page{width:210mm;height:297mm;padding:5mm;display:flex;flex-direction:column;gap:2mm;overflow:hidden}
+header{display:flex;align-items:center;justify-content:space-between;gap:4mm;border:.5mm solid #000;border-radius:2mm;padding:1.5mm 3mm}
+header h1{margin:0;font-family:"Lalezar",sans-serif;font-size:20pt;font-weight:400;line-height:1.15}
+header h1 small{font-family:"IBM Plex Sans Arabic",sans-serif;font-size:10pt;font-weight:600;margin-inline-start:2mm;color:#333}
+.fields{display:flex;gap:6mm;font-size:11.5pt;font-weight:700}
+.field{display:flex;align-items:flex-end;gap:1.5mm;white-space:nowrap}
+.line{display:inline-block;border-bottom:.35mm solid #000;height:6.5mm}
+.field i{font-style:normal;font-size:13pt;color:#555}
+.cols{flex:1;display:flex;gap:2.5mm;min-height:0}
+table{flex:1;width:50%;height:100%;border-collapse:collapse;table-layout:fixed;border:.6mm solid #000}
+th,td{border:.25mm solid #000}
+thead th{background:#000;color:#fff;font-size:10.5pt;font-weight:700;height:8mm;padding:0 .5mm;line-height:1.1}
+thead th small{display:block;font-size:6.5pt;font-weight:500;color:#ddd}
+tbody td{padding:0}
+tbody tr:nth-child(even) td{background:#efefef}
+td.n{text-align:center;font-size:8pt;font-weight:600;color:#555}
+td.amt{border-inline-start:.6mm solid #000}
+col.c-n{width:6mm}
 col.c-name{width:auto}
-col.c-amt{width:25mm}
-col.c-pay{width:12mm}
-footer{display:flex;justify-content:space-between;align-items:flex-end;gap:6mm;margin-top:3.5mm;font-size:11pt;font-weight:600}
-footer>div{display:flex;align-items:flex-end;gap:2mm;white-space:nowrap}
-footer .line{display:inline-block;border-bottom:.35mm solid #000;height:7mm}
-footer .tag{font-size:7.5pt;font-weight:500;color:#777;direction:ltr;letter-spacing:.3mm}
+col.c-items{width:25mm}
+col.c-amt{width:28mm}
+header .hint{flex:1;white-space:nowrap;font-size:8pt;font-weight:500;color:#333;line-height:1.35;text-align:center}
 .print{position:fixed;inset:auto 16px 16px auto;padding:10px 18px;font:600 15px "IBM Plex Sans Arabic",sans-serif;background:#0e5a3a;color:#fff7e8;border:0;border-radius:10px;cursor:pointer}
 @media screen{body{background:#ddd}.page{margin:10px auto;background:#fff;box-shadow:0 2px 12px #0003}}
 @media screen and (max-width:820px){.page{zoom:.45}}
@@ -54,41 +44,25 @@ footer .tag{font-size:7.5pt;font-weight:500;color:#777;direction:ltr;letter-spac
 <button class="print" type="button" onclick="print()">طباعة</button>
 <div class="page">
   <header>
-    <div class="brand">
-      <h1>ماركت الشهم</h1>
-      <p>ورقة اليوميات · الديون والواصل</p>
-    </div>
+    <h1>ماركت الشهم<small>ورقة اليوميات</small></h1>
+    <div class="hint">التسديد: اكتب «واصل» جنب المبلغ<br>السطر الملغي: اشطبه بخط</div>
     <div class="fields">
-      <div class="field date">التاريخ:
-        <span class="seg"><span class="line" data-l="يوم" style="width:11mm"></span><i>/</i><span class="line" data-l="شهر" style="width:11mm"></span><i>/</i><span class="line" data-l="سنة" style="width:16mm"></span></span>
-      </div>
-      <div class="field">ورقة رقم: <span class="line" style="width:12mm"></span></div>
+      <div class="field">التاريخ: <span class="line" style="width:9mm"></span><i>/</i><span class="line" style="width:9mm"></span><i>/</i><span class="line" style="width:14mm"></span></div>
+      <div class="field">ورقة رقم: <span class="line" style="width:11mm"></span></div>
     </div>
   </header>
-  <div class="hint">
-    <span><b>زبون واحد</b> بكل سطر</span>
-    <span>المبلغ كامل <b>5000</b> أو بالألف <b>5</b></span>
-    <span>إذا الزبون سدّد: <b>✓ بمربع واصل</b></span>
-    <span>المواد (اختياري) <b>بعد الاسم</b></span>
-    <span>السطر الملغي: <b>اشطبه بخط</b></span>
-  </div>
   <div class="cols">
     <table id="t1"></table>
     <table id="t2"></table>
   </div>
-  <footer>
-    <div>مجموع الديون: <span class="line" style="width:36mm"></span></div>
-    <div>مجموع الواصل: <span class="line" style="width:36mm"></span></div>
-    <div class="tag">SHAHM DAILY SHEET</div>
-  </footer>
 </div>
 <script>
-// Two tables side by side to save paper: the right table holds rows 1-26, the left 27-52 (read right first).
-const ROWS = 26;
-const head = `<colgroup><col class="c-n"><col class="c-name"><col class="c-amt"><col class="c-pay"></colgroup>
-  <thead><tr><th>ت</th><th>اسم الزبون</th><th>المبلغ</th><th>واصل<small>✓ إذا سدّد</small></th></tr></thead>`;
+// Two tables side by side: the right table holds rows 1-30, the left 31-60 (read right first).
+const ROWS = 30;
+const head = `<colgroup><col class="c-n"><col class="c-name"><col class="c-items"><col class="c-amt"></colgroup>
+  <thead><tr><th>ت</th><th>اسم الزبون</th><th>المواد</th><th>المبلغ</th></tr></thead>`;
 const body = start => "<tbody>" + Array.from({ length: ROWS }, (_, i) =>
-  `<tr><td class="n">${start + i}</td><td></td><td class="amt"></td><td class="box"></td></tr>`).join("") + "</tbody>";
+  `<tr><td class="n">${start + i}</td><td></td><td></td><td class="amt"></td></tr>`).join("") + "</tbody>";
 document.getElementById("t1").innerHTML = head + body(1);
 document.getElementById("t2").innerHTML = head + body(ROWS + 1);
 </script>
