@@ -76,6 +76,51 @@ async function readDoc(token, path) {
 
 const fmt = n => Math.round(n).toLocaleString("en-US");
 
+const BAGHDAD = 3 * 3600e3;
+const isoDay = ms => new Date(ms + BAGHDAD).toISOString().slice(0, 10);
+
+// End-of-day report. The job runs at 02:00 Baghdad time, so before noon it reports the day that just ended;
+// a manual run in the afternoon reports today so far. Counts what was recorded that day (createdAt).
+function daySummary(customers, txns, settings, now) {
+  const local = new Date(now.getTime() + BAGHDAD);
+  const day = isoDay(now.getTime() - (local.getUTCHours() < 12 ? 24 * 3600e3 : 0));
+  const next = isoDay(Date.parse(day + "T12:00:00Z") + 24 * 3600e3);
+  const byId = new Map(customers.map(c => [c.id, c]));
+  const sup = id => (byId.get(id) || {}).kind === "supplier";
+  const done = txns.filter(t => t.createdAt && isoDay(Number(t.createdAt)) === day);
+  const sum = (list, type, supplier) => list.filter(t => t.type === type && sup(t.customerId) === supplier)
+    .reduce((a, t) => ({ n: a.n + 1, v: a.v + (Number(t.amount) || 0) }), { n: 0, v: 0 });
+  const debt = sum(done, "debt", false), pay = sum(done, "pay", false);
+  const buy = sum(done, "debt", true), paySup = sum(done, "pay", true);
+  const newCust = customers.filter(c => c.kind !== "supplier" && c.createdAt && isoDay(Number(c.createdAt)) === day).length;
+
+  const who = new Map();
+  for (const t of done) { const k = t.by || "غير معروف"; who.set(k, (who.get(k) || 0) + 1); }
+  const top = new Map();
+  for (const t of done) if (t.type === "debt" && !sup(t.customerId)) top.set(t.customerId, (top.get(t.customerId) || 0) + Number(t.amount || 0));
+  const topList = [...top].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id, v]) => `  • ${(byId.get(id) || {}).name || "؟"}: ${fmt(v)}`);
+
+  // Promises to pay that fall on the coming day, so the owner knows whom to expect or remind.
+  const promised = customers.filter(c => c.promise && c.promise.date === next)
+    .map(c => `  • ${c.name}${c.promise.amount ? ": " + fmt(c.promise.amount) : ""}`);
+
+  const shop = settings.shopName || "ماركت الشهم";
+  const lines = [`📊 ملخص يوم ${day}: ${shop}`, ""];
+  if (!done.length && !newCust) lines.push("ما انسجلت أي حركة بهذا اليوم.");
+  else {
+    lines.push(`🔴 ديون جديدة: ${fmt(debt.v)} د.ع (${debt.n} حركة)`);
+    lines.push(`🟢 واصل: ${fmt(pay.v)} د.ع (${pay.n} حركة)`);
+    const net = debt.v - pay.v;
+    lines.push(`${net > 0 ? "📈" : "📉"} الصافي: ${net > 0 ? "زادت" : net < 0 ? "نقصت" : "ثابتة"} الديون ${net ? fmt(Math.abs(net)) + " د.ع" : ""}`.trim());
+    if (newCust) lines.push(`👤 زبائن جدد: ${newCust}`);
+    if (buy.n || paySup.n) lines.push(`🚚 الموردين: مشتريات ${fmt(buy.v)} · دفعات ${fmt(paySup.v)} د.ع`);
+    if (topList.length) lines.push("", "أكثر الديون اليوم:", ...topList);
+    if (who.size) lines.push("", "منو سجّل:", ...[...who].sort((a, b) => b[1] - a[1]).map(([k, v]) => `  • ${k}: ${v}`));
+  }
+  if (promised.length) lines.push("", `🤝 وعدوا يدفعون يوم ${next}:`, ...promised);
+  return lines.join("\n");
+}
+
 async function main() {
   const token = await signIn();
   const [customers, txns, activity, settings] = await Promise.all([
@@ -106,6 +151,15 @@ async function main() {
   const j = await r.json();
   if (!j.ok) throw new Error("Telegram: " + j.description);
   console.log(`Sent backup: ${customers.length} accounts, ${txns.length} transactions, ${activity.length} activity entries.`);
+
+  const summary = daySummary(customers, txns, settings, now);
+  const s = await fetch(`${TG_URL}/bot${env("TELEGRAM_TOKEN")}/sendMessage`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: env("TELEGRAM_CHAT_ID"), text: summary }),
+  });
+  const sj = await s.json();
+  if (!sj.ok) throw new Error("Telegram summary: " + sj.description);
+  console.log("Sent end-of-day summary.");
 }
 
 main().catch(async e => {

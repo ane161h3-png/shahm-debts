@@ -24,6 +24,7 @@ The shop may also use its printed form "ماركت الشهم · ورقة الي
 For every entry, in the order it appears on the page:
 - written_name: the name exactly as written.
 - customer_id: the id of the same person from the customer list. Allow for spelling variants (ة/ه، ى/ي، أ/إ/ا، with or without ال، shortened names, a nickname that clearly matches a listed name). Use "" when nobody in the list is the same person.
+- A customer line may end with other ways the shop has written that person's name on earlier pages. A written name that matches one of those is that customer, with match "sure".
 - match: "sure" when the match is clear, "unsure" when it is a plausible guess, "none" when customer_id is "".
 - type: "debt" or "pay".
 - amount: whole dinars after applying the thousands rule.
@@ -97,13 +98,14 @@ function readBody(b) {
   const customers = (Array.isArray(b.customers) ? b.customers : [])
     .filter(c => c && typeof c.id === "string" && typeof c.name === "string")
     .slice(0, MAX_CUSTOMERS)
-    .map(c => ({ id: c.id.slice(0, 64), name: c.name.replace(/[\n|]/g, " ").slice(0, 80) }));
+    .map(c => ({ id: c.id.slice(0, 64), name: c.name.replace(/[\n|]/g, " ").slice(0, 80),
+      aliases: (Array.isArray(c.aliases) ? c.aliases : []).filter(a => typeof a === "string").slice(0, 8).map(a => a.replace(/[\n|,]/g, " ").slice(0, 40)) }));
   return { images, customers };
 }
 
 class UserError extends Error {}
 
-const customerList = input => input.customers.map(c => `${c.id}|${c.name}`).join("\n") || "(no customers yet)";
+const customerList = input => input.customers.map(c => `${c.id}|${c.name}${c.aliases.length ? "|" + c.aliases.join(", ") : ""}`).join("\n") || "(no customers yet)";
 const ASK = "Read every ledger entry in these photos.";
 
 async function readWithClaude(env, input) {
@@ -119,7 +121,7 @@ async function readWithClaude(env, input) {
     messages: [{
       role: "user",
       content: [
-        { type: "text", text: `Customer list (id|name):\n${customerList(input)}` },
+        { type: "text", text: `Customer list (id|name|other ways the shop has written this name):\n${customerList(input)}` },
         ...input.images.map(im => ({ type: "image", source: { type: "base64", media_type: im.media_type, data: im.data } })),
         { type: "text", text: ASK },
       ],
@@ -152,7 +154,7 @@ async function readWithGemini(env, input) {
     contents: [{
       role: "user",
       parts: [
-        { text: `Customer list (id|name):\n${customerList(input)}` },
+        { text: `Customer list (id|name|other ways the shop has written this name):\n${customerList(input)}` },
         ...input.images.map(im => ({ inline_data: { mime_type: im.media_type, data: im.data } })),
         { text: ASK },
       ],
