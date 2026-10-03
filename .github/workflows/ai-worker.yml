@@ -29,6 +29,8 @@ jobs:
       - name: Check the Gemini model is available
         if: env.GEMINI_API_KEY != '' && env.ANTHROPIC_API_KEY == ''
         run: |
+          GEMINI_API_KEY=$(printf '%s' "$GEMINI_API_KEY" | tr -d '[:space:]"'"'"'')
+          echo "Gemini key: ${#GEMINI_API_KEY} characters, starts with ${GEMINI_API_KEY:0:3}"
           curl -s -H "x-goog-api-key: $GEMINI_API_KEY" "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200" \
             | jq -r 'if .error then "Gemini error: \(.error.status) \(.error.message)" else (.models[].name | select(test("flash"))) end'
       - run: npm ci
@@ -36,6 +38,6 @@ jobs:
         run: npx wrangler deploy
       - name: Store the AI key on the worker
         run: |
-          if [ -n "$GEMINI_API_KEY" ]; then printf '%s' "$GEMINI_API_KEY" | npx wrangler secret put GEMINI_API_KEY; fi
+          if [ -n "$GEMINI_API_KEY" ]; then printf '%s' "$GEMINI_API_KEY" | tr -d '[:space:]"'"'"'' | npx wrangler secret put GEMINI_API_KEY; fi
           if [ -n "$ANTHROPIC_API_KEY" ]; then printf '%s' "$ANTHROPIC_API_KEY" | npx wrangler secret put ANTHROPIC_API_KEY
           else yes | npx wrangler secret delete ANTHROPIC_API_KEY >/dev/null 2>&1 || true; fi
