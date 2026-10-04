@@ -1,6 +1,7 @@
 // Reads a photo of the shop's handwritten daily ledger and returns the entries as transactions,
 // matched to existing customers. The app shows them for review before anything is saved.
 // Uses Google Gemini (free tier) by default; adding an ANTHROPIC_API_KEY secret switches it to Claude.
+// POST /wa sends the customer a WhatsApp message through Meta's official Cloud API after a debt or payment (see sendWhatsApp).
 import Anthropic from "@anthropic-ai/sdk";
 
 const MAX_IMAGES = 4;
@@ -66,7 +67,7 @@ function corsFor(request, env) {
   const origin = request.headers.get("Origin") || "";
   const allowed = (env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
   const ok = allowed.includes(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-  return ok ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type", "Access-Control-Max-Age": "86400", Vary: "Origin" } : { Vary: "Origin" };
+  return ok ? { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type", "Access-Control-Max-Age": "86400", Vary: "Origin" } : { Vary: "Origin" };
 }
 
 // Only the owner and active editors may use it (the same people who can add debts in the app).
@@ -78,7 +79,7 @@ async function authorize(request, env) {
   const j = await r.json().catch(() => ({}));
   const user = r.ok && j.users && j.users[0];
   if (!user) return { error: "انتهت الجلسة. اطلع وادخل من جديد.", status: 401 };
-  if (user.email === env.OWNER_EMAIL) return { user };
+  if (user.email === env.OWNER_EMAIL) return { user, token };
   const dbUrl = env.FIRESTORE_URL || "https://firestore.googleapis.com";
   const p = await fetch(`${dbUrl}/v1/projects/${env.FIREBASE_PROJECT}/databases/(default)/documents/users/${user.localId}`, { headers: { Authorization: "Bearer " + token } });
   const d = p.ok ? await p.json() : null;
@@ -86,7 +87,7 @@ async function authorize(request, env) {
   const active = f.status && f.status.stringValue === "active";
   const editor = f.role && f.role.stringValue === "editor";
   if (!active || !editor) return { error: "هذي الخاصية للمدير والمحررين فقط.", status: 403 };
-  return { user };
+  return { user, token };
 }
 
 function readBody(b) {
@@ -187,6 +188,105 @@ async function readWithGemini(env, input) {
   try { return { rows: JSON.parse(text).rows }; } catch { throw new UserError("صار خطأ بقراءة النتيجة. حاول مرة ثانية."); }
 }
 
+// ---------- WhatsApp (official Cloud API) ----------
+// The app calls POST /wa with { txnId } right after it saves a debt or payment. Nothing in the message comes from the
+// request: the worker reads the transaction and the customer from Firestore as the signed-in editor, checks the customer
+// is set to automatic messages, works out the balance from all their transactions, and sends Meta's approved template.
+// Secrets WA_TOKEN (permanent System User token) and WA_PHONE_ID (the shop number's Phone number ID). Template names and
+// their body text are in README.md; the {{n}} order below must match them.
+const normDigits = s => String(s || "").replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d));
+// Same rule as waNumber() in web/index.html: Iraqi 07xx… becomes 9647xx….
+function waNumber(p) {
+  let d = normDigits(p).replace(/\D/g, "");
+  if (d.startsWith("00")) d = d.slice(2);
+  if (d.startsWith("0")) d = "964" + d.slice(1); else if (d.length === 10 && d.startsWith("7")) d = "964" + d;
+  return d.length >= 10 && d.length <= 15 ? d : "";
+}
+const money = n => Math.round(Number(n) || 0).toLocaleString("en-US");
+// Meta rejects template parameters with new lines, tabs or long runs of spaces, and empty ones.
+const param = s => String(s ?? "").replace(/[\n\r\t]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 200) || "-";
+
+const fsVal = v => !v ? null : "stringValue" in v ? v.stringValue : "integerValue" in v ? Number(v.integerValue) : "doubleValue" in v ? v.doubleValue
+  : "booleanValue" in v ? v.booleanValue : null;
+const fsDoc = d => Object.fromEntries(Object.entries((d && d.fields) || {}).map(([k, v]) => [k, fsVal(v)]));
+
+function waError(e) {
+  const c = Number(e && e.code);
+  if (c === 190) return "مفتاح واتساب (WA_TOKEN) منتهي أو غلط.";
+  if (c === 131026) return "هذا الرقم ما عليه واتساب أو ما يكدر يستلم.";
+  if (c === 132001) return "قالب الرسالة بعده ما موافق عليه بحساب ميتا، أو اسمه مختلف.";
+  if (c === 132000 || c === 132012) return "متغيرات قالب الرسالة بميتا ما تطابق البرنامج.";
+  if (c === 131042) return "لازم تضيف طريقة دفع بحساب ميتا.";
+  if (c === 131030) return "بالرقم التجريبي لازم تضيف رقم الزبون لقائمة المسموح لهم بميتا.";
+  if (c === 133010) return "رقم المحل بعده ما مسجّل بواتساب الرسمي.";
+  if (c === 130429 || c === 131056 || c === 80007) return "ضغط على واتساب هسه. حاول بعد شوية.";
+  return `ما انرسلت الرسالة (خطأ ميتا ${c || "غير معروف"}).`;
+}
+
+async function sendWhatsApp(request, env, cors) {
+  if (!env.WA_TOKEN || !env.WA_PHONE_ID) return json({ error: "واتساب الرسمي بعده ما مربوط بالسيرفر.", code: "not_configured" }, 503, cors);
+  const auth = await authorize(request, env);
+  if (auth.error) return json({ error: auth.error }, auth.status, cors);
+  const b = await request.json().catch(() => null);
+  const txnId = b && typeof b.txnId === "string" && /^[\w-]{1,64}$/.test(b.txnId) ? b.txnId : "";
+  if (!txnId) return json({ error: "طلب غير صحيح." }, 400, cors);
+
+  const base = `${env.FIRESTORE_URL || "https://firestore.googleapis.com"}/v1/projects/${env.FIREBASE_PROJECT}/databases/(default)/documents`;
+  const H = { Authorization: "Bearer " + auth.token, "Content-Type": "application/json" };
+  const tr = await fetch(`${base}/txns/${txnId}`, { headers: H });
+  if (tr.status === 404) return json({ error: "الحركة بعدها ما وصلت للسيرفر.", code: "not_found" }, 404, cors);
+  if (!tr.ok) return json({ error: "تعذّر قراءة الحركة." }, 502, cors);
+  const txn = fsDoc(await tr.json());
+  if (txn.waSent) return json({ ok: true, already: true }, 200, cors);
+  if (txn.type !== "debt" && txn.type !== "pay") return json({ error: "نوع الحركة غير معروف." }, 400, cors);
+  if (!/^[\w-]{1,64}$/.test(txn.customerId || "")) return json({ error: "الحركة بدون زبون." }, 400, cors);
+  const cr = await fetch(`${base}/customers/${txn.customerId}`, { headers: H });
+  if (!cr.ok) return json({ error: "تعذّر قراءة الزبون." }, 502, cors);
+  const c = fsDoc(await cr.json());
+  if (c.kind === "supplier") return json({ error: "الإرسال التلقائي للزبائن فقط." }, 400, cors);
+  if (c.autoWa !== true) return json({ error: "هذا الزبون على الإرسال اليدوي.", code: "manual" }, 409, cors);
+  const to = waNumber(c.phone);
+  if (!to) return json({ error: "رقم الزبون غير صحيح.", code: "no_phone" }, 400, cors);
+
+  const q = await fetch(`${base}:runQuery`, { method: "POST", headers: H, body: JSON.stringify({ structuredQuery: {
+    from: [{ collectionId: "txns" }],
+    where: { fieldFilter: { field: { fieldPath: "customerId" }, op: "EQUAL", value: { stringValue: txn.customerId } } },
+    select: { fields: [{ fieldPath: "type" }, { fieldPath: "amount" }] },
+  } }) });
+  if (!q.ok) return json({ error: "تعذّر حساب الرصيد." }, 502, cors);
+  let bal = 0;
+  for (const r of await q.json()) if (r.document) { const d = fsDoc(r.document); bal += (d.type === "debt" ? 1 : -1) * (Number(d.amount) || 0); }
+
+  const debt = txn.type === "debt";
+  // shahm_debt:    مرحباً {{1}}، تم تسجيل دين جديد بمبلغ {{2}} د.ع ({{3}}) بتاريخ {{4}}. الرصيد المتبقي عليك: {{5}} د.ع.
+  // shahm_payment: مرحباً {{1}}، استلمنا منك {{2}} د.ع بتاريخ {{3}}. شكراً لك. الرصيد المتبقي: {{4}} د.ع.
+  const params = debt ? [c.name, money(txn.amount), txn.note || "مشتريات", txn.date, money(bal)] : [c.name, money(txn.amount), txn.date, money(bal)];
+  const graph = env.GRAPH_URL || `https://graph.facebook.com/${env.WA_GRAPH_VERSION || "v23.0"}`;
+  const r = await fetch(`${graph}/${env.WA_PHONE_ID}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.WA_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to, type: "template", template: {
+      name: debt ? env.WA_TPL_DEBT || "shahm_debt" : env.WA_TPL_PAY || "shahm_payment",
+      language: { code: env.WA_LANG || "ar" },
+      components: [{ type: "body", parameters: params.map(p => ({ type: "text", text: param(p) })) }],
+    } }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const e = j.error || {};
+    console.error(`whatsapp send failed: ${r.status} code ${e.code} ${e.error_subcode || ""} ${String(e.message || "").slice(0, 200)}`);
+    return json({ error: waError(e), code: "meta_" + (e.code || r.status) }, 502, cors);
+  }
+  const msgId = (j.messages && j.messages[0] && j.messages[0].id) || "";
+  // Mark the transaction so a retry never sends twice; the app shows a small "sent" tick from this.
+  const mark = await fetch(`${base}/txns/${txnId}?updateMask.fieldPaths=waSent&updateMask.fieldPaths=waId&currentDocument.exists=true`, {
+    method: "PATCH", headers: H, body: JSON.stringify({ fields: { waSent: { integerValue: String(Date.now()) }, waId: { stringValue: msgId } } }),
+  });
+  if (!mark.ok) console.error(`whatsapp sent but marking the txn failed: ${mark.status}`);
+  console.log(`whatsapp ${txn.type} sent for ${auth.user.email}`);
+  return json({ ok: true }, 200, cors);
+}
+
 // GitHub often skips its own scheduled runs, so Cloudflare's cron (wrangler.toml [triggers]) starts the 2-hour Telegram report
 // by dispatching .github/workflows/backup.yml. Needs the GH_DISPATCH_TOKEN secret (a GitHub token with Actions read/write on the repo).
 async function dispatchReport(env) {
@@ -207,6 +307,12 @@ export default {
   async fetch(request, env) {
     const cors = corsFor(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    if (new URL(request.url).pathname === "/wa") {
+      if (request.method === "GET") return json({ configured: !!(env.WA_TOKEN && env.WA_PHONE_ID) }, 200, cors);
+      if (request.method !== "POST") return json({ error: "Not found" }, 404, cors);
+      try { return await sendWhatsApp(request, env, cors); }
+      catch (e) { console.error(e); return json({ error: "تعذّر الاتصال بواتساب. حاول مرة ثانية." }, 502, cors); }
+    }
     if (request.method !== "POST") return json({ error: "Not found" }, 404, cors);
     if (!env.ANTHROPIC_API_KEY && !env.GEMINI_API_KEY) return json({ error: "مفتاح الذكاء الاصطناعي غير مضبوط على السيرفر." }, 500, cors);
 
