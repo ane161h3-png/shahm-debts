@@ -352,12 +352,19 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 .rv-sug:empty{display:none}
 .rv-sug{border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--paper);max-height:300px;overflow:auto}
 .rv-pick{justify-content:flex-start;width:100%;border-style:dashed}
+.rv-photo{width:100%;justify-content:center}
+.rv-unk{margin:12px;padding:10px 12px 4px;border:1px dashed var(--warn);border-radius:var(--r-ctl);background:var(--warn-soft)}
+.rv-unk>b{display:block;font-family:var(--f-display)}
+.rv-unk>.hint{display:block;font-size:12.5px;margin-bottom:6px}
+.rv-ur{display:flex;align-items:center;gap:6px;padding:8px 0}
+.rv-ur .m{flex:1;min-width:0}.rv-ur .m b{display:block;font-weight:600}
+.rv-ur .m span{font-size:12.5px;color:var(--muted)}
 .rv-pick b{color:var(--accent)}
 .rv-sup{display:flex;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--paper-2)}
 .rv-sup .m{flex:1;min-width:0}
 .rv-sup .m b{display:flex;gap:6px;align-items:center;font-family:var(--f-display)}
 .rv-sup .m b svg{width:18px;height:18px;flex:none;color:var(--accent)}
-.rv-sup .m span{display:block;font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rv-sup .m>span{display:block;font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rv-sup .icon-btn svg{width:18px;height:18px}
 .sp-row{display:flex;align-items:center;gap:6px;padding-inline-end:10px}
 .sp-row .r{flex:1;min-width:0}
@@ -468,7 +475,7 @@ const SLOGAN="كل احتياجات بيتك بشهامة";
 const DEFAULT_CATS=["مشكل","مواد غذائية","خضروات","فواكه","أجبان وألبان","لحوم ودجاج","معلبات","حلويات","مشروبات","منظفات","خبز ومعجنات","سكائر","كارت رصيد","غاز"];
 const S={products:new Map(),customers:new Map(),txns:new Map(),sales:new Map(),settings:{},me:null,isOwner:false,
   view:"sell",cat:"all",q:"",cart:[],discount:0,whole:false,day:"",repDay:"",repMode:"day",repMonth:"",repCache:new Map(),pq:"",pcat:"all",shift:null,shiftLog:null,approvals:new Map(),approval:null,ready:{p:false,s:false,sh:false},
-  pos:{},count:null,cq:"",ccat:"all",cshow:"all",cany:false,takes:null,rv:null,rq:"",rvPend:null,recvs:null};
+  pos:{},count:null,cq:"",ccat:"all",cshow:"all",cany:false,takes:null,rv:null,rq:"",rvPend:null,rvNewName:null,recvs:null};
 let db=null,auth=null,unsubs=[],salesUnsub=null,dataOn=false,modalCleanup=null,deniedShown=false;
 
 /* ---------- helpers ---------- */
@@ -758,7 +765,7 @@ function setWhole(v){
 /* ---------- shell ---------- */
 const NAV=()=>[["sell","البيع",I.cart],["sales","المبيعات",I.chart],...(isAdmin()?[["products","المواد",I.box]]:[])];
 function showApp(){$("#gate").hidden=true;$("#gate").innerHTML="";$("#app").hidden=false;render()}
-function go(v){S.view=v;S.rvPend=null;document.body.classList.remove("show-cart");if(v==="sales"&&!S.repDay)S.repDay=todayISO();render();window.scrollTo(0,0)}
+function go(v){S.view=v;S.rvPend=null;S.rvNewName=null;document.body.classList.remove("show-cart");if(v==="sales"&&!S.repDay)S.repDay=todayISO();render();window.scrollTo(0,0)}
 function render(){
   if(!S.me||$("#app").hidden)return;
   if((S.view==="products"||S.view==="count"||S.view==="recv")&&!isAdmin())S.view="sell";
@@ -790,6 +797,7 @@ function refresh(what){
   else if(S.view==="recv"&&what!=="sales"){
     // A code scanned before its item existed joins the list once the new item is saved.
     if(S.rvPend&&!modalOpen()){const f=findCode(S.rvPend);if(f){S.rvPend=null;recvAdd(f.p,f.pack?f.pack.name:"",1);return}}
+    if(rvNewDone())return;
     if(what==="cust"){const b=$("#rvsupbox");if(b)b.innerHTML=rvSupHtml()}else{renderRecvList();renderRecvSide()}
     const m=$("#rvsum");if(m)m.innerHTML=rvSumHtml()}
 }
@@ -2357,7 +2365,8 @@ function productForm(p){
         if(ch.length)log("edit","product",{detail:`عدّل ${o.name}: ${ch.join("، ")}`});
       }
       closeModal();renderProducts();renderHeader();toast(isNew?"انضافت المادة":"انحفظ التعديل");
-      if(isNew)setTimeout(()=>productForm(),50);
+      // Adding items one after another, except on the receiving list, where the new item goes back to its invoice line.
+      if(isNew&&S.view!=="recv")setTimeout(()=>productForm(),50);
     });
   },"wide");
 }
@@ -2703,8 +2712,8 @@ async function takePdf(x){
    record with its supplier. The list in progress stays on this device until it is saved. */
 const RECV_KEY="shahm-pos-recv";
 function loadRecv(){try{const d=JSON.parse(localStorage.getItem(RECV_KEY)||"null");S.rv=d&&Array.isArray(d.lines)?d:null}catch(e){S.rv=null}}
-function saveRecv(){try{if(S.rv&&(S.rv.lines.length||S.rv.supId))localStorage.setItem(RECV_KEY,JSON.stringify(S.rv));else localStorage.removeItem(RECV_KEY)}catch(e){}}
-const rvOpen=()=>!!(S.rv&&S.rv.lines.length);
+function saveRecv(){try{if(S.rv&&(S.rv.lines.length||S.rv.supId||S.rv.guess||(S.rv.unk&&S.rv.unk.length)))localStorage.setItem(RECV_KEY,JSON.stringify(S.rv));else localStorage.removeItem(RECV_KEY)}catch(e){}}
+const rvOpen=()=>!!(S.rv&&(S.rv.lines.length||(S.rv.unk&&S.rv.unk.length)));
 const rvKey=l=>l.pid+"|"+(l.u||"");
 // The line's unit: the item's own unit (n = 1) or one of its packs (n pieces), so the stock grows by q × n.
 function rvUnit(p,u){const k=u?packsOf(p).find(x=>x.name===u):null;return k?{name:k.name,n:k.n}:{name:"",n:1}}
@@ -2742,7 +2751,7 @@ function rvSumHtml(){
   const t=rvTotals(),s=rvSup();
   if(!rvOpen())return `<b>القائمة فارغة</b><span>امسح أول مادة وصلت${s?` من ${esc(s.name)}`:""}.</span>`;
   return `<b><span class="num">${t.n}</span> مادة${t.empty?` · <span class="num">${t.empty}</span> بدون عدد`:""}</b>
-    <span>${t.cost?`مجموع الشراء <span class="num">${fmt(t.cost)}</span> ${CUR}${t.priced<t.n?` (<span class="num">${t.n-t.priced}</span> بدون سعر)`:""}`:"اكتب سعر الشراء إذا تريد تعرف المجموع"}</span>`;
+    <span>${t.cost?`مجموع الشراء <span class="num">${fmt(t.cost)}</span> ${CUR}${t.priced<t.n?` (<span class="num">${t.n-t.priced}</span> بدون سعر)`:""}`:"اكتب سعر الشراء إذا تريد تعرف المجموع"}${S.rv.invTotal?` · الفاتورة <span class="num">${fmt(S.rv.invTotal)}</span>${S.rv.invTotal!==t.cost?` <span class="chip warn">مو مطابق</span>`:` <span class="chip paid">مطابق</span>`}`:""}</span>`;
 }
 function renderRecv(){
   const v=$("#view");if(!v)return;
@@ -2754,7 +2763,9 @@ function renderRecv(){
     <div class="prod-tools"><div id="rvsupbox">${rvSupHtml()}</div>
       <div class="tool-row"><label class="search">${I.search}<input id="rq" type="search" placeholder="امسح الباركود أو اكتب اسم المادة" autocomplete="off" value="${esc(S.rq)}" aria-label="باركود أو اسم المادة"></label>
         ${canScan()?`<button class="icon-btn" type="button" data-act="rvscan" aria-label="مسح بالكاميرا" title="مسح بالكاميرا">${I.scan}</button>`:""}</div>
-      <ul class="rows rv-sug" id="rvsug"></ul></div>
+      <ul class="rows rv-sug" id="rvsug"></ul>
+      <button class="btn rv-photo" type="button" data-act="rvphoto">${I.camera}صوّر فاتورة المجهّز وتنملي القائمة</button></div>
+    <div id="rvunk">${rvUnkHtml()}</div>
     <ul class="rows" id="rvlist"></ul></section>
     <div class="rep-side"><section class="pane" id="rvlow"></section><section class="pane" id="rvhist"></section></div></div>`;
   renderRecvList();renderRecvSug();renderRecvSide();
@@ -2765,7 +2776,7 @@ function renderRecvList(){
   const f=document.activeElement,fa=f&&f.dataset?(f.dataset.rvq?"rvq":f.dataset.rvc?"rvc":""):"",fk=fa?f.dataset[fa]:"",sel=fa?[f.selectionStart,f.selectionEnd]:null;
   const rows=rvRows();
   el.innerHTML=rows.length?rows.map(rvRowHtml).join("")
-    :`<li class="empty"><b>ما انضافت مواد بعد</b>امسح باركود كل مادة وصلت (باركود الكارتون يحسب كارتون)، أو اكتب اسمها واختارها، أو اختارها من «خلصت أو قربت تخلص».</li>`;
+    :`<li class="empty"><b>ما انضافت مواد بعد</b>امسح باركود كل مادة وصلت (باركود الكارتون يحسب كارتون)، أو اكتب اسمها واختارها، أو اختارها من «خلصت أو قربت تخلص»، أو صوّر الفاتورة.</li>`;
   if(fa){const i=el.querySelector(`[data-${fa}="${CSS.escape(fk)}"]`);if(i){i.focus();try{i.setSelectionRange(sel[0],sel[1])}catch(e){}}}
 }
 function rvInfo(p,add){
@@ -2828,8 +2839,8 @@ function rvSaveForm(){
   openModal(`<h3>حفظ الاستلام</h3>
     <div class="rcpt">${ln("المجهّز",s?esc(s.name):"بدون")}${ln("المواد",`<span class="num">${t.n}</span>`)}${t.cost?ln("مجموع الشراء",`<span class="num">${fmt(t.cost)}</span> ${CUR}`):""}
       ${t.empty?ln("بدون عدد (ما تنحسب)",`<span class="num">${t.empty}</span>`,"color:var(--warn)"):""}</div>
-    <p class="hint">كل كمية تنضاف على اللي بالمخزن، وسعر الشراء الجديد يتحدث بالمادة.${s?"":" تكدر تختار المجهّز قبل الحفظ."}</p>
-    <div class="field"><label for="rvN">ملاحظة (اختياري)</label><input id="rvN" maxlength="120" placeholder="مثلاً: رقم الفاتورة، أو باقي له 50 ألف"></div>
+    <p class="hint">كل كمية تنضاف على اللي بالمخزن، وسعر الشراء الجديد يتحدث بالمادة.${s?"":" تكدر تختار المجهّز قبل الحفظ."}${S.rv.unk&&S.rv.unk.length?` <b>${S.rv.unk.length} مادة من الفاتورة ما موجودة بالمواد ما تنحسب.</b>`:""}</p>
+    <div class="field"><label for="rvN">ملاحظة (اختياري)</label><input id="rvN" maxlength="120" value="${S.rv&&S.rv.inv?esc("فاتورة "+S.rv.inv):""}" placeholder="مثلاً: رقم الفاتورة، أو باقي له 50 ألف"></div>
     <div class="foot"><button class="btn primary" type="button" id="rvGo">${I.check}حفظ وإضافة للمخزن</button><button class="btn" type="button" data-close>رجوع</button></div>`,m=>{
     const go=()=>{m.querySelector("#rvGo").disabled=true;saveReceipt(m.querySelector("#rvN").value.trim())};
     m.querySelector("#rvGo").onclick=go;m.querySelector("#rvN").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();go()}});
@@ -2843,6 +2854,7 @@ function saveReceipt(note){
   for(const r of t.rows){const x=per.get(r.p.id)||{p:r.p,add:0,cost:0};x.add=round3(x.add+r.add);if(r.l.c>0)x.cost=Math.round(r.l.c/r.u.n*100)/100;per.set(r.p.id,x)}
   const writes=[...per.values()].map(({p,add,cost})=>[db.collection("products").doc(p.id),{...(tracked(p)?{stock:FV.increment(add)}:{stock:add,track:true}),...(cost>0?{cost}:{}),...meta}]);
   const rec={id,at:now,date:todayISO(),by:S.me.name,byId:S.me.id,supId:s?s.id:"",sup:s?s.name:"",supPhone:s?s.phone||"":"",note,n:t.n,cost:t.cost,
+    ...(S.rv.inv?{inv:S.rv.inv}:{}),...(S.rv.invTotal?{invTotal:S.rv.invTotal}:{}),
     items:t.rows.map(r=>({pid:r.p.id,name:r.p.name,unit:r.u.name||baseUnit(r.p),n:r.u.n,q:r.l.q,add:r.add,base:baseUnit(r.p),c:r.l.c>0?r.l.c:null}))};
   const a=activityDoc("add","stock",{detail:`استلام ${t.n} مادة${s?` من ${s.name}`:""}${t.cost?` بشراء ${fmt(t.cost)}`:""}`});
   const chunks=[];for(let i=0;i<writes.length;i+=450)chunks.push(writes.slice(i,i+450));
@@ -2874,6 +2886,9 @@ const sups=()=>[...S.customers.values()].filter(isSup);
 const rvSup=()=>{const c=S.rv&&S.rv.supId?S.customers.get(S.rv.supId):null;return isSup(c)?c:null};
 function rvSupHtml(){
   const s=rvSup();
+  const g=S.rv&&S.rv.guess;
+  if(!s&&g)return `<div class="rv-sup"><div class="m"><b>${I.truck}${esc(g.name||"مجهّز من الفاتورة")}</b><span>من الفاتورة${g.phone?` · <span class="num">${esc(g.phone)}</span>`:""} · مو مضاف بعد</span></div>
+    <button class="btn sm primary" type="button" data-act="rvsupadd">${I.plus}ضيفه</button><button class="btn sm" type="button" data-act="rvsup">غيره</button></div>`;
   if(!s)return `<button class="btn rv-pick" type="button" data-act="rvsup">${I.truck}<span>من وين تسوكت؟ <b>اختار المجهّز</b></span></button>`;
   const ph=s.phone?normDigits(s.phone):"",wa=ph?waNumber(ph):"";
   return `<div class="rv-sup"><div class="m"><b>${I.truck}${esc(s.name)}</b><span>${ph?`<span class="num">${esc(ph)}</span>`:"بدون رقم"}${s.note?` · ${esc(s.note)}`:""}</span></div>
@@ -2902,7 +2917,7 @@ function supPicker(){
   },"wide");
 }
 function rvSetSup(id){
-  rvStart().supId=id||"";saveRecv();
+  rvStart().supId=id||"";if(id)S.rv.guess=null;saveRecv();
   const b=$("#rvsupbox");if(b)b.innerHTML=rvSupHtml();const m=$("#rvsum");if(m)m.innerHTML=rvSumHtml();
 }
 function supForm(s){
@@ -2930,6 +2945,125 @@ function supForm(s){
       if(isNew||(S.rv&&S.rv.supId===obj.id)){rvSetSup(obj.id);closeModal();toast(isNew?`انضاف المجهّز «${name}»`:"انحفظ",2000)}else supPicker();
     });
   });
+}
+/* A photo of the supplier's invoice fills the receiving list: the AI service (kind "items") reads the items with their counts
+   and prices, and the invoice header (supplier, number, total). Items the shop has go straight on the list; the others wait
+   under «ما موجودة بالمواد» to be linked to an item or added as a new one. */
+function rvPhoto(){
+  if(!window.AI_URL){openModal(`<h3>صورة الفاتورة</h3><p class="hint">هذي الخاصية بعدها ما مفعّلة. تحتاج ربط خدمة الذكاء الاصطناعي أول مرة.</p><div class="foot"><button class="btn" type="button" data-close>تمام</button></div>`);return}
+  openModal(`<h3>صورة الفاتورة</h3>
+    <p class="hint">صوّر فاتورة المجهّز كاملة وواضحة. البرنامج يقرا المواد وعددها وسعر شرائها، واسم المحل ورقمه، ويملي قائمة الاستلام. بعدها تراجعها وتحفظ.</p>
+    <div id="rvpBody"><div class="scan-pick">
+      <label class="btn primary block">${I.camera}تصوير الفاتورة<input type="file" accept="image/*" capture="environment" hidden id="rvpCam"></label>
+      <label class="btn block">اختيار صور من المعرض (لحد 4)<input type="file" accept="image/*" multiple hidden id="rvpGal"></label>
+    </div></div>
+    <p class="err" id="rvpErr"></p>
+    <div class="foot"><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
+    const go=async files=>{
+      files=[...files].slice(0,4);if(!files.length)return;
+      const err=m.querySelector("#rvpErr");err.textContent="";
+      m.querySelector("#rvpBody").innerHTML=`<div class="scan-wait"><div class="spinner"></div><b>جاري قراءة الفاتورة…</b><span>ممكن تاخذ لحد دقيقة، لا تسد البرنامج.</span></div>`;
+      try{
+        const images=[];for(const f of files)images.push(await shrinkImage(f));
+        const products=[...S.products.values()].map(p=>({id:p.id,name:p.name}));
+        const token=await auth.currentUser.getIdToken();
+        const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),150000);
+        let r,j;
+        try{r=await fetch(window.AI_URL,{method:"POST",signal:ctl.signal,headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({kind:"items",images,products,cats:cats()})});j=await r.json().catch(()=>({}))}
+        finally{clearTimeout(tm)}
+        if(!r.ok)throw new Error(j.error||"تعذّرت قراءة الفاتورة.");
+        if(!Array.isArray(j.items)||!j.items.length)throw new Error("ما لكيت مواد بالصورة. تأكد إن الفاتورة واضحة وكاملة.");
+        if(!$("#rvpBody"))return;
+        closeModal();rvLoad(j);
+      }catch(e){
+        console.warn(e);if(!$("#rvpBody"))return;
+        err.textContent=e.name==="AbortError"?"طوّلت القراءة كلش. تأكد من الإنترنت وحاول مرة ثانية.":navigator.onLine===false?"لازم إنترنت حتى تنقرا الصورة.":(e.message||"تعذّرت قراءة الفاتورة.");
+        $("#rvpBody").innerHTML=`<div class="scan-pick"><button class="btn primary block" type="button" id="rvpAgain">حاول مرة ثانية</button></div>`;
+        $("#rvpAgain").onclick=()=>{closeModal();rvPhoto()};
+      }
+    };
+    m.querySelector("#rvpCam").addEventListener("change",e=>go(e.target.files));
+    m.querySelector("#rvpGal").addEventListener("change",e=>go(e.target.files));
+  });
+}
+// One invoice line on an item: in the item's carton when the line is in cartons of the same size, else counted in pieces.
+function rvFromInvoice(p,x){
+  const n=x.pack_n>1?x.pack_n:1,k=n>1?packsOf(p).find(z=>z.n===n):null;
+  if(k)return {u:k.name,q:x.qty,c:x.cost};
+  return {u:"",q:round3(x.qty*n),c:x.cost>0?Math.round(x.cost/n):0};
+}
+function rvPut(p,line){
+  rvStart();const key=p.id+"|"+(line.u||"");let l=S.rv.lines.find(z=>rvKey(z)===key);
+  if(l){l.q=round3((Number(l.q)||0)+(line.q||0));if(line.c>0)l.c=line.c}
+  else S.rv.lines.push({pid:p.id,u:line.u||"",q:round3(line.q||0),c:line.c>0?line.c:0});
+}
+function rvLoad(j){
+  rvStart();
+  const byName=new Map([...S.products.values()].map(p=>[foldAr(p.name),p]));
+  let on=0;S.rv.unk=S.rv.unk||[];
+  for(const r of j.items){
+    const x={name:String(r.name||"").trim().slice(0,80),category:String(r.category||""),qty:Math.max(0,Number(r.qty)||0),pack_n:Math.max(0,Math.round(Number(r.pack_n)||0)),
+      cost:Math.max(0,Math.round(Number(r.cost)||0)),weighed:!!r.weighed,unsure:!!r.unsure};
+    if(!x.name)continue;
+    const p=(r.product_id&&S.products.get(r.product_id))||byName.get(foldAr(x.name));
+    if(p&&p.active!==false){rvPut(p,rvFromInvoice(p,x));on++}
+    else if(!S.rv.unk.some(u=>foldAr(u.name)===foldAr(x.name)))S.rv.unk.push(x);
+  }
+  // The header: its supplier (an existing one by name or number, else offered to add), number and total.
+  const nm=String(j.supplier_name||"").trim(),ph=normDigits(String(j.supplier_phone||"")).replace(/[^\d+]/g,"");
+  if(nm||ph){
+    const tail=s=>normDigits(s||"").replace(/\D/g,"").slice(-9);
+    const s=sups().find(c=>(nm&&foldAr(c.name)===foldAr(nm))||(ph&&tail(ph).length>=7&&tail(c.phone)===tail(ph)));
+    if(s){if(!S.rv.supId)S.rv.supId=s.id;S.rv.guess=null}else if(!S.rv.supId)S.rv.guess={name:nm,phone:ph};
+  }
+  if(j.invoice_no)S.rv.inv=String(j.invoice_no).slice(0,30);
+  if(Number(j.invoice_total)>0)S.rv.invTotal=Math.round(Number(j.invoice_total));
+  saveRecv();renderRecv();
+  const u=S.rv.unk.length;
+  toast(`انقرت الفاتورة: ${on} مادة بالقائمة${u?`، و${u} ما موجودة بالمواد`:""}. راجع العدد والسعر قبل الحفظ.`,5000);
+}
+function rvUnkHtml(){
+  const u=S.rv&&S.rv.unk||[];if(!u.length)return "";
+  return `<div class="rv-unk"><b>ما موجودة بالمواد (<span class="num">${u.length}</span>)</b><span class="hint">اربطها بمادة عندك، أو ضيفها مادة جديدة وتنضاف للقائمة.</span>
+    <ul class="rows">${u.map((x,i)=>`<li class="rv-ur"><div class="m"><b>${esc(x.name)}${x.unsure?` <span class="chip warn">مو واضحة</span>`:""}</b><span>${x.qty>0?`<span class="num">${qtyText(x.qty)}</span>${x.pack_n>1?` × <span class="num">${x.pack_n}</span>`:""}`:"بدون عدد"}${x.cost>0?` · شراء <span class="num">${fmt(x.cost)}</span>`:""}</span></div>
+      <button class="btn sm" type="button" data-rvulink="${i}">ربط</button><button class="btn sm" type="button" data-rvunew="${i}">${I.plus}جديدة</button><button class="icon-btn" type="button" data-rvudel="${i}" aria-label="شيل ${esc(x.name)}">${I.close}</button></li>`).join("")}</ul></div>`;
+}
+// Moves an unknown invoice line onto an item.
+function rvUnkTo(i,p){
+  const x=S.rv&&S.rv.unk&&S.rv.unk[i];if(!x||!p)return;
+  S.rv.unk.splice(i,1);rvPut(p,rvFromInvoice(p,x));saveRecv();renderRecv();toast(`انضافت «${p.name}» للقائمة`,1800);
+}
+function rvLinkForm(i){
+  const x=S.rv&&S.rv.unk&&S.rv.unk[i];if(!x)return;
+  let q=x.name;
+  openModal(`<h3>ربط «${esc(x.name)}»</h3><p class="hint">اختار المادة اللي عندك بالبرنامج وتنضاف للقائمة بنفس العدد والسعر.</p>
+    <label class="search">${I.search}<input id="rlQ" type="search" autocomplete="off" value="${esc(q)}" aria-label="بحث بالمواد"></label>
+    <ul class="rows lk-list" id="rlL"></ul>
+    <div class="foot"><button class="btn" type="button" data-close>رجوع</button></div>`,m=>{
+    const draw=()=>{const t=normDigits(q).trim();
+      // The invoice may spell it differently (جبنة / جبن): when the whole name finds nothing, any of its words counts.
+      const words=t.split(/\s+/).filter(w=>w.length>1&&!/^[\d٠-٩]+$/.test(w)),sc=p=>matchScore(p.name,t,p.category)||words.reduce((a,w)=>a+matchScore(p.name,w,""),0)/10;
+      const list=productList().map(p=>({p,s:t?sc(p):1})).filter(z=>z.s>0).sort((a,b)=>b.s-a.s||a.p.name.localeCompare(b.p.name,"ar")).slice(0,40).map(z=>z.p);
+      m.querySelector("#rlL").innerHTML=list.length?list.map(p=>`<li><button class="r" type="button" data-rl="${esc(p.id)}"><div class="m"><b>${esc(p.name)}</b><span>${esc(p.category||"")}${p.barcode?` · <span class="num">${esc(p.barcode)}</span>`:""}</span></div></button></li>`).join("")
+        :`<li class="empty">ماكو مادة بهذا الاسم. جرّب كلمة وحدة من الاسم.</li>`};
+    const inp=m.querySelector("#rlQ");inp.addEventListener("input",()=>{q=inp.value;draw()});draw();
+    m.querySelector("#rlL").addEventListener("click",e=>{const b=e.target.closest("[data-rl]");if(!b)return;closeModal();rvUnkTo(i,S.products.get(b.dataset.rl))});
+  },"wide");
+}
+function rvUnkNew(i){
+  const x=S.rv&&S.rv.unk&&S.rv.unk[i];if(!x)return;
+  const n=x.pack_n>1?x.pack_n:1,cl=cats();
+  S.rvNewName=foldAr(x.name);
+  productForm({name:x.name,price:"",category:cl.includes(x.category)?x.category:cl[0],barcode:"",active:true,unit:x.weighed?"كغم":"حبة",weighed:x.weighed,
+    cost:x.cost>0?Math.round(x.cost/n):0,packs:[],__new:true});
+}
+// After «جديدة», the item saved under that name takes its invoice line.
+function rvNewDone(){
+  if(!S.rvNewName||!S.rv||!S.rv.unk||modalOpen())return false;
+  const i=S.rv.unk.findIndex(x=>foldAr(x.name)===S.rvNewName),p=productList().find(z=>foldAr(z.name)===S.rvNewName);
+  if(i<0){S.rvNewName=null;return false}
+  if(!p)return false;
+  S.rvNewName=null;rvUnkTo(i,p);return true;
 }
 
 /* ---------- Excel files (.xlsx), with no library ----------
@@ -3562,6 +3696,9 @@ document.addEventListener("click",e=>{
   const shl=t.closest("[data-shift]");if(shl){const x=(S.shiftLog||[]).find(z=>z.id===shl.dataset.shift);if(x)zModal(x);return}
   const ra=t.closest("[data-rvadd]");if(ra){const p=S.products.get(ra.dataset.rvadd);if(p)recvAdd(p,"",0);return}
   const rd=t.closest("[data-rvdel]");if(rd&&S.rv){const l=rvLine(rd.dataset.rvdel);if(l){S.rv.lines.splice(S.rv.lines.indexOf(l),1);saveRecv();renderRecv()}return}
+  const ul=t.closest("[data-rvulink]");if(ul){rvLinkForm(Number(ul.dataset.rvulink));return}
+  const un=t.closest("[data-rvunew]");if(un){rvUnkNew(Number(un.dataset.rvunew));return}
+  const ud=t.closest("[data-rvudel]");if(ud&&S.rv&&S.rv.unk){S.rv.unk.splice(Number(ud.dataset.rvudel),1);saveRecv();renderRecv();return}
   const rc=t.closest("[data-recv]");if(rc){const x=(S.recvs||[]).find(z=>z.id===rc.dataset.recv);if(x)recvModal(x);return}
   const rs=t.closest("[data-restock]");if(rs){const p=S.products.get(rs.dataset.restock);if(p)restockForm(p);return}
   const csh=t.closest("[data-cshow]");if(csh){S.cshow=csh.dataset.cshow;renderCount();return}
@@ -3593,6 +3730,8 @@ document.addEventListener("click",e=>{
     case "rvclear":if(confirm("تفريغ قائمة الاستلام؟ المواد اللي ضفتها تنشال وما تتغير أي كمية.")){S.rv=null;saveRecv();renderRecv()}break;
     case "rvscan":scanBarcode(recvCode);break;
     case "rvsup":supPicker();break;
+    case "rvsupadd":{const g=S.rv&&S.rv.guess;if(g)supForm({name:g.name,phone:g.phone});break}
+    case "rvphoto":rvPhoto();break;
     case "excel":excelForm();break;
     case "catalog":catalogForm();break;
     case "weighlist":weighListForm();break;
