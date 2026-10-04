@@ -120,6 +120,9 @@ fieldset.sec legend{padding:0 6px;font-family:var(--f-display);font-weight:700;f
 .check input{width:18px;height:18px;accent-color:var(--accent)}
 .check input{flex:none}
 .seg.wrap{flex-wrap:wrap}.seg.wrap button{flex:1 1 auto;white-space:nowrap}
+.scan-pick{display:flex;flex-direction:column;gap:8px}
+.scan-pick label{cursor:pointer}
+.scan-wait{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0;color:var(--muted);text-align:center}
 .lk-list{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r-ctl)}
 .ct-list{list-style:none;margin:0;padding:0;max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:6px}
 .ct-list li{border:1px solid var(--line);border-radius:var(--r-ctl);padding:8px 10px;background:var(--paper-2)}
@@ -446,6 +449,7 @@ const I={
   print:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M7 8V3h10v5M7 17H4v-7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7h-3"/><path d="M7 14h10v7H7z"/></svg>',
   drawer:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M3 10h18v9H3zM5 10l2-5h10l2 5M10 14.5h4"/></svg>',
   scale:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 4v15M7 19h10M5 8h14M5 8l-3 7a3 3 0 0 0 6 0zM19 8l-3 7a3 3 0 0 0 6 0z"/></svg>',
+  camera:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>',
   list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>'
 };
 function toast(msg,ms){
@@ -1892,6 +1896,7 @@ function productsView(){
       <button class="btn primary" type="button" data-act="newprod">${I.plus}مادة جديدة</button></div>
       <div class="tool-row" style="flex-wrap:wrap"><button class="btn sm" type="button" data-go="count">${I.box}جرد المخزن${S.count?` <span class="chip warn">مفتوح</span>`:""}</button>
         <button class="btn sm" type="button" data-act="excel">${I.sheet}Excel: استيراد وتصدير</button>
+        <button class="btn sm" type="button" data-act="plist" id="plBtn">${plBtn()}</button>
         <button class="btn sm" type="button" data-act="catalog">${I.list}قائمة مواد جاهزة</button>
         <button class="btn sm" type="button" data-act="linkscan">${I.scan}ربط باركود</button></div>
       <div class="chips" id="pchips"></div></div>
@@ -1903,6 +1908,7 @@ function renderProducts(){
   const el=$("#plist");if(!el)return;
   const used=new Set([...S.products.values()].map(p=>p.category||""));const nAl=alertCount(),nOf=[...S.products.values()].filter(offerOf).length;
   const nNo=[...S.products.values()].filter(noCode).length,nEst=[...S.products.values()].filter(p=>p.est).length;
+  const pb=$("#plBtn");if(pb)pb.innerHTML=plBtn();
   if(S.pcat==="alerts"&&!nAl||S.pcat==="offers"&&!nOf||S.pcat==="nocode"&&!nNo||S.pcat==="est"&&!nEst)S.pcat="all";
   $("#pchips").innerHTML=[["all","الكل ("+S.products.size+")"],...(nAl?[["alerts","⚠ تنبيهات ("+nAl+")"]]:[]),...(nOf?[["offers","العروض ("+nOf+")"]]:[]),
     ...(nNo?[["nocode","بلا باركود ("+nNo+")"]]:[]),...(nEst?[["est","سعر تقديري ("+nEst+")"]]:[]),...cats().filter(c=>used.has(c)).map(c=>[c,c])].map(([k,l])=>`<button type="button" data-pcat="${esc(k)}" aria-pressed="${S.pcat===k}">${esc(l)}</button>`).join("");
@@ -1978,6 +1984,7 @@ function productForm(p){
   const cl=cats().includes(p.category)||!p.category?cats():[p.category,...cats()];
   const origStock=tracked(p)?stockOf(p):null;
   openModal(`<h3>${isNew?"مادة جديدة":"تعديل مادة"}</h3>
+    ${isNew&&!p.barcode?`<button class="btn sm" type="button" id="pPhoto">${I.camera}عندك فاتورة أو قائمة مواد؟ صوّرها وأضفها كلها</button>`:""}
     <form id="pf" class="field" style="gap:12px" novalidate>
       <div class="field"><label for="pName">اسم المادة</label><input id="pName" maxlength="80" value="${esc(p.name)}" placeholder="مثال: بيبسي علبة"></div>
       <div class="row3"><div class="field"><label for="pCat">الصنف</label><select id="pCat">${cl.map(c=>`<option${c===p.category?" selected":""}>${esc(c)}</option>`).join("")}<option value="__new">+ صنف جديد…</option></select>
@@ -2011,6 +2018,7 @@ function productForm(p){
       <p class="err" id="pErr"></p>
       <div class="foot"><button class="btn primary" type="submit">${isNew?"إضافة":"حفظ"}</button>${isNew?"":`<button class="btn ghost danger-text" type="button" id="pDel">${I.trash}حذف</button>`}<button class="btn" type="button" data-close>رجوع</button></div>
     </form>`,m=>{
+    const ph=m.querySelector("#pPhoto");if(ph)ph.onclick=plOpen;
     const pc=m.querySelector("#pCat"),pcn=m.querySelector("#pCatNew");
     pc.onchange=()=>{pcn.hidden=pc.value!=="__new";if(!pcn.hidden)pcn.focus()};
     const wg=m.querySelector("#pWeighed"),un=m.querySelector("#pUnit"),plab=m.querySelector('label[for="pPrice"]');
@@ -2612,6 +2620,193 @@ function catalogApply(items){
   toast(`انضافت ${fmt(objs.length)} مادة. امسح باركود أي مادة واختار اسمها حتى ينربط.`,5000);
 }
 
+/* ---------- items from a photo (owner) ----------
+   The owner photographs a supplier invoice or a list of goods; the AI service (window.AI_URL, kind "items") reads the items.
+   The owner ticks the ones to add, then goes through them one at a time: scan the barcode, type the sale price, save.
+   An item the shop already has (the AI's match, the same name, or the scanned barcode) is updated instead of added again.
+   The list stays on this device (PLIST_KEY) until it is finished, so closing the window or the app loses nothing. */
+const PLIST_KEY="shahm-pos-plist";
+let PL=null;
+function loadPl(){try{const d=JSON.parse(localStorage.getItem(PLIST_KEY)||"null");PL=d&&Array.isArray(d.items)&&d.items.length?d:null}catch(e){PL=null}}
+function savePl(){try{if(PL)localStorage.setItem(PLIST_KEY,JSON.stringify(PL));else localStorage.removeItem(PLIST_KEY)}catch(e){}}
+const plLeft=()=>PL?PL.items.filter(x=>x.on&&!x.done&&!x.skip).length:0;
+const plBtn=()=>`${I.camera}قائمة من صورة${plLeft()?` <span class="chip warn">باقي <span class="num">${plLeft()}</span></span>`:""}`;
+const plPer=x=>x.pack_n>1?x.pack_n:1;
+const plCost=x=>x.cost>0?Math.round(x.cost/plPer(x)*100)/100:0;
+const plAdd=x=>x.qty>0?round3(x.qty*plPer(x)):0;
+const plTarget=x=>x.pid?S.products.get(x.pid)||null:null;
+async function shrinkImage(file,max=1568,q=.85){
+  let src;
+  try{src=await createImageBitmap(file,{imageOrientation:"from-image"})}
+  catch(e){src=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error("bad image"));i.src=URL.createObjectURL(file)})}
+  const w=src.width,h=src.height,k=Math.min(1,max/Math.max(w,h));
+  const cv=document.createElement("canvas");cv.width=Math.round(w*k);cv.height=Math.round(h*k);
+  cv.getContext("2d").drawImage(src,0,0,cv.width,cv.height);
+  let url=cv.toDataURL("image/jpeg",q);
+  for(let qq=q-.1;url.length>900000&&qq>.3;qq-=.1)url=cv.toDataURL("image/jpeg",qq);
+  return {data:url.slice(url.indexOf(",")+1),media_type:"image/jpeg"};
+}
+// The items button: carries on with a list in progress, or reads a new photo.
+function plOpen(){
+  if(!isAdmin())return;
+  if(!plLeft()){PL=null;savePl();plStart();return}
+  openModal(`<h3>قائمة من صورة</h3><p class="hint">عندك قائمة باقي بيها <b class="num">${plLeft()}</b> مادة ما خلصتها.</p>
+    <div class="foot"><button class="btn primary" type="button" id="plGo">كمّل القائمة</button><button class="btn" type="button" id="plNew">${I.camera}صورة جديدة</button><button class="btn" type="button" data-close>رجوع</button></div>`,m=>{
+    m.querySelector("#plGo").onclick=plReview;
+    m.querySelector("#plNew").onclick=()=>{if(!confirm(`تنمسح القائمة الحالية (باقي بيها ${plLeft()} مادة). المواد اللي حفظتها تبقى.`))return;PL=null;savePl();renderProducts();plStart()};
+  });
+}
+function plStart(){
+  if(!window.AI_URL){openModal(`<h3>قائمة من صورة</h3><p class="hint">هذي الخاصية بعدها ما مفعّلة. تحتاج ربط خدمة الذكاء الاصطناعي أول مرة.</p><div class="foot"><button class="btn" type="button" data-close>تمام</button></div>`);return}
+  openModal(`<h3>قائمة من صورة</h3>
+    <p class="hint">صوّر فاتورة المورّد أو ورقة مواد أو حتى الرف. البرنامج يقرا أسماء المواد وكمياتها وسعر شرائها، وبعدين تمر عليها وحدة وحدة: تمسح الباركود وتكتب سعر البيع بس.</p>
+    <div id="plBody"><div class="scan-pick">
+      <label class="btn primary block">${I.camera}تصوير القائمة<input type="file" accept="image/*" capture="environment" hidden id="plCam"></label>
+      <label class="btn block">اختيار صور من المعرض (لحد 4)<input type="file" accept="image/*" multiple hidden id="plGal"></label>
+    </div></div>
+    <p class="err" id="plErr"></p>
+    <div class="foot"><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
+    const go=async files=>{
+      files=[...files].slice(0,4);if(!files.length)return;
+      const err=m.querySelector("#plErr");err.textContent="";
+      m.querySelector("#plBody").innerHTML=`<div class="scan-wait"><div class="spinner"></div><b>جاري قراءة القائمة…</b><span>ممكن تاخذ لحد دقيقة، لا تسد البرنامج.</span></div>`;
+      try{
+        const images=[];for(const f of files)images.push(await shrinkImage(f));
+        const products=[...S.products.values()].map(p=>({id:p.id,name:p.name}));
+        const token=await auth.currentUser.getIdToken();
+        const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),150000);
+        let r,j;
+        try{r=await fetch(window.AI_URL,{method:"POST",signal:ctl.signal,headers:{"Content-Type":"application/json",Authorization:"Bearer "+token},body:JSON.stringify({kind:"items",images,products,cats:cats()})});j=await r.json().catch(()=>({}))}
+        finally{clearTimeout(tm)}
+        if(!r.ok)throw new Error(j.error||"تعذّرت قراءة القائمة.");
+        if(!Array.isArray(j.items)||!j.items.length)throw new Error("ما لكيت مواد بالصورة. تأكد إن الصورة واضحة وكاملة.");
+        plLoad(j.items);if($("#plBody"))plReview();
+      }catch(e){
+        console.warn(e);if(!$("#plBody"))return;
+        err.textContent=e.name==="AbortError"?"طوّلت القراءة كلش. تأكد من الإنترنت وحاول مرة ثانية.":navigator.onLine===false?"لازم إنترنت حتى تنقرا الصورة.":(e.message||"تعذّرت قراءة القائمة.");
+        $("#plBody").innerHTML=`<div class="scan-pick"><button class="btn primary block" type="button" id="plAgain">حاول مرة ثانية</button></div>`;
+        $("#plAgain").onclick=()=>{closeModal();plStart()};
+      }
+    };
+    m.querySelector("#plCam").addEventListener("change",e=>go(e.target.files));
+    m.querySelector("#plGal").addEventListener("change",e=>go(e.target.files));
+  });
+}
+// Keeps what the service read, matched to the shop's own items: the AI's match first, then the same name.
+function plLoad(rows){
+  const byName=new Map([...S.products.values()].map(p=>[foldAr(p.name),p.id])),cl=cats(),seen=new Set(),items=[];
+  for(const r of rows){const name=String(r.name||"").trim().slice(0,80);if(!name||seen.has(foldAr(name)))continue;seen.add(foldAr(name));
+    const pid=r.product_id&&S.products.has(r.product_id)?r.product_id:byName.get(foldAr(name))||"";
+    items.push({name,pid,category:cl.includes(r.category)?r.category:"مشكل",qty:Math.max(0,Number(r.qty)||0),pack_n:Math.max(0,Math.round(Number(r.pack_n)||0)),
+      cost:Math.max(0,Math.round(Number(r.cost)||0)),weighed:!!r.weighed,unsure:!!r.unsure,on:true,done:false,skip:false})}
+  PL={at:Date.now(),items};savePl();renderProducts();
+}
+function plQtyText(x){
+  if(!(x.qty>0))return "";
+  const u=x.weighed?"كغم":"حبة";
+  return x.pack_n>1?`${qtyText(x.qty)} كارتون × ${x.pack_n} = ${qtyText(plAdd(x))} ${u}`:`${qtyText(x.qty)} ${u}`;
+}
+function plCostText(x){
+  if(!(x.cost>0))return "";
+  return x.pack_n>1?`شراء ${fmt(x.cost)} للكارتون (${fmt(plCost(x))} ${x.weighed?"للكيلو":"للحبة"})`:`شراء ${fmt(x.cost)} ${x.weighed?"للكيلو":"للحبة"}`;
+}
+function plReview(){
+  if(!PL)return;
+  const st=x=>x.done?`<span class="chip paid">${I.check}انحفظت</span>`:x.skip?`<span class="chip zero">تخطيتها</span>`:"";
+  openModal(`<h3>المواد اللي بالصورة</h3><p class="hint">شيل الصح من المادة اللي ما تريدها. بعدين تمر عليها وحدة وحدة: امسح الباركود واكتب سعر البيع.</p>
+    <ul class="ct-list" id="plL">${PL.items.map((x,i)=>{const t=plTarget(x);return `<li><label class="check"><input type="checkbox" data-pl="${i}"${x.on&&!x.skip?" checked":""}${x.done?" disabled":""}>
+      <span><b>${esc(x.name)}</b> ${st(x)}${t&&!x.made?` <span class="chip warn">موجودة: ${esc(t.name)}</span>`:""}${x.unsure?` <span class="chip warn">غير واضحة</span>`:""}
+      <small>${esc([x.category,plQtyText(x),plCostText(x)].filter(Boolean).join(" · "))}</small></span></label></li>`}).join("")}</ul>
+    <div class="foot"><button class="btn primary" type="button" id="plGo"></button><button class="btn ghost danger-text" type="button" id="plDrop">${I.trash}مسح القائمة</button><button class="btn" type="button" data-close>رجوع</button></div>`,m=>{
+    const sync=()=>{const n=plLeft(),b=m.querySelector("#plGo");b.textContent=n?`ابدأ (${n} مادة)`:"ماكو مواد باقية";b.disabled=!n};
+    m.querySelector("#plL").addEventListener("change",e=>{const c=e.target.closest("[data-pl]");if(!c)return;const x=PL.items[Number(c.dataset.pl)];x.on=c.checked;x.skip=false;savePl();sync()});
+    m.querySelector("#plGo").onclick=()=>plStep(plNext(-1));
+    m.querySelector("#plDrop").onclick=()=>{if(!confirm("تمسح هاي القائمة؟ المواد اللي حفظتها تبقى."))return;PL=null;savePl();closeModal();renderProducts()};
+    sync();
+  },"wide");
+}
+const plNext=from=>{if(!PL)return -1;const n=PL.items.length;for(let k=1;k<=n;k++){const i=(from+k+n)%n,x=PL.items[i];if(x.on&&!x.done&&!x.skip)return i}return -1};
+// A scanned code that already belongs to another item means it is that item: the step switches to updating it.
+function plUseCode(x,code){
+  const f=findCode(code);
+  if(f&&f.p.id!==x.pid){x.pid=f.p.id;toast(`هذا الباركود على «${f.p.name}»، راح تتحدث هي.`,3500)}
+}
+function plStep(i){
+  if(i<0||!PL||!PL.items[i]){plFinish();return}
+  const x=PL.items[i],t=plTarget(x),d=x.draft||{},done=PL.items.filter(y=>y.on&&(y.done||y.skip)).length+1,total=PL.items.filter(y=>y.on).length;
+  const weighed=t?isWeighed(t):x.weighed,unit=weighed?"كغم":t?baseUnit(t):"حبة",add=plAdd(x),cl=cats();
+  const price=d.price!=null?d.price:t&&t.price>0&&!t.est?fmt(t.price):"";
+  openModal(`<h3>مادة <span class="num">${done}</span> من <span class="num">${total}</span></h3>
+    ${t?`<p class="banner info">موجودة بالبرنامج: <b>${esc(t.name)}</b>${t.price>0?` بسعر <span class="num">${fmt(t.price)}</span>`:""}${t.barcode?` · باركودها <span class="num">${esc(t.barcode)}</span>`:""}. راح يتحدث سعرها${add?" وكميتها":""}. <a href="#" id="plNotSame">مو هي؟</a></p>`:""}
+    <form id="plf" class="field" style="gap:12px" novalidate>
+      ${t?"":`<div class="row2"><div class="field"><label for="plName">اسم المادة</label><input id="plName" maxlength="80" value="${esc(d.name!=null?d.name:x.name)}"></div>
+        <div class="field"><label for="plCat">الصنف</label><select id="plCat">${(cl.includes(x.category)?cl:[x.category,...cl]).map(c=>`<option${c===(d.cat||x.category)?" selected":""}>${esc(c)}</option>`).join("")}</select></div></div>`}
+      ${x.unsure?`<p class="hint">الاسم أو الأرقام ما كانت واضحة بالصورة، تأكد منها.</p>`:""}
+      <div class="field"><label for="plCode">الباركود</label><div class="tool-row"><input id="plCode" inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(d.code||"")}" placeholder="${weighed?"ما يحتاج للمواد اللي تنباع بالوزن":"امسحه بالسكانر أو الكاميرا"}" autofocus>${canScan()?`<button class="icon-btn" type="button" id="plScan" aria-label="مسح بالكاميرا">${I.scan}</button>`:""}</div></div>
+      <div class="field"><label for="plPrice">${weighed?"سعر بيع الكيلو":"سعر البيع للمفرد"} (${CUR})</label><input id="plPrice" class="big" inputmode="numeric" value="${esc(price)}" placeholder="0">
+        <span class="help" id="plHelp"></span></div>
+      ${add?`<label class="check"><input type="checkbox" id="plStock"${d.stock===false?"":" checked"}> أضف <span class="num">${qtyText(add)}</span> ${esc(unit)} للمخزن${x.pack_n>1&&!t?` (والكارتون بيه <span class="num">${x.pack_n}</span>)`:""}</label>`:""}
+      <p class="err" id="plErr"></p>
+      <div class="foot"><button class="btn primary" type="submit">${I.check}حفظ والتالي</button><button class="btn" type="button" id="plSkip">تخطي</button><button class="btn" type="button" id="plList">القائمة</button></div>
+    </form>`,m=>{
+    const code=m.querySelector("#plCode"),pr=m.querySelector("#plPrice"),help=m.querySelector("#plHelp"),err=m.querySelector("#plErr");
+    const cost=plCost(x)||(t&&t.cost>0?Number(t.cost):0);
+    const upd=()=>{const v=numVal(pr.value);help.textContent=!cost?"":!(v>0)?`سعر الشراء ${fmt(cost)}`:v<cost?`أقل من سعر الشراء (${fmt(cost)})!`:`الربح ${fmt(v-cost)} (${Math.round((v-cost)/cost*100)}%)`};
+    pr.addEventListener("input",upd);upd();
+    const draft=()=>{const g=id=>{const e=m.querySelector("#"+id);return e?e.value:undefined},s=m.querySelector("#plStock");
+      x.draft={name:g("plName"),cat:g("plCat"),code:normDigits(code.value).trim(),price:pr.value,stock:s?s.checked:undefined}};
+    // A USB scanner types the code and presses Enter: take the code and move on to the price.
+    code.addEventListener("keydown",e=>{if(e.key!=="Enter")return;e.preventDefault();const v=normDigits(code.value).trim();
+      if(v){const before=x.pid;plUseCode(x,v);if(x.pid!==before){draft();plStep(i);return}}pr.focus();pr.select()});
+    const sc=m.querySelector("#plScan");
+    if(sc)sc.onclick=()=>{draft();savePl();scanBarcode(c=>{x.draft.code=c;plUseCode(x,c);savePl();plStep(i)})};
+    const ns=m.querySelector("#plNotSame");
+    if(ns)ns.onclick=e=>{e.preventDefault();draft();x.pid="";x.draft.code=t.barcode&&x.draft.code===t.barcode?"":x.draft.code;savePl();plStep(i)};
+    m.querySelector("#plSkip").onclick=()=>{x.skip=true;delete x.draft;savePl();plStep(plNext(i))};
+    m.querySelector("#plList").onclick=()=>{draft();savePl();plReview()};
+    m.querySelector("#plf").addEventListener("submit",e=>{e.preventDefault();err.textContent="";
+      const c=normDigits(code.value).trim(),p=Math.round(numVal(pr.value)),s=m.querySelector("#plStock"),addNow=s&&s.checked?add:0;
+      if(c){const before=x.pid;plUseCode(x,c);if(x.pid!==before){draft();savePl();plStep(i);return}}
+      if(!(p>0)){err.textContent="اكتب سعر البيع.";pr.focus();return}
+      let r;
+      if(t)r=plUpdate(t,x,c,p,addNow);
+      else{const name=m.querySelector("#plName").value.trim(),cat=m.querySelector("#plCat").value;
+        if(!name){err.textContent="اكتب اسم المادة.";return}
+        const same=[...S.products.values()].find(y=>foldAr(y.name)===foldAr(name));
+        if(same){draft();x.pid=same.id;savePl();toast(`أكو مادة بنفس الاسم «${same.name}»، راح تتحدث هي.`,3500);plStep(i);return}
+        r=plCreate(x,name,cat,c,p,addNow)}
+      if(r&&r.err){err.textContent=r.err;return}
+      x.done=true;x.code=c;x.price=p;delete x.draft;savePl();
+      toast(t?`تحدثت «${t.name}»`:"انحفظت المادة",1500);plStep(plNext(i));
+    });
+  });
+}
+function plCreate(x,name,category,code,price,add){
+  const now=Date.now(),cost=plCost(x),weighed=x.weighed,unit=weighed?"كغم":"حبة";
+  const packs=!weighed&&x.pack_n>1?[{name:"كارتون",n:x.pack_n,price:price*x.pack_n,wprice:0,barcode:""}]:[];
+  const obj={id:uid(),createdAt:now,by:S.me.name,name,price,category,barcode:code,unit,weighed,plu:"",wprice:0,cost,packs,track:add>0,...(add>0?{stock:add}:{}),
+    min:0,expiry:"",offer:null,active:true,src:"photo",updatedAt:now,updatedBy:S.me.name};
+  S.products.set(obj.id,obj);try{db.collection("products").doc(obj.id).set(obj).catch(writeFail)}catch(e){writeFail(e)}
+  x.pid=obj.id;x.made=true;
+  log("add","product",{detail:`أضاف المادة ${name} بسعر ${fmt(price)} من صورة قائمة${add>0?`، الكمية ${qtyText(add)}`:""}`});
+}
+function plUpdate(p,x,code,price,add){
+  if(code&&p.barcode&&p.barcode!==code&&!packsOf(p).some(k=>k.barcode===code)&&!confirm(`«${p.name}» عليها باركود ${p.barcode}. تبدله بـ ${code}؟`))return {err:"ما تبدّل الباركود. امسحه من الخانة إذا ما تريد تبدله."};
+  const now=Date.now(),patch={price,updatedAt:now,updatedBy:S.me.name},local={price,updatedAt:now,updatedBy:S.me.name,est:false},ch=[];
+  if(Number(p.price)!==price)ch.push(`السعر من ${fmt(p.price)} إلى ${fmt(price)}`);
+  if(code&&p.barcode!==code&&!packsOf(p).some(k=>k.barcode===code)){patch.barcode=local.barcode=code;ch.push(`الباركود ${code}`)}
+  const cost=plCost(x);if(cost>0&&cost!==Number(p.cost)){patch.cost=local.cost=cost;ch.push(`سعر الشراء ${fmt(cost)}`)}
+  if(p.est)patch.est=firebase.firestore.FieldValue.delete();
+  if(add>0){patch.track=local.track=true;patch.stock=tracked(p)?firebase.firestore.FieldValue.increment(add):add;local.stock=round3((tracked(p)?stockOf(p):0)+add);ch.push(`استلم ${qtyText(add)}`)}
+  S.products.set(p.id,{...p,...local});try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
+  log("edit","product",{detail:`عدّل ${p.name} من صورة قائمة: ${ch.join("، ")||"بدون تغيير"}`});
+}
+function plFinish(){
+  const its=PL?PL.items.filter(x=>x.on):[],made=its.filter(x=>x.done&&x.made).length,upd=its.filter(x=>x.done&&!x.made).length,sk=its.filter(x=>x.skip).length;
+  PL=null;savePl();closeModal();renderProducts();renderHeader();
+  toast(`خلصت القائمة: ${[made?`انضافت ${made}`:"",upd?`تحدثت ${upd}`:"",sk?`تخطيت ${sk}`:""].filter(Boolean).join("، ")||"ما تغير شي"}.`,4500);
+}
+
 /* ---------- dollar rate (owner) ---------- */
 function rateForm(after){
   if(!isAdmin())return;
@@ -2695,6 +2890,7 @@ document.addEventListener("click",e=>{
     case "excel":excelForm();break;
     case "catalog":catalogForm();break;
     case "linkscan":scanBarcode(codeOnItems);break;
+    case "plist":plOpen();break;
     case "hw":hwForm();break;
     case "drawer":openDrawerNoSale();break;
   }
@@ -2742,7 +2938,7 @@ if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceW
 
 /* ---------- boot ---------- */
 (async()=>{
-  loadCart();loadCount();loadHw();
+  loadCart();loadCount();loadHw();loadPl();
   const cfg=window.FIREBASE_CONFIG;
   if(!window.firebase){showError("تعذّر تحميل ملفات البرنامج.");return}
   if(!cfg||!cfg.apiKey||/^PUT/.test(cfg.apiKey)){showError("لم يتم ربط قاعدة البيانات (Firebase) بعد.");return}
