@@ -123,6 +123,8 @@ fieldset.sec legend{padding:0 6px;font-family:var(--f-display);font-weight:700;f
 .scan-pick{display:flex;flex-direction:column;gap:8px}
 .scan-pick label{cursor:pointer}
 .scan-wait{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0;color:var(--muted);text-align:center}
+.todo-head{padding:10px 12px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)}
+.todo-head .banner{margin:0}
 .lk-list{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r-ctl)}
 .ct-list{list-style:none;margin:0;padding:0;max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:6px}
 .ct-list li{border:1px solid var(--line);border-radius:var(--r-ctl);padding:8px 10px;background:var(--paper-2)}
@@ -1904,28 +1906,32 @@ function productsView(){
 }
 // Weighed items with a scale number get their barcode from the scale label, so they don't count as missing one.
 const noCode=p=>!p.barcode&&!packsOf(p).some(k=>k.barcode)&&!(isWeighed(p)&&(p.plu||!scaleCfg().on));
+// Items from the ready-made list still waiting for their barcode or their real price (chip «من القائمة الجاهزة»).
+const listTodo=p=>p.src==="catalog"&&(p.est||noCode(p));
 function renderProducts(){
   const el=$("#plist");if(!el)return;
   const used=new Set([...S.products.values()].map(p=>p.category||""));const nAl=alertCount(),nOf=[...S.products.values()].filter(offerOf).length;
-  const nNo=[...S.products.values()].filter(noCode).length,nEst=[...S.products.values()].filter(p=>p.est).length;
+  const nNo=[...S.products.values()].filter(noCode).length,nEst=[...S.products.values()].filter(p=>p.est).length,nTd=[...S.products.values()].filter(listTodo).length;
   const pb=$("#plBtn");if(pb)pb.innerHTML=plBtn();
-  if(S.pcat==="alerts"&&!nAl||S.pcat==="offers"&&!nOf||S.pcat==="nocode"&&!nNo||S.pcat==="est"&&!nEst)S.pcat="all";
-  $("#pchips").innerHTML=[["all","الكل ("+S.products.size+")"],...(nAl?[["alerts","⚠ تنبيهات ("+nAl+")"]]:[]),...(nOf?[["offers","العروض ("+nOf+")"]]:[]),
+  if(S.pcat==="alerts"&&!nAl||S.pcat==="offers"&&!nOf||S.pcat==="nocode"&&!nNo||S.pcat==="est"&&!nEst||S.pcat==="todo"&&!nTd)S.pcat="all";
+  $("#pchips").innerHTML=[["all","الكل ("+S.products.size+")"],...(nTd?[["todo","من القائمة الجاهزة ("+nTd+")"]]:[]),...(nAl?[["alerts","⚠ تنبيهات ("+nAl+")"]]:[]),...(nOf?[["offers","العروض ("+nOf+")"]]:[]),
     ...(nNo?[["nocode","بلا باركود ("+nNo+")"]]:[]),...(nEst?[["est","سعر تقديري ("+nEst+")"]]:[]),...cats().filter(c=>used.has(c)).map(c=>[c,c])].map(([k,l])=>`<button type="button" data-pcat="${esc(k)}" aria-pressed="${S.pcat===k}">${esc(l)}</button>`).join("");
   let list=[...S.products.values()];
   if(S.pcat==="alerts")list=list.filter(p=>alertsOf(p).length);else if(S.pcat==="offers")list=list.filter(offerOf);
-  else if(S.pcat==="nocode")list=list.filter(noCode);else if(S.pcat==="est")list=list.filter(p=>p.est);else if(S.pcat!=="all")list=list.filter(p=>(p.category||"")===S.pcat);
+  else if(S.pcat==="nocode")list=list.filter(noCode);else if(S.pcat==="est")list=list.filter(p=>p.est);else if(S.pcat==="todo")list=list.filter(listTodo);else if(S.pcat!=="all")list=list.filter(p=>(p.category||"")===S.pcat);
   const q=normDigits(S.pq).trim();
   const codeHit=p=>p.barcode===q||packsOf(p).some(k=>k.barcode===q);
   list=q?list.map(p=>({p,s:codeHit(p)?20:matchScore(p.name,q,p.category)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).map(x=>x.p):list.sort((a,b)=>a.name.localeCompare(b.name,"ar"));
   if(!S.ready.p){el.innerHTML=`<li><div class="spinner" style="margin:30px auto"></div></li>`;return}
-  el.innerHTML=list.length?list.map(p=>{const al=alertsOf(p),of=offerOf(p);return `<li><div class="prow"><button class="r" type="button" data-prod="${esc(p.id)}">
-      <span class="avatar">${initial(p.name)}</span><div class="m"><b>${esc(p.name)}${p.active===false?` <span class="chip zero">موقوفة</span>`:""}${p.est?` <span class="chip zero">سعر تقديري</span>`:""}</b>
-      <span>${esc(p.category||"بدون صنف")}${tracked(p)?` · المخزن ${stockHtml(p)}`:""}${p.expiry?` · ينتهي <span class="num">${esc(p.expiry)}</span>`:""}${packsOf(p).length?` · ${packsOf(p).map(k=>esc(k.name)).join("، ")}`:""}</span>
+  const todoHead=S.pcat==="todo"?`<li class="todo-head"><p class="banner info">هاي المواد انضافت من «قائمة مواد جاهزة» وباقي عليها باركود أو سعر البيع. خذ المادة اللي جبتها وامسح باركودها (بالسكانر أو الكاميرا)، اختار اسمها إذا ما مربوط، واكتب سعر بيعها. اللي تخلص تطلع من هنا.</p>
+      ${canScan()?`<button class="btn primary block" type="button" data-act="pricescan">${I.scan}امسح مادة وحط سعرها</button>`:""}</li>`:"";
+  el.innerHTML=todoHead+(list.length?list.map(p=>{const al=alertsOf(p),of=offerOf(p);return `<li><div class="prow"><button class="r" type="button" data-prod="${esc(p.id)}">
+      <span class="avatar">${initial(p.name)}</span><div class="m"><b>${esc(p.name)}${p.active===false?` <span class="chip zero">موقوفة</span>`:""}${p.est&&S.pcat!=="todo"?` <span class="chip zero">سعر تقديري</span>`:""}</b>
+      <span>${S.pcat==="todo"?`<span class="chip warn">باقي ${[noCode(p)?"الباركود":"",p.est?"السعر":""].filter(Boolean).join(" و")}</span> `:""}${esc(p.category||"بدون صنف")}${tracked(p)?` · المخزن ${stockHtml(p)}`:""}${p.expiry?` · ينتهي <span class="num">${esc(p.expiry)}</span>`:""}${packsOf(p).length?` · ${packsOf(p).map(k=>esc(k.name)).join("، ")}`:""}</span>
       ${al.length||of?`<span class="al">${of?`<span class="of">عرض ${offerHtml(of)}${of.to?` لحد <span class="num">${esc(of.to)}</span>`:""}</span>`:""}${al.map(a=>`<span class="chip warn">${ALERT_TEXT[a]}</span>`).join(" ")}</span>`:""}</div>
       <div class="a"><span class="num">${fmt(p.price)}</span><small>${isWeighed(p)?"للكيلو":""}${p.cost>0?`${isWeighed(p)?" · ":""}شراء <span class="num">${fmt(p.cost)}</span>`:isWeighed(p)?"":CUR}</small></div></button>
       <button class="btn sm" type="button" data-restock="${esc(p.id)}" title="استلام كمية">${I.plus}كمية</button></div></li>`}).join("")
-    :`<li class="empty"><b>${S.products.size?"ماكو نتائج":"ماكو مواد بعد"}</b>${S.products.size?"":"اضغط «قائمة مواد جاهزة» حتى تنضاف مواد الماركت بأسعار تقديرية، أو «مادة جديدة» وأضف كل مادة بسعرها."}</li>`;
+    :`<li class="empty"><b>${S.products.size?"ماكو نتائج":"ماكو مواد بعد"}</b>${S.products.size?"":"اضغط «قائمة مواد جاهزة» حتى تنضاف مواد الماركت بأسعار تقديرية، أو «مادة جديدة» وأضف كل مادة بسعرها."}</li>`);
 }
 const UNITS=["حبة","كغم","علبة","قنينة","كيس","باكيت","لتر","متر"];
 const numVal=v=>{const n=parseAmt(v);return isFinite(n)?n:NaN};
@@ -2089,7 +2095,7 @@ function linkCodeForm(code,after){
     <div class="foot"><button class="btn primary" type="button" id="lkNew">${I.plus}مادة جديدة بهذا الباركود</button><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
     const draw=()=>{const t=normDigits(q).trim();let list=[...S.products.values()];
       list=t?list.map(p=>({p,s:matchScore(p.name,t,p.category)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s||noCode(b.p)-noCode(a.p)||a.p.name.localeCompare(b.p.name,"ar")).map(x=>x.p)
-        :list.filter(noCode).sort((a,b)=>a.name.localeCompare(b.name,"ar"));
+        :list.filter(noCode).sort((a,b)=>listTodo(b)-listTodo(a)||a.name.localeCompare(b.name,"ar"));
       m.querySelector("#lkL").innerHTML=list.length?list.slice(0,40).map(p=>`<li><button class="r" type="button" data-lk="${esc(p.id)}"><div class="m"><b>${esc(p.name)}</b>
           <span>${esc(p.category||"")}${p.barcode?` · عليها <span class="num">${esc(p.barcode)}</span>`:""}</span></div><div class="a"><span class="num">${fmt(p.price)}</span></div></button></li>`).join("")
         :`<li class="empty">${t?"ماكو مادة بهذا الاسم. سوّيها «مادة جديدة».":"كل المواد عليها باركود. ابحث بالاسم."}</li>`};
@@ -2110,9 +2116,50 @@ function setCode(p,code){
 // A code scanned on the items tab: opens its item, or links it.
 function codeOnItems(code){
   const t=normDigits(code).trim();if(!t)return;
-  const f=findCode(t);if(f){productForm(f.p);return}
+  const f=findCode(t);if(f){(f.p.est?priceForm:productForm)(f.p);return}
   const sc=scaleCode(t);if(sc&&sc.p){productForm(sc.p);return}
-  linkCodeForm(t);
+  // Linking a ready-made item goes straight on to its real price.
+  linkCodeForm(t,p=>{if(p&&p.est)setTimeout(()=>priceForm(p),50)});
+}
+/* The short form for an item from the ready-made list: its barcode and real sale price (and the purchase price if known).
+   Saving it clears «سعر تقديري», so the item leaves the «من القائمة الجاهزة» chip once it also has a barcode. */
+function priceForm(p){
+  if(!isAdmin()||!p)return;
+  const wg=isWeighed(p),codeOk=!noCode(p)||!!p.barcode;
+  openModal(`<h3>${esc(p.name)}</h3><p class="hint">${esc(p.category||"")}${p.est?` · السعر التقديري <span class="num">${fmt(p.price)}</span>، صحّحه لسعر بيعك`:""}</p>
+    <form id="qf" class="field" style="gap:12px" novalidate>
+      <div class="field"><label for="qCode">الباركود</label><div class="tool-row"><input id="qCode" inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(p.barcode||"")}" placeholder="${wg?"ما يحتاج للمواد اللي تنباع بالوزن":"امسحه بالسكانر أو الكاميرا"}"${codeOk?"":" autofocus"}>${canScan()?`<button class="icon-btn" type="button" id="qScan" aria-label="مسح بالكاميرا">${I.scan}</button>`:""}</div></div>
+      <div class="row2"><div class="field"><label for="qPrice">${wg?"سعر بيع الكيلو":"سعر البيع للمفرد"} (${CUR})</label><input id="qPrice" class="big" inputmode="numeric" value="${p.price>0?fmt(p.price):""}" placeholder="0"${codeOk?" autofocus":""}></div>
+        <div class="field"><label for="qCost">سعر الشراء</label><input id="qCost" class="big" inputmode="decimal" value="${p.cost>0?fmt(p.cost):""}" placeholder="اختياري"></div></div>
+      <span class="help" id="qHelp"></span>
+      <p class="err" id="qErr"></p>
+      <div class="foot"><button class="btn primary" type="submit">${I.check}حفظ</button>${canScan()?`<button class="btn" type="button" id="qNext">${I.scan}حفظ وامسح التالي</button>`:""}<button class="btn" type="button" id="qFull">${I.edit}كل التفاصيل</button><button class="btn" type="button" data-close>رجوع</button></div>
+    </form>`,m=>{
+    const code=m.querySelector("#qCode"),pr=m.querySelector("#qPrice"),co=m.querySelector("#qCost"),help=m.querySelector("#qHelp"),err=m.querySelector("#qErr");
+    const upd=()=>{const v=numVal(pr.value),c=numVal(co.value);help.textContent=!(c>0)||!(v>0)?"":v<c?`أقل من سعر الشراء!`:`الربح ${fmt(v-c)} (${Math.round((v-c)/c*100)}%)`};
+    pr.addEventListener("input",upd);co.addEventListener("input",upd);upd();
+    if(document.activeElement===pr)pr.select();
+    code.addEventListener("keydown",e=>{if(e.key!=="Enter")return;e.preventDefault();pr.focus();pr.select()});
+    const draft=()=>({...p,barcode:normDigits(code.value).trim(),price:numVal(pr.value)>=0?numVal(pr.value):p.price,cost:numVal(co.value)>=0?numVal(co.value):p.cost});
+    const sc=m.querySelector("#qScan");if(sc)sc.onclick=()=>{const d=draft();scanBarcode(c=>priceForm({...d,barcode:c}))};
+    m.querySelector("#qFull").onclick=()=>productForm(S.products.get(p.id)||p);
+    const save=next=>{err.textContent="";
+      const c=normDigits(code.value).trim(),v=Math.round(numVal(pr.value)),cs=co.value.trim(),cost=cs?numVal(cs):0;
+      if(!(v>0)){err.textContent="اكتب سعر البيع.";pr.focus();return}
+      if(!(cost>=0)){err.textContent="سعر الشراء لازم يكون رقم.";return}
+      if(c){const f=findCode(c);if(f&&f.p.id!==p.id){err.textContent=`الباركود ${c} مسجل على «${f.p.name}».`;return}}
+      const cur=S.products.get(p.id)||p,now=Date.now(),patch={price:v,barcode:c,cost,updatedAt:now,updatedBy:S.me.name},ch=[];
+      if(Number(cur.price)!==v||cur.est)ch.push(`السعر ${fmt(v)}`);if((cur.barcode||"")!==c)ch.push(c?`الباركود ${c}`:"شال الباركود");if((Number(cur.cost)||0)!==cost)ch.push(`سعر الشراء ${fmt(cost)}`);
+      if(cur.est)patch.est=firebase.firestore.FieldValue.delete();
+      S.products.set(p.id,{...cur,price:v,barcode:c,cost,updatedAt:now,updatedBy:S.me.name,est:false});
+      try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
+      if(ch.length)log("edit","product",{detail:`عدّل ${cur.name}: ${ch.join("، ")}`});
+      closeModal();renderProducts();toast(`انحفظت «${cur.name}»`,1500);
+      if(next)scanBarcode(codeOnItems);
+    };
+    m.querySelector("#qf").addEventListener("submit",e=>{e.preventDefault();save(false)});
+    const nx=m.querySelector("#qNext");if(nx)nx.onclick=()=>save(true);
+  });
 }
 /* Receiving stock: add a quantity (in the base unit or a pack), optionally with the new purchase price and expiry date. */
 function restockForm(p){
@@ -2858,7 +2905,7 @@ document.addEventListener("click",e=>{
   const ln=t.closest("[data-line]");if(ln){editLine(ln.dataset.line);return}
   const c=t.closest("[data-cat]");if(c){S.cat=c.dataset.cat;renderChips();renderTiles();return}
   const pc=t.closest("[data-pcat]");if(pc){S.pcat=pc.dataset.pcat;renderProducts();return}
-  const pr=t.closest("[data-prod]");if(pr){productForm(S.products.get(pr.dataset.prod));return}
+  const pr=t.closest("[data-prod]");if(pr){const p=S.products.get(pr.dataset.prod);if(p)(S.pcat==="todo"&&listTodo(p)?priceForm:productForm)(p);return}
   const sl=t.closest("[data-sale]");if(sl){saleDetail(sl.dataset.sale);return}
   const dy=t.closest("[data-day]");if(dy&&!dy.disabled){S.repDay=dy.dataset.day;renderSales();return}
   const rm=t.closest("[data-rmode]");if(rm){S.repMode=rm.dataset.rmode;renderSales();return}
@@ -2891,6 +2938,7 @@ document.addEventListener("click",e=>{
     case "catalog":catalogForm();break;
     case "linkscan":scanBarcode(codeOnItems);break;
     case "plist":plOpen();break;
+    case "pricescan":scanBarcode(codeOnItems);break;
     case "hw":hwForm();break;
     case "drawer":openDrawerNoSale();break;
   }
