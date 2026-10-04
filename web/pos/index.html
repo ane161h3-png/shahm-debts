@@ -253,6 +253,33 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
   .cartbar .open b{font-size:19px;font-weight:800}
   .cartbar .open .cnt{background:var(--accent-ink);color:var(--accent);border-radius:99px;padding:0 9px;font-size:14px;margin-left:8px}
 }
+/* Split view on a phone or tablet: after the first scan the invoice stays open on the left and the items on the right, so the
+   cashier keeps scanning and can still tap weighed items by hand. The × on the invoice goes back to the full item list. */
+@media (max-width:900px){
+  body.splitv .sell{grid-template-columns:minmax(0,1fr) minmax(0,46%);gap:8px}
+  body.splitv .catalog{padding-bottom:0}
+  body.splitv .tiles{grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:6px;padding:8px}
+  body.splitv .tile{min-height:84px;padding:8px 7px 7px}
+  body.splitv .cart{position:sticky;inset:auto;top:8px;transform:none;transition:none;height:calc(100dvh - 140px);max-height:none;min-height:0;border-radius:var(--r);box-shadow:none;z-index:1}
+  body.splitv::after{content:none}
+  body.splitv .cartbar{display:none}
+  body.splitv .sell>*{min-width:0}
+  body.splitv .cart{overflow:hidden}
+  body.splitv .cart-head{flex-wrap:wrap;row-gap:4px}
+  body.splitv .cart-head .danger-text{font-size:0;gap:0;padding:6px}
+  body.splitv .cart-head .danger-text svg{width:18px;height:18px}
+}
+@media (max-width:620px){
+  body.splitv .cat-tools{padding:8px}
+  body.splitv .cart-head{padding:8px 10px}
+  body.splitv .cart-lines li{flex-wrap:wrap;padding:8px 10px;gap:6px}
+  body.splitv .cart-lines .info{flex-basis:100%}
+  body.splitv .cart-lines .cpic{display:none}
+  body.splitv .cart-lines .lt{min-width:0;margin-inline-start:auto}
+  body.splitv .cart-foot{padding:8px 10px}
+  body.splitv .grand b{font-size:21px}
+  body.splitv .charge{padding:12px;font-size:16px}
+}
 @media (min-width:901px){.cart .close-cart{display:none}}
 
 /* ---------- reports ---------- */
@@ -811,7 +838,7 @@ function renderCart(){
       <button class="btn primary charge" type="button" data-act="checkout"${S.cart.length&&canSell()?"":" disabled"}>الدفع <span class="num">${fmt(t.total)}</span>${kbd("Enter")}</button>
     </div>`;
   if(bar)bar.innerHTML=S.cart.length?`<button class="open" type="button" data-act="showcart"><span><span class="cnt num">${S.cart.length}</span>عرض الفاتورة</span><b class="num">${fmt(t.total)}</b></button>`:"";
-  if(!S.cart.length)document.body.classList.remove("show-cart");
+  if(!S.cart.length)document.body.classList.remove("show-cart","splitv");
   hydratePics(el);
 }
 
@@ -950,6 +977,8 @@ function weightForm(p,line){
   });
 }
 // Adds an item the usual way, or asks for the weight when it is sold by weight (and not as a ready pack).
+// The invoice beside the items on a narrow screen (see body.splitv in the CSS); it closes again when the invoice is empty.
+function splitView(on){document.body.classList.toggle("splitv",!!on&&S.cart.length>0);if(on)document.body.classList.remove("show-cart")}
 function sellItem(p,pack){if(isWeighed(p)&&!pack){weightForm(p);return false}addToCart(p,1,pack||null);return true}
 
 /* ---------- barcode: phone camera and USB scanners that type like a keyboard ----------
@@ -999,9 +1028,9 @@ async function scanBarcode(onCode){
 function sellCode(code){
   const t=normDigits(code).trim();if(!t)return false;
   const f=findCode(t);
-  if(f){if(sellItem(f.p,f.pack)){toast("انضافت: "+f.p.name+(f.pack?" ("+f.pack.name+")":""),1500);flashItem(f.p,f.pack)}return true}
+  if(f){if(sellItem(f.p,f.pack)){toast("انضافت: "+f.p.name+(f.pack?" ("+f.pack.name+")":""),1500);flashItem(f.p,f.pack);splitView(true)}return true}
   const sc=scaleCode(t);
-  if(sc&&sc.p)return sellScaled(sc);
+  if(sc&&sc.p){const ok=sellScaled(sc);if(ok)splitView(true);return ok}
   if(sc){sound("err");toast(`رقم الميزان ${sc.plu} مو مربوط بأي مادة.${isAdmin()?" اكتبه بالمادة بخانة «رقمها بالميزان».":""}`,4500);return false}
   // The owner links an unknown code to an item on the spot (the ready-made list has names and prices, not barcodes).
   sound("err");
@@ -3257,7 +3286,7 @@ document.addEventListener("click",e=>{
     case "discount":discountForm();break;
     case "checkout":checkout();break;
     case "showcart":document.body.classList.add("show-cart");break;
-    case "hidecart":document.body.classList.remove("show-cart");break;
+    case "hidecart":document.body.classList.remove("show-cart","splitv");break;
     case "newprod":productForm();break;
     case "reppdf":reportPdf();break;
     case "closeshift":closeShiftForm();break;
