@@ -284,7 +284,7 @@ td.x{width:64px;white-space:nowrap}
 .calc-exp{min-height:22px;font-size:15px;color:var(--muted);text-align:left;word-break:break-all;display:block}
 .calc-keys{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .calc-keys button{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:8px 0;font-size:17px;font-family:var(--f-display);font-weight:600;cursor:pointer;color:var(--ink);touch-action:manipulation}
-.calc-keys button:active{transform:scale(.96)}
+.calc-keys button:active,.calc-keys button.hit{transform:scale(.96);border-color:var(--accent)}
 .calc-keys .op{color:var(--accent);background:var(--accent-soft);border-color:var(--accent-soft)}
 .calc-keys .fn{color:var(--muted);font-size:15px}
 .calc-keys .eq{grid-column:4;grid-row:4/span 2;background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -920,7 +920,7 @@ function renderDetail(){
     <div class="balance-card ${balCls}">
       <div><div class="lbl">${balLbl}</div><div class="amt"><span class="num">${fmt(Math.abs(per.bal))}</span><small>${CUR}</small></div>
         <div class="limit-row">${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
-      ${w?`<div class="actions"><button class="btn debt" type="button" data-act="debt">${I.plus}${sup?"فاتورة شراء":"دين"}</button><button class="btn paid" type="button" data-act="pay">${I.minus}${sup?"دفعة للمورد":"دفعة"}</button>${per.bal!==0?`<button class="btn zero" type="button" data-act="zero">${I.zero}تصفير</button>`:""}</div>`:""}
+      ${w?`<div class="actions"><button class="btn debt" type="button" data-act="debt" title="اختصار: +">${I.plus}${sup?"فاتورة شراء":"دين"}</button><button class="btn paid" type="button" data-act="pay" title="اختصار: −">${I.minus}${sup?"دفعة للمورد":"دفعة"}</button>${per.bal!==0?`<button class="btn zero" type="button" data-act="zero">${I.zero}تصفير</button>`:""}</div>`:""}
     </div>
     ${!sup&&(c.promise||(per.bal>0&&w))?(()=>{const left=promiseLeft(c),pr=c.promise;
       if(!pr)return `<button class="btn block" type="button" data-act="promise">${I.bell}+ موعد وعد بالدفع</button>`;
@@ -1382,10 +1382,10 @@ function openModal(html,onMount){
 }
 function closeModal(){$("#modalRoot").innerHTML=""}
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal()});
-function confirmBox(title,text,label,fn){
+function confirmBox(title,text,label,fn,focusOk){
   openModal(`<h3>${esc(title)}</h3><p style="margin:0;color:var(--muted)">${esc(text)}</p>
     <div class="foot"><button class="btn debt" type="button" id="okBtn">${esc(label)}</button><button class="btn" type="button" data-close>إلغاء</button></div>`,
-    m=>m.querySelector("#okBtn").addEventListener("click",()=>{closeModal();fn()}));
+    m=>{const ok=m.querySelector("#okBtn");ok.addEventListener("click",()=>{closeModal();fn()});if(focusOk)ok.focus()});
 }
 function customerForm(c,after){
   const isNew=!c;
@@ -1470,19 +1470,45 @@ function txnForm(type,existing){
     let expr="";
     const isOp=ch=>"+-*/".includes(ch);
     const pretty=e=>e.replace(/\d+(\.\d*)?/g,n=>{const [w,d]=n.split(".");return Number(w).toLocaleString("en-US")+(d!==undefined?"."+d:"")}).replace(/\*/g," × ").replace(/\//g," ÷ ").replace(/-/g," − ").replace(/\+/g," + ");
-    const showCalc=()=>{const v=calcEval(expr.replace(/[+\-*/.]+$/,""));cExp.textContent=expr?pretty(expr).trim()+(/[+\-*/]/.test(expr.slice(1))&&isFinite(v)?"  = "+fmt(v):""):"";if(expr)a.value=isFinite(v)?fmt(v):a.value};
-    const setCalc=open=>{calc.hidden=!open;cT.setAttribute("aria-expanded",String(open));try{localStorage.setItem(CALC_KEY,open?"1":"")}catch(e){}if(open){expr=a.value?String(parseAmt(a.value)||""):"";showCalc()}};
+    // writeBack=false while the person types in the amount field itself, so the field keeps what they typed.
+    const showCalc=(writeBack=true)=>{const v=calcEval(expr.replace(/[+\-*/.]+$/,""));cExp.textContent=expr?pretty(expr).trim()+(/[+\-*/]/.test(expr.slice(1))&&isFinite(v)?"  = "+fmt(v):""):"";if(expr&&writeBack)a.value=isFinite(v)?fmt(v):a.value};
+    const setCalc=(open,remember=true)=>{calc.hidden=!open;cT.setAttribute("aria-expanded",String(open));if(remember)try{localStorage.setItem(CALC_KEY,open?"1":"")}catch(e){}if(open){expr=a.value?String(parseAmt(a.value)||""):"";showCalc()}};
     cT.addEventListener("click",()=>setCalc(calc.hidden));
     try{if(localStorage.getItem(CALC_KEY))setCalc(true)}catch(e){}
-    calc.addEventListener("click",e=>{const b=e.target.closest("[data-k]");if(!b)return;const k=b.dataset.k;
+    const press=k=>{
       if(k==="C")expr="";
       else if(k==="⌫")expr=expr.slice(0,-1);
       else if(k==="="){const v=calcEval(expr.replace(/[+\-*/.]+$/,""));expr=isFinite(v)?String(Math.round(v)):expr}
       else if(isOp(k)){if(!expr&&k!=="-")return;expr=isOp(expr.slice(-1))?expr.slice(0,-1)+k:expr+k}
       else if(k==="."){const last=expr.split(/[+\-*/]/).pop();if(!last.includes("."))expr+=last?".":"0."}
       else expr+=k;
-      if(!expr)a.value="";showCalc()});
-    a.addEventListener("input",()=>{if(!calc.hidden){expr=normDigits(a.value).replace(/[,،\s]/g,"").replace(/[×xX]/g,"*").replace(/÷/g,"/");cExp.textContent=expr&&/[+\-*/]/.test(expr.slice(1))?pretty(expr):""}});
+      if(!expr)a.value="";showCalc()};
+    // Clicking a calculator key keeps the cursor in the amount field, so the laptop keyboard keeps working after a click.
+    calc.addEventListener("mousedown",e=>{if(e.target.closest("[data-k]"))e.preventDefault()});
+    calc.addEventListener("click",e=>{const b=e.target.closest("[data-k]");if(b)press(b.dataset.k)});
+    const syncFromField=()=>{expr=normDigits(a.value).replace(/[,،\s]/g,"").replace(/[×xX]/g,"*").replace(/÷/g,"/");showCalc(false)};
+    a.addEventListener("input",()=>{
+      // Typing + − × ÷ in the amount field (e.g. on the number pad) shows the calculator with the running result.
+      if(calc.hidden&&/[+\-*/×÷]/.test(normDigits(a.value).slice(1)))setCalc(true,false);
+      if(!calc.hidden)syncFromField()});
+    // Laptop keyboard: the number pad drives the calculator wherever the cursor is in this form, = shows the result, Enter saves.
+    const KEYMAP={"+":"+","-":"-","*":"*","/":"/","=":"=",".":".",",":".","Backspace":"⌫","Delete":"C"};
+    const flash=k=>{const b=calc.querySelector(`[data-k="${CSS.escape(k)}"]`);if(b){b.classList.add("hit");setTimeout(()=>b.classList.remove("hit"),120)}};
+    m.addEventListener("keydown",e=>{
+      if(e.ctrlKey||e.metaKey||e.altKey)return;
+      const t=e.target;
+      if(e.key==="Enter"){
+        if(t.matches("textarea,select,[data-close]"))return;
+        e.preventDefault();m.querySelector("#tf").requestSubmit();return}
+      // Number pad digits count even with Num Lock off (then the keys arrive as arrows/Home/End).
+      const np=/^Numpad(\d)$/.exec(e.code);
+      if(t===a){
+        if(e.key==="="){e.preventDefault();syncFromField();press("=")}
+        else if(np&&!/^\d$/.test(e.key)){e.preventDefault();a.setRangeText(np[1],a.selectionStart,a.selectionEnd,"end");a.dispatchEvent(new Event("input",{bubbles:true}))}
+        return}
+      if(calc.hidden||t.matches("input:not([type=checkbox]),textarea,select"))return;
+      const d=normDigits(e.key),k=np?np[1]:/^\d$/.test(d)?d:e.code==="NumpadDecimal"?".":KEYMAP[e.key];
+      if(k){e.preventDefault();press(k);flash(k)}});
     a.addEventListener("blur",()=>{if(/[+\-*/×÷xX]/.test(a.value.slice(1))){const v=calcEval(a.value);if(isFinite(v))a.value=fmt(v)}});
     m.querySelectorAll("[data-q]").forEach(b=>b.addEventListener("click",()=>{const cur=parseAmt(a.value)||0;a.value=fmt(cur+Number(b.dataset.q));if(!calc.hidden){expr=String(cur+Number(b.dataset.q));showCalc()}a.focus()}));
     m.querySelectorAll("[data-due]").forEach(b=>b.addEventListener("click",()=>{const base=$("#tDate").value||todayISO();const d=new Date(base+"T12:00:00");d.setDate(d.getDate()+Number(b.dataset.due));
@@ -1522,7 +1548,7 @@ function txnForm(type,existing){
       if(waBox)try{localStorage.setItem(WA_AUTO_KEY,autoWa?"1":"0")}catch(e){}
       const pdfBox=m.querySelector("#tPdf"),autoPdf=!!(pdfBox&&pdfBox.checked);
       if(pdfBox)try{localStorage.setItem(PDF_AUTO_KEY,autoPdf?"1":"0")}catch(e){}
-      closeModal();await put("txns",obj);log("add",what,{customerName:c.name,amount:amt,...(sup?{sup:true}:{})});
+      closeModal();await put("txns",obj);log("add",what,{customerName:c.name,amount:amt,...(sup?{sup:true}:{})});lastAdd={id:obj.id,at:Date.now()};
       {const cur=S.customers.get(c.id)||c;if(!isDebt&&cur.promise){const left=cur.promise.amount?cur.promise.amount-amt:0;put("customers",{...cur,promise:left>0?{...cur.promise,amount:left}:null})}}
       const link=c.phone&&!isSup(c)?waLink(c.phone,fillTpl(what,c,{amount:amt,date,note})):"";
       if(autoPdf){sendStatementPdf(c,link);return}
@@ -1891,6 +1917,28 @@ document.addEventListener("click",e=>{
   }
 });
 document.addEventListener("input",e=>{if(e.target.dataset&&e.target.dataset.biz){S.bizDraft={...(S.bizDraft||{}),[e.target.dataset.biz]:e.target.value};bizRedraw()}if(e.target.id==="q"){S.q=e.target.value;renderList()}if(e.target.id==="hq"){S.hq=e.target.value;homeSearch(S.hq)}});
+/* Laptop shortcuts: Ctrl+Z undoes the last delete (while its «تراجع» is showing) or the last debt/payment saved here;
+   + / − open a debt / payment on the open account; / jumps to the search box. Typing in a field keeps its normal keys. */
+let lastAdd=null;
+function undoLast(){
+  const tb=[...document.querySelectorAll(".toast .toast-btn")].find(b=>b.textContent==="تراجع");if(tb){tb.click();return}
+  const x=lastAdd&&S.txns.get(lastAdd.id);
+  if(!x||Date.now()-lastAdd.at>10*60e3||!canWrite()){toast("ماكو شي تتراجع عنه.");return}
+  const c=S.customers.get(x.customerId),sup=c&&isSup(c);
+  const what=sup?(x.type==="debt"?"فاتورة الشراء":"الدفعة للمورد"):(x.type==="debt"?"الدين":"التسديد");
+  confirmBox("تراجع عن آخر حركة",`حذف ${what} ${fmt(x.amount)} ${CUR}${c?" ("+c.name+")":""} اللي سجلته قبل شوية؟`,"حذف",()=>{
+    del("txns",x.id);dropPhotos(x.photos);lastAdd=null;
+    log("delete",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount,detail:"تراجع (Ctrl+Z)",...(sup?{sup:true}:{})});toast("تم التراجع")},true);
+}
+document.addEventListener("keydown",e=>{
+  if(!S.me||e.defaultPrevented)return;
+  const t=e.target,typing=!!(t&&t.matches&&t.matches("input:not([type=checkbox]),textarea,select,[contenteditable]"));
+  if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.code==="KeyZ"){if(typing)return;e.preventDefault();if(!$("#modalRoot").innerHTML)undoLast();return}
+  if(typing||e.ctrlKey||e.metaKey||e.altKey||$("#modalRoot").innerHTML)return;
+  const act=e.key==="+"||e.code==="NumpadAdd"?"debt":e.key==="-"||e.code==="NumpadSubtract"?"pay":"";
+  if(act){const b=document.querySelector(`.actions [data-act="${act}"]`);if(b){e.preventDefault();b.click()}return}
+  if(e.code==="Slash"||e.key==="/"){const s=$("#hq")||$("#q");if(s){e.preventDefault();s.focus();s.select()}}
+});
 document.addEventListener("keydown",e=>{if(e.target.id==="hq"&&e.key==="Enter"){const f=document.querySelector("#hsList [data-open]");if(f){e.preventDefault();openCustomer(f.dataset.open)}}});
 function homeSearch(q){
   const ul=$("#hsList");if(!ul)return;
