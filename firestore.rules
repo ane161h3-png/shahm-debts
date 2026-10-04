@@ -25,6 +25,8 @@ service cloud.firestore {
       allow write: if isOwner();
       allow update: if writer() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']);
     }
+    // One small photo per item (id = the item's id): everyone signed in sees them, only the owner changes them.
+    match /itemPhotos/{id} { allow read: if active(); allow write: if isOwner(); }
     // An editor's sale with a discount needs a discount the owner approved for exactly this invoice total,
     // and the same write marks that approval used, so it cannot be spent twice.
     function apPath(aid) { return /databases/$(database)/documents/approvals/$(aid); }
