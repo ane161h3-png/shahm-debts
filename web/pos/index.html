@@ -279,6 +279,8 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
   body.splitv .cart-foot{padding:8px 10px}
   body.splitv .grand b{font-size:21px}
   body.splitv .charge{padding:12px;font-size:16px}
+  body.splitv .pay-row{flex-direction:column;gap:6px}
+  body.splitv .pay-row .more{padding:9px 10px}
 }
 @media (min-width:901px){.cart .close-cart{display:none}}
 
@@ -381,6 +383,12 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 .picked .m span{font-size:12.5px;color:var(--muted)}
 .done-mark{width:64px;height:64px;border-radius:50%;background:var(--paid-soft);color:var(--paid);display:grid;place-items:center;margin:0 auto}
 .done-mark svg{width:36px;height:36px}
+.sold{display:flex;flex-direction:column;gap:10px;padding:16px 14px;text-align:center;overflow:auto;flex:1;min-height:120px}
+.sold .done-mark{width:52px;height:52px}.sold .done-mark svg{width:28px;height:28px}
+.sold h3{margin:0;font-family:var(--f-display)}.sold .banner{margin:0}
+.sold .acts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.pay-row{display:flex;gap:8px}.pay-row .charge{flex:1}
+.pay-row .more{flex:none;padding:0 14px;border-radius:12px;font-weight:700}
 .rcpt{border:1px dashed var(--line);border-radius:12px;padding:12px 14px;font-size:14px;display:flex;flex-direction:column;gap:4px}
 .rcpt .ln{display:flex;justify-content:space-between;gap:10px}
 .rcpt .ln span:first-child{min-width:0}
@@ -712,7 +720,7 @@ function addToCart(p,qty,pack){
   if(!canSell())return;
   const l=S.cart.find(x=>x.key===lineKey(p,pack));
   if(l)l.qty=round3(l.qty+(qty||1));else S.cart.push(lineFor(p,pack||null,qty||1));
-  saveCart();refresh("cart");sound("add");
+  S.lastSale=null;saveCart();refresh("cart");sound("add");splitView(true);
 }
 function setQty(key,q){
   const l=S.cart.find(x=>x.key===key);if(!l)return;
@@ -829,16 +837,19 @@ function renderCart(){
       ${l.w?`<button class="wpill" type="button" data-line="${esc(l.key)}" aria-label="تعديل الوزن">${kgHtml(l.qty)}</button>`
         :`<div class="stepper"><button type="button" data-inc="${esc(l.key)}" aria-label="زيادة">${I.plus}</button><span class="num">${qtyText(l.qty)}</span><button type="button" data-dec="${esc(l.key)}" aria-label="نقصان">${l.qty>1?I.minus:I.trash}</button></div>`}
       <span class="lt num">${fmt(lineTotal(l))}</span></li>`).join("")}</ul>`
+      :S.lastSale?soldHtml(S.lastSale)
       :`<div class="empty cart-lines" style="display:grid;place-items:center"><div><b>الفاتورة فارغة</b>اضغط على مادة حتى تنضاف.</div></div>`}
     <div class="cart-foot">
       ${S.whole?`<div class="banner info" style="padding:6px 12px">الفاتورة بسعر الجملة</div>`:""}
       <div class="tot-row"><span>المجموع</span><b class="num">${fmt(t.sub)}</b></div>
       <div class="tot-row disc"><button type="button" data-act="discount"${S.cart.length&&canSell()?"":" disabled"}>${t.disc?"الخصم (تعديل)":"+ إضافة خصم"}</button>${t.disc?`<b class="num">-${fmt(t.disc)}</b>`:""}</div>
       <div class="grand"><span>المطلوب</span><b><span class="num">${fmt(t.total)}</span> <small style="font-size:14px">${CUR}</small></b></div>
-      <button class="btn primary charge" type="button" data-act="checkout"${S.cart.length&&canSell()?"":" disabled"}>الدفع <span class="num">${fmt(t.total)}</span>${kbd("Enter")}</button>
+      <div class="pay-row"><button class="btn primary charge" type="button" data-act="quickcash"${S.cart.length&&canSell()?"":" disabled"}>${I.check}كاش <span class="num">${fmt(t.total)}</span>${kbd("Enter")}</button>
+        <button class="btn more" type="button" data-act="checkout"${S.cart.length&&canSell()?"":" disabled"}>دين / باقي${kbd("F7")}</button></div>
     </div>`;
   if(bar)bar.innerHTML=S.cart.length?`<button class="open" type="button" data-act="showcart"><span><span class="cnt num">${S.cart.length}</span>عرض الفاتورة</span><b class="num">${fmt(t.total)}</b></button>`:"";
-  if(!S.cart.length)document.body.classList.remove("show-cart","splitv");
+  if(!S.cart.length)document.body.classList.remove("show-cart");
+  if(!S.cart.length&&!S.lastSale)document.body.classList.remove("splitv");
   hydratePics(el);
 }
 
@@ -914,7 +925,7 @@ function keypadForm(){
     document.addEventListener("keydown",onKey);modalCleanup=()=>document.removeEventListener("keydown",onKey);
     const add=()=>{const price=Number(val)||0;if(!(price>0)){m.querySelector("#kpErr").textContent="اكتب السعر أول.";return}
       S.cart.push({key:"c-"+uid(),pid:null,name:m.querySelector("#kpName").value.trim()||"مادة متفرقة",price,qty:1,cat:m.querySelector("#kpCat").value});
-      saveCart();refresh("cart");closeModal();sound("add");toast("انضافت للفاتورة")};
+      S.lastSale=null;saveCart();refresh("cart");closeModal();sound("add");splitView(true);toast("انضافت للفاتورة")};
     m.querySelector("#kpAdd").onclick=add;
   });
 }
@@ -930,7 +941,7 @@ function weightForm(p,line){
   if(!canSell()||!p)return;
   const price=line?line.price:priceLine({},p,null,S.whole).price;
   let mode="w",gram=false;try{gram=localStorage.getItem(WUNIT_KEY)==="g"}catch(e){}
-  openModal(`<h3>${esc(p.name)}</h3><p class="hint">سعر الكيلو <b class="num">${fmt(price)}</b> ${CUR}${S.whole&&p.wprice>0?" (جملة)":""}</p>
+  openModal(`<h3>${esc(p.name)}</h3><p class="hint">سعر الكيلو <b class="num">${fmt(price)}</b> ${CUR}${S.whole&&p.wprice>0?" (جملة)":""}${line?"":" · الأزرار الجاهزة تضيف للفاتورة مباشرة"}</p>
     <div class="seg" role="group" aria-label="طريقة البيع"><button type="button" data-wm="w">بالوزن</button><button type="button" data-wm="a">بالمبلغ</button></div>
     <form id="wf" class="field" style="gap:10px" novalidate>
       <div class="tool-row"><div class="field" style="flex:1"><input id="wv" class="big" inputmode="decimal" autocomplete="off"></div>
@@ -957,8 +968,10 @@ function weightForm(p,line){
       show()};
     m.querySelectorAll("[data-wm]").forEach(b=>b.onclick=()=>{const q=kg();mode=b.dataset.wm;setFromKg(q);draw();inp.focus()});
     wu.querySelectorAll("[data-wu]").forEach(b=>b.onclick=()=>{const q=kg();gram=b.dataset.wu==="g";try{localStorage.setItem(WUNIT_KEY,gram?"g":"kg")}catch(e){}setFromKg(q);draw();inp.focus()});
+    // For a new line a quick button adds straight away (one tap at a busy counter); when editing a line it only fills the box.
     m.querySelector("#wq").addEventListener("click",e=>{const b=e.target.closest("[data-wv]");if(!b)return;const v=Number(b.dataset.wv);
-      if(mode==="a")inp.value=fmt(v);else setFromKg(v);show();inp.focus()});
+      if(mode==="a")inp.value=fmt(v);else setFromKg(v);show();
+      if(!line){m.querySelector("#wf").requestSubmit();return}inp.focus()});
     inp.addEventListener("input",show);
     if(line)setFromKg(line.qty);draw();setTimeout(()=>{inp.focus();inp.select()},20);
     // A scale on a cable: its weight fills the box (read once when the form opens for a new line, and on the button).
@@ -978,7 +991,7 @@ function weightForm(p,line){
 }
 // Adds an item the usual way, or asks for the weight when it is sold by weight (and not as a ready pack).
 // The invoice beside the items on a narrow screen (see body.splitv in the CSS); it closes again when the invoice is empty.
-function splitView(on){document.body.classList.toggle("splitv",!!on&&S.cart.length>0);if(on)document.body.classList.remove("show-cart")}
+function splitView(on){document.body.classList.toggle("splitv",!!on&&(S.cart.length>0||!!S.lastSale));if(on)document.body.classList.remove("show-cart")}
 function sellItem(p,pack){if(isWeighed(p)&&!pack){weightForm(p);return false}addToCart(p,1,pack||null);return true}
 
 /* ---------- barcode: phone camera and USB scanners that type like a keyboard ----------
@@ -1047,7 +1060,7 @@ function sellScaled(r){
   if(!(kg>0)){toast("الملصق ما بيه وزن.",3000);return false}
   if(l){const before=lineTotal(l);l.qty=round3(l.qty+kg);if(r.amt||l.fix>0)l.fix=before+amt}
   else{const nl=lineFor(p,null,kg);if(r.amt)nl.fix=r.amt;S.cart.push(nl)}
-  saveCart();refresh("cart");sound("add");if(navigator.vibrate)navigator.vibrate(40);
+  S.lastSale=null;saveCart();refresh("cart");sound("add");if(navigator.vibrate)navigator.vibrate(40);
   toast(`انضاف ${kgText(kg)} ${p.name} = ${fmt(amt)}`,1800);return true;
 }
 // A USB / Bluetooth scanner types the code fast and presses Enter. Catch it even when no field has focus.
@@ -1098,7 +1111,7 @@ document.addEventListener("keydown",e=>{
 const kbd=k=>`<kbd class="kbd">${k}</kbd>`;
 const hasKeys=()=>matchMedia("(hover:hover) and (pointer:fine)").matches;
 const keyHint=t=>hasKeys()?t:"";
-const KEYS=[["Enter","الدفع، وبنافذة الدفع: تأكيد البيع"],["F2","البحث عن مادة أو كتابة باركود"],["F3","مادة بسعر"],["F4","خصم"],["F6 / F7 / F8","بنافذة الدفع: كاش / دين / كاش + دين"],
+const KEYS=[["Enter","بيع كاش مباشر بالمبلغ المطلوب، وبنافذة الدفع: تأكيد البيع"],["F7","نافذة الدفع (دين، باقي، دولار)"],["F2","البحث عن مادة أو كتابة باركود"],["F3","مادة بسعر"],["F4","خصم"],["F6 / F7 / F8","بنافذة الدفع: كاش / دين / كاش + دين"],
   ["+ / -","زيادة أو نقصان كمية آخر مادة بالفاتورة"],["Delete","تفريغ الفاتورة"],["F9","أسعار الجملة (تشغيل وإطفاء)"],["Alt + 1 / 2 / 3","البيع / المبيعات / المواد"],["Esc","سد النافذة"],["F1","هاي القائمة"]];
 function keysHelp(){
   openModal(`<h3>اختصارات الكيبورد</h3><p class="hint">للابتوب أو كيبورد موصول. قارئ الباركود يشتغل بنفس الوقت بدون ما يتأثر.</p>
@@ -1111,11 +1124,12 @@ document.addEventListener("keydown",e=>{
   if(e.key==="F1"){e.preventDefault();if(!modalOpen())keysHelp();return}
   if(modalOpen()||S.view!=="sell")return;
   const t=e.target,tag=(t&&t.tagName)||"",free=!/INPUT|TEXTAREA|SELECT/.test(tag)||(t.id==="q"&&!t.value);
-  const fk={F2:1,F3:1,F4:1,F9:1}[e.key];if(!free&&!fk)return;
+  const fk={F2:1,F3:1,F4:1,F7:1,F9:1}[e.key];if(!free&&!fk)return;
   const last=S.cart[S.cart.length-1];
   switch(e.key){
     // Even with a tile or a cart button still focused from a mouse click, Enter pays instead of pressing that button again.
-    case "Enter":e.preventDefault();if(!e.repeat)checkout();break;
+    case "Enter":e.preventDefault();if(!e.repeat)quickCash();break;
+    case "F7":e.preventDefault();checkout();break;
     case "F2":{e.preventDefault();const q=$("#q");if(q){q.focus();q.select()}break}
     case "F3":e.preventDefault();if(canSell())keypadForm();break;
     case "F4":e.preventDefault();if(S.cart.length&&canSell())discountForm();break;
@@ -1323,22 +1337,29 @@ function stockMoves(items){
   for(const i of items){const p=i.pid&&S.products.get(i.pid);if(!tracked(p))continue;m.set(i.pid,round3((m.get(i.pid)||0)+Number(i.qty)*(Number(i.n)||1)))}
   return m;
 }
+/* A finished sale shows in the invoice itself (no window to close), so the next customer's first item can go straight on:
+   the change to give back, the debt written, and the receipt buttons stay there until the next item is added. */
 function saleDone(sale){
-  sound("paid");
-  openModal(`<div class="done-mark">${I.check}</div>
-    <h3 style="text-align:center">تم البيع</h3>
-    <div class="due" style="text-align:center"><span class="k">فاتورة #<span class="num">${esc(sale.no)}</span></span><span class="v num">${fmt(sale.total)}</span></div>
-    ${sale.usd?`<div class="banner ok" style="text-align:center">استلمت <b class="num">${usdFmt(sale.usd)}</b> = <span class="num">${fmt(sale.usdIqd)}</span> ${CUR}${sale.topUp?`، وياخذ منه <b class="num">${fmt(sale.topUp)}</b> دينار`:""}</div>`:""}
-    ${sale.change>0?`<div class="banner info" style="text-align:center;font-size:17px">الباقي للزبون: <b class="num">${fmt(sale.change)}</b> ${CUR}</div>`:""}
-    ${sale.debt>0?`<div class="banner bad">انكتب <b class="num">${fmt(sale.debt)}</b> ${CUR} دين على ${esc(sale.customerName)}${sale.cash>0?`، واستلمت <b class="num">${fmt(sale.cash)}</b> كاش`:""}.</div>`:""}
-    <div class="foot"><button class="btn primary" type="button" data-close autofocus style="flex:1">بيع جديد${kbd("Enter")}</button>
-      ${canPrint()?`<button class="btn" type="button" id="rPrint">${I.print}طباعة</button>`:""}<button class="btn" type="button" id="rPdf">${I.pdf}وصل PDF</button><button class="btn wa" type="button" id="rWa">${I.wa}واتساب</button></div>`,m=>{
-    m.querySelector("#rPdf").onclick=()=>receiptPdf(sale);
-    m.querySelector("#rWa").onclick=()=>shareWhatsApp(sale);
-    // The drawer already opened with the sale (afterSaleHw), so a print from here is only paper.
-    const rp=m.querySelector("#rPrint");if(rp)rp.onclick=()=>printReceipt(sale,{ask:true});
-  });
+  sound("paid");closeModal();
+  S.lastSale=sale;refresh("cart");splitView(true);
   afterSaleHw(sale);
+}
+// One tap for the usual case: the customer pays the exact total in cash.
+function quickCash(){
+  if(!S.cart.length||!canSell())return;
+  if(!isAdmin()&&S.discount>0&&!S.approval){S.discount=0;saveCart();refresh("cart");toast("انشال الخصم لأنه يحتاج موافقة المدير.",3500);return}
+  const t=totals();const sale=saveSale({cash:t.total,debt:0,customer:null,received:0});
+  if(sale)saleDone(sale);
+}
+function soldHtml(sale){
+  return `<div class="sold" aria-live="polite"><div class="done-mark">${I.check}</div>
+    <h3>تم البيع · <span class="num">${fmt(sale.total)}</span> ${CUR}</h3><span class="hint">فاتورة #<span class="num">${esc(sale.no)}</span></span>
+    ${sale.usd?`<div class="banner ok">استلمت <b class="num">${usdFmt(sale.usd)}</b> = <span class="num">${fmt(sale.usdIqd)}</span> ${CUR}${sale.topUp?`، وياخذ منه <b class="num">${fmt(sale.topUp)}</b> دينار`:""}</div>`:""}
+    ${sale.change>0?`<div class="banner info" style="font-size:17px">الباقي للزبون: <b class="num">${fmt(sale.change)}</b> ${CUR}</div>`:""}
+    ${sale.debt>0?`<div class="banner bad">انكتب <b class="num">${fmt(sale.debt)}</b> ${CUR} دين على ${esc(sale.customerName)}${sale.cash>0?`، واستلمت <b class="num">${fmt(sale.cash)}</b> كاش`:""}.</div>`:""}
+    <div class="acts">${canPrint()?`<button class="btn sm" type="button" data-act="rprint">${I.print}طباعة</button>`:""}<button class="btn sm" type="button" data-act="rpdf">${I.pdf}وصل PDF</button><button class="btn sm wa" type="button" data-act="rwa">${I.wa}واتساب</button></div>
+    <span class="hint">امسح أو اضغط المادة الجاية للزبون اللي بعده.</span>
+    <button class="btn sm ghost" type="button" data-act="soldok">${I.close}إخفاء</button></div>`;
 }
 
 /* ---------- receipts ---------- */
@@ -3285,8 +3306,13 @@ document.addEventListener("click",e=>{
     case "clear":if(confirm("تفريغ الفاتورة؟"))clearCart();break;
     case "discount":discountForm();break;
     case "checkout":checkout();break;
+    case "quickcash":quickCash();break;
+    case "soldok":S.lastSale=null;refresh("cart");break;
+    case "rprint":if(S.lastSale)printReceipt(S.lastSale,{ask:true});break;
+    case "rpdf":if(S.lastSale)receiptPdf(S.lastSale);break;
+    case "rwa":if(S.lastSale)shareWhatsApp(S.lastSale);break;
     case "showcart":document.body.classList.add("show-cart");break;
-    case "hidecart":document.body.classList.remove("show-cart","splitv");break;
+    case "hidecart":S.lastSale=null;document.body.classList.remove("show-cart","splitv");refresh("cart");break;
     case "newprod":productForm();break;
     case "reppdf":reportPdf();break;
     case "closeshift":closeShiftForm();break;
