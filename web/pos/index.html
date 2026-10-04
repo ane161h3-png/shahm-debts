@@ -2008,14 +2008,14 @@ const listTodo=p=>p.src==="catalog"&&(p.est||noCode(p));
 function renderProducts(){
   const el=$("#plist");if(!el)return;
   const used=new Set([...S.products.values()].map(p=>p.category||""));const nAl=alertCount(),nOf=[...S.products.values()].filter(offerOf).length;
-  const nNo=[...S.products.values()].filter(noCode).length,nEst=[...S.products.values()].filter(p=>p.est).length,nTd=[...S.products.values()].filter(listTodo).length;
+  const nNo=[...S.products.values()].filter(noCode).length,nCd=S.products.size-nNo,nEst=[...S.products.values()].filter(p=>p.est).length,nTd=[...S.products.values()].filter(listTodo).length;
   const pb=$("#plBtn");if(pb)pb.innerHTML=plBtn();
-  if(S.pcat==="alerts"&&!nAl||S.pcat==="offers"&&!nOf||S.pcat==="nocode"&&!nNo||S.pcat==="est"&&!nEst||S.pcat==="todo"&&!nTd)S.pcat="all";
+  if(S.pcat==="alerts"&&!nAl||S.pcat==="offers"&&!nOf||S.pcat==="nocode"&&!nNo||S.pcat==="code"&&!nCd||S.pcat==="est"&&!nEst||S.pcat==="todo"&&!nTd)S.pcat="all";
   $("#pchips").innerHTML=[["all","الكل ("+S.products.size+")"],...(nTd?[["todo","من القائمة الجاهزة ("+nTd+")"]]:[]),...(nAl?[["alerts","⚠ تنبيهات ("+nAl+")"]]:[]),...(nOf?[["offers","العروض ("+nOf+")"]]:[]),
-    ...(nNo?[["nocode","بلا باركود ("+nNo+")"]]:[]),...(nEst?[["est","سعر تقديري ("+nEst+")"]]:[]),...cats().filter(c=>used.has(c)).map(c=>[c,c])].map(([k,l])=>`<button type="button" data-pcat="${esc(k)}" aria-pressed="${S.pcat===k}">${esc(l)}</button>`).join("");
+    ...(nCd?[["code","بيها باركود ("+nCd+")"]]:[]),...(nNo?[["nocode","بلا باركود ("+nNo+")"]]:[]),...(nEst?[["est","سعر تقديري ("+nEst+")"]]:[]),...cats().filter(c=>used.has(c)).map(c=>[c,c])].map(([k,l])=>`<button type="button" data-pcat="${esc(k)}" aria-pressed="${S.pcat===k}">${esc(l)}</button>`).join("");
   let list=[...S.products.values()];
   if(S.pcat==="alerts")list=list.filter(p=>alertsOf(p).length);else if(S.pcat==="offers")list=list.filter(offerOf);
-  else if(S.pcat==="nocode")list=list.filter(noCode);else if(S.pcat==="est")list=list.filter(p=>p.est);else if(S.pcat==="todo")list=list.filter(listTodo);else if(S.pcat!=="all")list=list.filter(p=>(p.category||"")===S.pcat);
+  else if(S.pcat==="nocode")list=list.filter(noCode);else if(S.pcat==="code")list=list.filter(p=>!noCode(p));else if(S.pcat==="est")list=list.filter(p=>p.est);else if(S.pcat==="todo")list=list.filter(listTodo);else if(S.pcat!=="all")list=list.filter(p=>(p.category||"")===S.pcat);
   const q=normDigits(S.pq).trim();
   const codeHit=p=>p.barcode===q||packsOf(p).some(k=>k.barcode===q);
   list=q?list.map(p=>({p,s:codeHit(p)?20:matchScore(p.name,q,p.category)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).map(x=>x.p):list.sort((a,b)=>a.name.localeCompare(b.name,"ar"));
