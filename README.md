@@ -5,6 +5,7 @@
 
 ## التحميل
 - **أندرويد (APK):** https://github.com/ane161h3-png/shahm-debts/releases/latest/download/shahm-debts.apk
+- **أندرويد، الكاشير (APK منفصل):** https://github.com/ane161h3-png/shahm-debts/releases/download/pos-latest/shahm-pos.apk
 - **لابتوب / آيفون:** https://ane161h3-png.github.io/shahm-debts/ ثم «تثبيت» من المتصفح.
 
 ## كيف مبني
@@ -12,7 +13,7 @@
 - Firebase: تسجيل الدخول (Email/Password) وقاعدة البيانات Firestore مع حفظ محلي. القواعد في `firestore.rules`.
   المدير هو اسم المستخدم `admin`؛ باقي الحسابات تنتظر تفعيله من الإعدادات > المستخدمين.
 - `web/config.js` مفاتيح مشروع Firebase (عامة بطبيعتها؛ الحماية من القواعد وتسجيل الدخول).
-- Android عبر Capacitor: `.github/workflows/android.yml` يبني APK مع كل تحديث وينشره في Releases.
+- Android عبر Capacitor: `.github/workflows/android.yml` يبني APK للديون وAPK منفصل للكاشير (com.shahm.pos، أيقونته في `assets-pos/`) مع كل تحديث وينشرهم في Releases.
 - `.github/workflows/pages.yml` ينشر `web/` على GitHub Pages.
 
 ## كاشير الشهم (`web/pos/`)

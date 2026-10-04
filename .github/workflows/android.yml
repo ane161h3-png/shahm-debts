@@ -1,5 +1,6 @@
-# Builds the Android app (Capacitor wrapping web/) and publishes it as the latest release,
-# downloadable at releases/latest/download/shahm-debts.apk.
+# Builds the two Android apps (Capacitor wrapping web/) as separate APKs with their own package, name and icon:
+# - debt book: release app-latest, downloadable at releases/latest/download/shahm-debts.apk
+# - cashier (web/pos/): release pos-latest, downloadable at releases/download/pos-latest/shahm-pos.apk
 name: Android APK
 on:
   push:
@@ -13,6 +14,20 @@ concurrency:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: debts
+            apk: shahm-debts.apk
+            tag: app-latest
+            title: ديون الشهم
+            assets: assets
+          - app: pos
+            apk: shahm-pos.apk
+            tag: pos-latest
+            title: كاشير الشهم
+            assets: assets-pos
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,16 +39,31 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
+      # The cashier is its own app: another package id (so both install side by side), name and start page.
+      - name: Cashier app settings
+        if: matrix.app == 'pos'
+        run: |
+          echo '{"appId":"com.shahm.pos","appName":"كاشير الشهم","webDir":"web","server":{"appStartPath":"/pos/index.html"},"android":{"adjustMarginsForEdgeToEdge":"force"}}' > capacitor.config.json
+          cat capacitor.config.json
       - name: Create Android project
         run: |
           npx cap add android
-          npx @capacitor/assets generate --android \
+          npx @capacitor/assets generate --android --assetPath ${{ matrix.assets }} \
             --iconBackgroundColor '#0e5a3a' --iconBackgroundColorDark '#0e5a3a' \
             --splashBackgroundColor '#f4f2ec' --splashBackgroundColorDark '#0f1512'
           npx cap sync android
-          # Contact picker for customer phone numbers (Android shows one "Contacts" permission prompt).
-          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.READ_CONTACTS" />\n    <uses-permission android:name="android.permission.WRITE_CONTACTS" />#' android/app/src/main/AndroidManifest.xml
-          grep -c CONTACTS android/app/src/main/AndroidManifest.xml
+      - name: Permissions
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          if [ "${{ matrix.app }}" = pos ]; then
+            # Camera for scanning barcodes.
+            sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.CAMERA" />#' $M
+            grep -c CAMERA $M
+          else
+            # Contact picker for customer phone numbers (Android shows one "Contacts" permission prompt).
+            sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.READ_CONTACTS" />\n    <uses-permission android:name="android.permission.WRITE_CONTACTS" />#' $M
+            grep -c CONTACTS $M
+          fi
       - name: Set version
         run: |
           sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
@@ -44,12 +74,14 @@ jobs:
       - name: Build APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
-      - run: cp android/app/build/outputs/apk/debug/app-debug.apk shahm-debts.apk
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk ${{ matrix.apk }}
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete app-latest --yes --cleanup-tag || true
-          gh release create app-latest shahm-debts.apk --target "${{ github.sha }}" --latest \
-            --title "ديون الشهم 1.0.${{ github.run_number }}" \
-            --notes "حمّل shahm-debts.apk وثبّته على موبايل الأندرويد. للتحديث ثبّته فوق النسخة القديمة."
+          gh release delete ${{ matrix.tag }} --yes --cleanup-tag || true
+          # Only the debt book is marked "latest", so its releases/latest/download link keeps working.
+          gh release create ${{ matrix.tag }} ${{ matrix.apk }} --target "${{ github.sha }}" \
+            ${{ matrix.app == 'debts' && '--latest' || '--latest=false' }} \
+            --title "${{ matrix.title }} 1.0.${{ github.run_number }}" \
+            --notes "حمّل ${{ matrix.apk }} وثبّته على موبايل الأندرويد. للتحديث ثبّته فوق النسخة القديمة."
