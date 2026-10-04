@@ -148,6 +148,10 @@ body.npad-on .scrim{padding-bottom:250px}
 body.npad-on .toast{bottom:calc(250px + env(safe-area-inset-bottom,0px))}
 .todo-head{padding:10px 12px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)}
 .todo-head .banner{margin:0}
+.tile-head{grid-column:1/-1;margin:6px 2px -2px;font-family:var(--f-display);font-weight:700;font-size:14px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.tile-head::after{content:"";flex:1;border-top:1px solid var(--line)}
+.wl-row{display:grid;grid-template-columns:1fr 130px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.wl-row b{font-weight:600}.wl-row small{display:block;color:var(--muted);font-size:12px}.wl-row input{padding:8px 10px}
 .lk-list{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r-ctl)}
 .ct-list{list-style:none;margin:0;padding:0;max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:6px}
 .ct-list li{border:1px solid var(--line);border-radius:var(--r-ctl);padding:8px 10px;background:var(--paper-2)}
@@ -594,6 +598,8 @@ function priceFor(p,pack,whole){const r=pack?pack.price:p.price,w=pack?pack.wpri
 const costFor=(p,pack)=>Number(p.cost)>0?Math.round(Number(p.cost)*(pack?pack.n:1)):null;
 const tracked=p=>!!(p&&p.track===true);
 const isWeighed=p=>!!(p&&p.weighed===true);
+// «مواد الوزن» on the selling screen: everything sold by the kilo, plus the bag items added from the owner's weighed list.
+const inWeigh=p=>isWeighed(p)||!!(p&&p.src==="weigh");
 const stockOf=p=>Number(p&&p.stock)||0;
 const daysTo=iso=>Math.round((new Date(iso+"T12:00:00")-new Date(todayISO()+"T12:00:00"))/864e5);
 const EXP_DAYS=30;
@@ -752,12 +758,13 @@ function renderChips(){
   const el=$("#chips");if(!el)return;
   const used=new Set(productList().map(p=>p.category||""));
   const list=cats().filter(c=>used.has(c));if(used.has(""))list.push("");
-  if(S.cat!=="all"&&!list.includes(S.cat))S.cat="all";
-  el.innerHTML=[["all","الكل"],...list.map(c=>[c,c||"بدون صنف"])].map(([k,l])=>`<button type="button" data-cat="${esc(k)}" aria-pressed="${S.cat===k}">${esc(l)}</button>`).join("");
+  const nW=productList().filter(inWeigh).length;
+  if(S.cat!=="all"&&!(S.cat==="__w"&&nW)&&!list.includes(S.cat))S.cat="all";
+  el.innerHTML=[["all","الكل"],...(nW?[["__w","⚖ مواد الوزن ("+nW+")"]]:[]),...list.map(c=>[c,c||"بدون صنف"])].map(([k,l])=>`<button type="button" data-cat="${esc(k)}" aria-pressed="${S.cat===k}">${esc(l)}</button>`).join("");
 }
 function filteredProducts(q,cat){
   let list=productList();
-  if(cat&&cat!=="all")list=list.filter(p=>(p.category||"")===cat);
+  if(cat==="__w")list=list.filter(inWeigh);else if(cat&&cat!=="all")list=list.filter(p=>(p.category||"")===cat);
   const t=normDigits(q).trim();
   if(!t)return list.sort((a,b)=>a.name.localeCompare(b.name,"ar"));
   return list.map(p=>({p,s:(p.barcode&&p.barcode===t)||packsOf(p).some(k=>k.barcode&&k.barcode===t)?20:matchScore(p.name,t,p.category)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s||a.p.name.localeCompare(b.p.name,"ar")).map(x=>x.p);
@@ -769,9 +776,15 @@ function renderTiles(){
   const custom=canSell()?`<button class="tile custom" type="button" data-act="keypad">${I.keypad}<span>مادة بسعر${kbd("F3")}</span></button>`:"";
   if(!S.ready.p){el.innerHTML=`<div class="spinner" style="grid-column:1/-1"></div>`;return}
   if(!list.length){el.innerHTML=custom+`<div class="empty" style="grid-column:1/-1">${S.products.size?`<b>ماكو مادة بهذا الاسم</b>جرّب كلمة ثانية${canSell()?"، أو بيعها بـ «مادة بسعر»":""}.`:`<b>ماكو مواد بعد</b>${isAdmin()?`أضف المواد من تبويب <a href="#" data-go="products">المواد</a>.`:"المدير يضيف المواد وأسعارها."}`}</div>`;return}
+  // «مواد الوزن»: the items sold by the kilo, grouped under their category so they are quick to find.
+  const grouped=S.cat==="__w"&&!normDigits(S.q).trim();
+  if(grouped){const ord=cats();list.sort((a,b)=>{const ca=a.category||"",cb=b.category||"",ia=ord.indexOf(ca),ib=ord.indexOf(cb);
+    return ca===cb?a.name.localeCompare(b.name,"ar"):(ia<0?999:ia)-(ib<0?999:ib)||ca.localeCompare(cb,"ar")})}
+  let lastCat=null;
   el.innerHTML=custom+list.slice(0,300).map(p=>{const al=alertsOf(p),left=tracked(p)?round3(stockOf(p)-(inCart.get(p.id)||0)):null;
     const reg=priceFor(p,null,S.whole),of=S.whole?null:priceLine({},p,null,false),shown=of&&of.was?of.price:reg;
-    return `<button class="tile${p.pic?" has-pic":""}" type="button" data-add="${esc(p.id)}"${canSell()?"":" disabled"}>
+    const head=grouped&&(p.category||"")!==lastCat?`<div class="tile-head">${esc((lastCat=p.category||"")||"بدون صنف")}</div>`:"";
+    return `${head}<button class="tile${p.pic?" has-pic":""}" type="button" data-add="${esc(p.id)}"${canSell()?"":" disabled"}>
     ${inCart.has(p.id)?`<span class="q num">${qtyText(inCart.get(p.id))}</span>`:""}${picImg(p,"pic")}
     <span class="nm">${esc(p.name)}</span><span class="ct">${esc(p.category||"")}</span>
     ${left!==null||al.some(a=>a.startsWith("exp"))?`<span class="st${al.length||(left!==null&&left<=0)?" warn":""}">${left!==null?`باقي <span class="num">${qtyText(left)}</span>`:""}${al.includes("expired")?" · منتهية":al.includes("expiring")?" · قرب انتهاؤها":""}</span>`:""}
@@ -2072,6 +2085,7 @@ function productsView(){
         <button class="btn sm" type="button" data-act="excel">${I.sheet}Excel: استيراد وتصدير</button>
         <button class="btn sm" type="button" data-act="plist" id="plBtn">${plBtn()}</button>
         <button class="btn sm" type="button" data-act="catalog">${I.list}قائمة مواد جاهزة</button>
+        <button class="btn sm" type="button" data-act="weighlist">${I.scale}مواد الوزن</button>
         <button class="btn sm" type="button" data-act="linkscan">${I.scan}ربط باركود</button></div>
       <div class="chips" id="pchips"></div></div>
     <ul class="rows" id="plist"></ul></section>`;
@@ -2097,7 +2111,11 @@ function renderProducts(){
   if(!S.ready.p){el.innerHTML=`<li><div class="spinner" style="margin:30px auto"></div></li>`;return}
   const todoHead=S.pcat==="todo"?`<li class="todo-head"><p class="banner info">هاي المواد انضافت من «قائمة مواد جاهزة» وباقي عليها باركود أو سعر البيع. خذ المادة اللي جبتها وامسح باركودها (بالسكانر أو الكاميرا)، اختار اسمها إذا ما مربوط، واكتب سعر بيعها. اللي تخلص تطلع من هنا.</p>
       ${canScan()?`<button class="btn primary block" type="button" data-act="pricescan">${I.scan}امسح مادة وحط سعرها</button>`:""}</li>`:"";
-  el.innerHTML=todoHead+(list.length?list.map(p=>{const al=alertsOf(p),of=offerOf(p);return `<li><div class="prow"><button class="r" type="button" data-prod="${esc(p.id)}">
+  const tr=trashOf(),nDel=[...S.products.values()].filter(delAble).length;
+  const ncHead=S.pcat==="nocode"?`<li class="todo-head"><p class="banner info">مواد ما عليها باركود. إذا ما تحتاجها احذفها مرة وحدة، ومواد الوزن ما تنحذف.</p>
+      ${nDel?`<button class="btn block danger-text" type="button" data-act="delnocode">${I.trash}حذف كل المواد اللي بلا باركود (<span class="num">${nDel}</span>)</button>`:""}</li>`
+    :tr&&S.pcat==="all"?`<li class="todo-head"><p class="banner info">حذفت <span class="num">${tr.items.length}</span> مادة بلا باركود. <button class="btn sm" type="button" data-act="undonocode">استرجاعها</button></p></li>`:"";
+  el.innerHTML=todoHead+ncHead+(list.length?list.map(p=>{const al=alertsOf(p),of=offerOf(p);return `<li><div class="prow"><button class="r" type="button" data-prod="${esc(p.id)}">
       ${p.pic?picImg(p,"avatar pic-av"):`<span class="avatar">${initial(p.name)}</span>`}<div class="m"><b>${esc(p.name)}${p.active===false?` <span class="chip zero">موقوفة</span>`:""}${p.est&&S.pcat!=="todo"?` <span class="chip zero">سعر تقديري</span>`:""}</b>
       <span>${S.pcat==="todo"?`<span class="chip warn">باقي ${[noCode(p)?"الباركود":"",p.est?"السعر":""].filter(Boolean).join(" و")}</span> `:""}${esc(p.category||"بدون صنف")}${tracked(p)?` · المخزن ${stockHtml(p)}`:""}${p.expiry?` · ينتهي <span class="num">${esc(p.expiry)}</span>`:""}${packsOf(p).length?` · ${packsOf(p).map(k=>esc(k.name)).join("، ")}`:""}</span>
       ${al.length||of?`<span class="al">${of?`<span class="of">عرض ${offerHtml(of)}${of.to?` لحد <span class="num">${esc(of.to)}</span>`:""}</span>`:""}${al.map(a=>`<span class="chip warn">${ALERT_TEXT[a]}</span>`).join(" ")}</span>`:""}</div>
@@ -2867,6 +2885,80 @@ function xlApply(plan,fname){
   toast(`انضافت ${plan.adds.length} مادة وتحدّثت ${plan.updates.length}`,3500);
 }
 
+/* ---------- clearing items without a barcode ----------
+   The owner enters the shop's items by hand, so the ones still without a barcode can go in one step. Items sold by weight stay
+   (and the bag items from the weighed list). The deleted items are kept on this device (TRASH_KEY) for three days, so the last
+   clear-out can be undone from the items tab. */
+const TRASH_KEY="shahm-pos-trash";
+const delAble=p=>noCode(p)&&!inWeigh(p);
+function trashOf(){try{const t=JSON.parse(localStorage.getItem(TRASH_KEY)||"null");return t&&Array.isArray(t.items)&&t.items.length&&Date.now()-t.at<3*864e5?t:null}catch(e){return null}}
+function delNoCode(){
+  if(!isAdmin())return;
+  const list=[...S.products.values()].filter(delAble);if(!list.length)return;
+  if(!confirm(`تنحذف ${list.length} مادة ما عليها باركود (مواد الوزن تبقى). الفواتير القديمة تبقى مثل ما هي.\n\nمتأكد؟`))return;
+  try{localStorage.setItem(TRASH_KEY,JSON.stringify({at:Date.now(),items:list.map(p=>({...p,pic:null}))}))}catch(e){}
+  const writes=list.map(p=>b=>b.delete(db.collection("products").doc(p.id)));
+  list.filter(p=>p.pic).forEach(p=>writes.push(b=>b.delete(db.collection("itemPhotos").doc(p.id))));
+  const a=activityDoc("delete","product",{detail:`حذف ${list.length} مادة بلا باركود`});writes.push(b=>b.set(db.collection("activity").doc(a.id),a));
+  for(let i=0;i<writes.length;i+=450){const b=db.batch();writes.slice(i,i+450).forEach(w=>w(b));b.commit().catch(writeFail)}
+  list.forEach(p=>S.products.delete(p.id));
+  S.pcat="all";render();toast(`انحذفت ${list.length} مادة. إذا غلطت تكدر تسترجعها من فوك القائمة.`,5000);
+}
+function undoNoCode(){
+  const t=trashOf();if(!isAdmin()||!t)return;
+  if(!confirm(`ترجع ${t.items.length} مادة اللي انحذفت؟`))return;
+  const back=t.items.filter(p=>!S.products.has(p.id)).map(p=>{const o={...p};delete o.pic;return o});
+  const writes=back.map(o=>b=>b.set(db.collection("products").doc(o.id),o));
+  const a=activityDoc("add","product",{detail:`رجّع ${back.length} مادة محذوفة`});writes.push(b=>b.set(db.collection("activity").doc(a.id),a));
+  for(let i=0;i<writes.length;i+=450){const b=db.batch();writes.slice(i,i+450).forEach(w=>w(b));b.commit().catch(writeFail)}
+  back.forEach(o=>S.products.set(o.id,o));
+  try{localStorage.removeItem(TRASH_KEY)}catch(e){}
+  render();toast(`رجعت ${back.length} مادة`,3000);
+}
+
+/* ---------- the shop's items sold by weight ----------
+   The owner's own list of what he weighs out (sweets, nuts and seeds, rice, flour, sugar, cheese…), each under its category.
+   He types the price per kilo (or per bag for the bag items) and only the rows with a price are added; the others can be added
+   later from the same window. They show on the selling screen under «⚖ مواد الوزن». */
+const WEIGH_LIST=[
+  ["حلويات شرقية",["بقلاوة","زنود الست","برمة","كنافة"]],
+  ["كيك وكرواسون",["بخسم (كيك وزن)"]],
+  ["شيبس وسناكات",["جبس بطاطا (وزن)","جبس سجى (وزن)","جبس للقلي (غير جاهز)","بوشار"]],
+  ["مكسرات وكرزات",["حب شمس","حب مصري","حب كرع أصفر","حب كرع أبيض","حب ركي","فستق عبيد","فستق مقرمش","فستق بيراني","كشمش","زبيب (كشمش أسود)","قيسي","حمص مملح","جوز نركيلا"]],
+  ["بهارات وتوابل",["سمسم",["سمسم كيس",1000],"ليمون دزي",["ورق غار كيس",1000]]],
+  ["شاي وقهوة",["جاي"]],
+  ["رز وطحين وسكر",["تمن","طحين","شكر","نشاء"]],
+  ["زيوت وسمن",["دهن بلبل"]],
+  ["بقوليات وحبوب",["باقلاء"]],
+  ["أجبان وألبان",["حليب (وزن)","لور","كيمر عرب","كيمر بقر"]],
+  ["حلويات وشوكولاتة",["جكليت"]],
+  ["صلصات ومربيات",["دبس"]]];
+function weighListForm(){
+  if(!isAdmin())return;
+  const have=new Map([...S.products.values()].map(p=>[foldAr(p.name),p]));
+  const rows=WEIGH_LIST.flatMap(([c,xs])=>xs.map(x=>{const [n,bag]=Array.isArray(x)?x:[x,0];return {n,c,bag,p:have.get(foldAr(n))||null}}));
+  const fresh=rows.filter(r=>!r.p).length;
+  openModal(`<h3>مواد الوزن</h3><p class="hint">اكتب سعر الكيلو لكل مادة تبيعها بالوزن (وسعر الكيس لمواد الكيس). اللي تكتب سعرها بس تنضاف، والباقي تكدر ترجع تضيفها بعدين من هنا. تطلع بشاشة البيع تحت «⚖ مواد الوزن».</p>
+    <div id="wlL">${WEIGH_LIST.map(([c])=>`<div class="tile-head">${esc(c)}</div>`+rows.filter(r=>r.c===c).map((r,i)=>`<div class="wl-row"><span><b>${esc(r.n)}</b><small>${r.p?`موجودة · <span class="num">${fmt(r.p.price)}</span> ${isWeighed(r.p)?"للكيلو":""}`:r.bag?"بالكيس":"بالوزن (كيلو)"}</small></span>
+      ${r.p?`<span class="chip paid" style="justify-self:start">موجودة</span>`:`<input data-wl="${esc(r.n)}" inputmode="numeric" placeholder="${r.bag?"سعر الكيس":"سعر الكيلو"}" value="${r.bag?fmt(r.bag):""}" aria-label="سعر ${esc(r.n)}">`}</div>`).join("")).join("")}</div>
+    <p class="err" id="wlErr"></p>
+    <div class="foot"><button class="btn primary" type="button" id="wlGo" disabled>اكتب سعر مادة</button><button class="btn" type="button" data-close>رجوع</button></div>`,m=>{
+    const picked=()=>[...m.querySelectorAll("[data-wl]")].map(i=>({r:rows.find(x=>x.n===i.dataset.wl),v:Math.round(parseAmt(i.value))||0})).filter(x=>x.v>0);
+    const sync=()=>{const n=picked().length,b=m.querySelector("#wlGo");b.disabled=!n;b.textContent=n?`إضافة ${n} مادة`:"اكتب سعر مادة"};
+    m.querySelector("#wlL").addEventListener("input",sync);sync();
+    m.querySelector("#wlGo").onclick=()=>{
+      const now=Date.now(),meta={updatedAt:now,updatedBy:S.me.name};
+      const objs=picked().map(({r,v})=>({id:uid(),createdAt:now,by:S.me.name,name:r.n,price:v,category:r.c,barcode:"",unit:r.bag?"كيس":"كغم",weighed:!r.bag,plu:"",
+        wprice:0,cost:0,packs:[],track:false,min:0,expiry:"",offer:null,active:true,src:"weigh",...meta}));
+      const writes=objs.map(o=>b=>b.set(db.collection("products").doc(o.id),o));
+      const a=activityDoc("add","product",{detail:`أضاف ${objs.length} مادة وزن`});writes.push(b=>b.set(db.collection("activity").doc(a.id),a));
+      for(let i=0;i<writes.length;i+=450){const b=db.batch();writes.slice(i,i+450).forEach(w=>w(b));b.commit().catch(writeFail)}
+      objs.forEach(o=>S.products.set(o.id,o));
+      closeModal();render();toast(`انضافت ${objs.length} مادة${fresh-objs.length>0?`، وباقي ${fresh-objs.length} بدون سعر`:""}`,4000);
+    };
+  },"wide");
+}
+
 /* ---------- ready-made item list ----------
    catalog.json: groups of the items an Iraqi neighbourhood market sells, with estimated prices and no barcodes.
    Added items carry est:true (chip «سعر تقديري») until the owner saves them or imports a price; the owner then scans each item
@@ -3176,6 +3268,9 @@ document.addEventListener("click",e=>{
     case "countscan":scanBarcode(countCode);break;
     case "excel":excelForm();break;
     case "catalog":catalogForm();break;
+    case "weighlist":weighListForm();break;
+    case "delnocode":delNoCode();break;
+    case "undonocode":undoNoCode();break;
     case "linkscan":scanBarcode(codeOnItems);break;
     case "plist":plOpen();break;
     case "pricescan":scanBarcode(codeOnItems);break;
