@@ -344,6 +344,7 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 <script src="../vendor/firebase-auth-compat.js"></script>
 <script src="../vendor/firebase-firestore-compat.js"></script>
 <script src="../config.js"></script>
+<script src="../vendor/capacitor.js"></script>
 <script>
 (function(){
 "use strict";
@@ -354,6 +355,15 @@ const ROLE_LABEL={owner:"المدير",editor:"محرر",viewer:"مشاهد"};
 const DOMAIN="shahm-debts.app",OWNER_USER="admin";
 const emailOf=u=>u+"@"+DOMAIN;
 const DEBTS_URL="../";
+// The Android app (Capacitor, built by android.yml as its own APK) can't download files or open WhatsApp from the page,
+// so files go through Filesystem + the share sheet and links go to the system, like in the debt book.
+const NATIVE=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
+const PLUG={};const plugin=n=>PLUG[n]||(PLUG[n]=window.Capacitor.registerPlugin(n));
+function openExternal(url){
+  if(NATIVE){plugin("AppLauncher").openUrl({url}).catch(()=>{location.href=url});return}
+  const w=window.open(url,"_blank");if(!w)location.href=url;
+}
+if(NATIVE)document.addEventListener("click",e=>{const a=e.target.closest&&e.target.closest('a[href^="http"]');if(!a)return;e.preventDefault();openExternal(a.href)},true);
 const SLOGAN="كل احتياجات بيتك بشهامة";
 // Same default item categories as the debt book (settings/main.categories overrides them).
 const DEFAULT_CATS=["مشكل","مواد غذائية","خضروات","فواكه","أجبان وألبان","لحوم ودجاج","معلبات","حلويات","مشروبات","منظفات","خبز ومعجنات","سكائر","كارت رصيد","غاز"];
@@ -1104,7 +1114,7 @@ function receiptText(sale){
 function shareWhatsApp(sale){
   const c=sale.customerId&&S.customers.get(sale.customerId);const n=waNumber((c&&c.phone)||sale.customerPhone);
   const url=(n?"https://wa.me/"+n:"https://wa.me/")+"?text="+encodeURIComponent(receiptText(sale));
-  const w=window.open(url,"_blank");if(!w)location.href=url;
+  openExternal(url);
 }
 // Printed colors = light brand tokens (BRAND.md: green bar over an orange line, shop name in Lalezar).
 const PDFC={green:"#0e5a3a",orange:"#f39a1e",ink:"#1c2421",muted:"#5e6660",line:"#e3ded3",head:"#f4f2ec",shade:"#f8f6f1",debt:"#c2301e",paid:"#4a7f12"};
@@ -1112,7 +1122,13 @@ const PDF_BRAND="'Lalezar','Tajawal',sans-serif",PDF_F="'IBM Plex Sans Arabic',T
 async function pdfFonts(){try{await Promise.all(["400 40px Lalezar","700 28px Tajawal","800 28px Tajawal","400 22px 'IBM Plex Sans Arabic'","700 22px 'IBM Plex Sans Arabic'"].map(f=>document.fonts.load(f)));await document.fonts.ready}catch(e){}}
 function loadScript(src){return new Promise((res,rej)=>{if(document.querySelector(`script[src="${src}"]`)){res();return}const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 async function pdfReady(){try{await loadScript("../vendor/jspdf.umd.min.js")}catch(e){toast("تعذّر تحميل أداة PDF. تحقق من الإنترنت.");return false}await pdfFonts();return true}
+function blobToB64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(",")[1]);r.onerror=rej;r.readAsDataURL(blob)})}
 async function saveFile(filename,blob){
+  if(NATIVE){
+    const r=await plugin("Filesystem").writeFile({path:filename,data:await blobToB64(blob),directory:"CACHE"});
+    try{await plugin("Share").share({title:filename,files:[r.uri]})}catch(e){if(/cancel/i.test(String(e&&e.message)))return false;throw e}
+    return true;
+  }
   const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   if(mobile&&navigator.canShare){const file=new File([blob],filename,{type:blob.type});
     if(navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:filename});return true}catch(e){if(e&&e.name==="AbortError")return false}}}
@@ -2100,14 +2116,14 @@ function xlExport(){
       stock:tracked(p)?round3(stockOf(p)):"",min:p.min>0?p.min:"",expiry:p.expiry||"",weighed:isWeighed(p)?"نعم":"",
       packName:k.name||"",packN:k.n||"",packPrice:k.name?k.price:"",packW:k.wprice>0?k.wprice:"",packCode:k.barcode||""};
     return cols.map(c=>v[c])})];
-  saveFile(`مواد-${shopName().replace(/\s+/g,"-")}-${todayISO()}.xlsx`,xlsxBlob(rows,"المواد",XL_COLS.map(c=>c[3]))).then(ok=>{if(ok)toast("تم تصدير المواد")});
+  saveFile(`مواد-${shopName().replace(/\s+/g,"-")}-${todayISO()}.xlsx`,xlsxBlob(rows,"المواد",XL_COLS.map(c=>c[3]))).then(ok=>{if(ok)toast("تم تصدير المواد")}).catch(()=>toast("تعذّر حفظ الملف."));
 }
 function xlTemplate(){
   const rows=[XL_COLS.map(c=>c[1]),
     ["بيبسي علبة","6281000000011","مشروبات","حبة",500,450,375,48,12,"","","كارتون",24,11000,10000,"6281000000028"],
     ["طماطة","","خضروات","كغم",1500,"",1000,"","","","نعم","","","","",""],
     ["رز بسمتي 1 كغم","6281000000035","رز وطحين وسكر","كيس",3000,2750,2500,20,5,"2027-06-30","","","","","",""]];
-  saveFile("نموذج-مواد.xlsx",xlsxBlob(rows,"المواد",XL_COLS.map(c=>c[3]))).then(ok=>{if(ok)toast("تم تنزيل النموذج")});
+  saveFile("نموذج-مواد.xlsx",xlsxBlob(rows,"المواد",XL_COLS.map(c=>c[3]))).then(ok=>{if(ok)toast("تم تنزيل النموذج")}).catch(()=>toast("تعذّر حفظ الملف."));
 }
 function excelForm(){
   if(!isAdmin())return;
