@@ -1,11 +1,14 @@
 // Reads a photo of the shop's handwritten daily ledger and returns the entries as transactions,
 // matched to existing customers. The app shows them for review before anything is saved.
+// With kind "items" (the cashier app, owner only) it reads a supplier invoice or a list of goods instead and returns the items.
 // Uses Google Gemini (free tier) by default; adding an ANTHROPIC_API_KEY secret switches it to Claude.
 import Anthropic from "@anthropic-ai/sdk";
 
 const MAX_IMAGES = 4;
 const MAX_IMAGE_CHARS = 7_000_000; // ~5 MB of base64 per photo
 const MAX_CUSTOMERS = 5000;
+const MAX_PRODUCTS = 5000;
+const MAX_ITEMS = 200;
 
 const SYSTEM = `You read photos of a handwritten daily credit ledger (دفتر يوميات) from a small grocery shop in Iraq and turn every entry into a transaction for the shop's debt book.
 
@@ -60,6 +63,51 @@ const SCHEMA = {
   },
 };
 
+const ITEMS_SYSTEM = `You read photos for a small neighbourhood market in Iraq (ماركت) and list the goods in them, so the owner can add each item to the shop's cashier app.
+
+The photo may be:
+- a supplier's invoice or delivery note, printed or handwritten: usually one line per item with a quantity, a unit price and a line total;
+- a handwritten list of goods;
+- a photo of products on a shelf or in a box.
+
+For every distinct item, in the order it appears:
+- name: the item as a shop names it on its price list, in Arabic: brand, kind and size (e.g. بيبسي علبة 330 مل، رز محمود 10 كغم، فيري 500 مل). Write foreign brand names the way Iraqis write them in Arabic. Keep the size with its unit (مل، لتر، غم، كغم). Never put the quantity bought in the name.
+- product_id: the id of the same item in the shop's item list (allow spelling variants, but only the same brand, kind and size). Use "" when it is not on the list.
+- category: the closest section from the category list, written exactly as it is there.
+- qty: how many were bought, counted in the unit the line uses (cartons when the line is in cartons). 0 when no quantity is shown (shelf photos, plain lists).
+- pack_n: how many pieces are in one of those units: 1 when the line is per piece; the number of pieces when the line is per carton, packet or box and the count is shown or is the well-known standard for that product (e.g. 24 cans in a carton of Pepsi); 0 when unknown.
+- cost: the purchase price of one unit as the line counts it (per carton when the line is per carton), in whole Iraqi dinars. When only a line total is shown, divide it by qty. 0 when no price is shown. Printed invoices write full amounts; handwritten ones often write thousands: the smallest banknote is 250, so a price below 250 is in thousands (5 → 5000, 2.5 → 2500, 0.75 → 750). Digits may be Arabic-Indic (٠١٢٣٤٥٦٧٨٩).
+- weighed: true for goods sold by the kilogram (vegetables, fruit, loose nuts and sweets, meat), otherwise false.
+- unsure: true when the name or the numbers are hard to read.
+
+Merge repeated lines of the same item by adding their quantities. Skip crossed-out lines, totals, discounts, the supplier's name and phone, and dates. Never invent items that are not in the photos. If the photos show no goods, return an empty list.`;
+
+const ITEMS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["items"],
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "product_id", "category", "qty", "pack_n", "cost", "weighed", "unsure"],
+        properties: {
+          name: { type: "string" },
+          product_id: { type: "string" },
+          category: { type: "string" },
+          qty: { type: "number" },
+          pack_n: { type: "integer" },
+          cost: { type: "integer" },
+          weighed: { type: "boolean" },
+          unsure: { type: "boolean" },
+        },
+      },
+    },
+  },
+};
+
 const json = (body, status, cors) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json; charset=utf-8", ...cors } });
 
 function corsFor(request, env) {
@@ -102,15 +150,37 @@ function readBody(b) {
     .slice(0, MAX_CUSTOMERS)
     .map(c => ({ id: c.id.slice(0, 64), name: c.name.replace(/[\n|]/g, " ").slice(0, 80),
       aliases: (Array.isArray(c.aliases) ? c.aliases : []).filter(a => typeof a === "string").slice(0, 8).map(a => a.replace(/[\n|,]/g, " ").slice(0, 40)) }));
-  return { images, customers };
+  const clean = (x, n) => String(x).replace(/[\n|]/g, " ").slice(0, n);
+  const products = (Array.isArray(b.products) ? b.products : [])
+    .filter(p => p && typeof p.id === "string" && typeof p.name === "string")
+    .slice(0, MAX_PRODUCTS)
+    .map(p => ({ id: p.id.slice(0, 64), name: clean(p.name, 80) }));
+  const cats = (Array.isArray(b.cats) ? b.cats : []).filter(c => typeof c === "string" && c.trim()).slice(0, 100).map(c => clean(c.trim(), 30));
+  return { kind: b.kind === "items" ? "items" : "ledger", images, customers, products, cats };
 }
 
 class UserError extends Error {}
 
 const customerList = input => input.customers.map(c => `${c.id}|${c.name}${c.aliases.length ? "|" + c.aliases.join(", ") : ""}`).join("\n") || "(no customers yet)";
-const ASK = "Read every ledger entry in these photos.";
+
+// What each kind of photo needs: instructions, output shape, the list the model matches against, and the ask.
+const MODES = {
+  ledger: {
+    system: SYSTEM, schema: SCHEMA, key: "rows",
+    context: input => `Customer list (id|name|other ways the shop has written this name):\n${customerList(input)}`,
+    ask: "Read every ledger entry in these photos.",
+    tooLong: "الورقة طويلة كلش. صوّرها على قسمين.",
+  },
+  items: {
+    system: ITEMS_SYSTEM, schema: ITEMS_SCHEMA, key: "items",
+    context: input => `Category list:\n${input.cats.join("\n") || "مشكل"}\n\nThe shop's item list (id|name):\n${input.products.map(p => `${p.id}|${p.name}`).join("\n") || "(no items yet)"}`,
+    ask: "List every item in these photos.",
+    tooLong: "القائمة طويلة كلش. صوّرها على قسمين.",
+  },
+};
 
 async function readWithClaude(env, input) {
+  const mode = MODES[input.kind];
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, ...(env.ANTHROPIC_BASE_URL ? { baseURL: env.ANTHROPIC_BASE_URL } : {}) });
   const response = await client.beta.messages.create({
     model: "claude-opus-5-5",
@@ -118,21 +188,21 @@ async function readWithClaude(env, input) {
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
     thinking: { type: "adaptive" },
-    output_config: { effort: "medium", format: { type: "json_schema", schema: SCHEMA } },
-    system: SYSTEM,
+    output_config: { effort: "medium", format: { type: "json_schema", schema: mode.schema } },
+    system: mode.system,
     messages: [{
       role: "user",
       content: [
-        { type: "text", text: `Customer list (id|name|other ways the shop has written this name):\n${customerList(input)}` },
+        { type: "text", text: mode.context(input) },
         ...input.images.map(im => ({ type: "image", source: { type: "base64", media_type: im.media_type, data: im.data } })),
-        { type: "text", text: ASK },
+        { type: "text", text: mode.ask },
       ],
     }],
   });
   if (response.stop_reason === "refusal") return { error: "ما كدر يقرأ الصورة. جرّب صورة ثانية." };
-  if (response.stop_reason === "max_tokens") return { error: "الورقة طويلة كلش. صوّرها على قسمين." };
+  if (response.stop_reason === "max_tokens") return { error: mode.tooLong };
   const text = response.content.filter(b => b.type === "text").map(b => b.text).join("");
-  try { return { rows: JSON.parse(text).rows }; } catch { throw new UserError("صار خطأ بقراءة النتيجة. حاول مرة ثانية."); }
+  try { return { rows: JSON.parse(text)[mode.key] }; } catch { throw new UserError("صار خطأ بقراءة النتيجة. حاول مرة ثانية."); }
 }
 
 // Gemini's response schema uses the OpenAPI subset: no additionalProperties.
@@ -149,19 +219,20 @@ function geminiSchema(x) {
 const GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash"];
 
 async function readWithGemini(env, input) {
+  const mode = MODES[input.kind];
   const base = env.GEMINI_URL || "https://generativelanguage.googleapis.com";
   const models = env.GEMINI_MODEL ? [env.GEMINI_MODEL] : GEMINI_MODELS;
   const body = JSON.stringify({
-    systemInstruction: { parts: [{ text: SYSTEM }] },
+    systemInstruction: { parts: [{ text: mode.system }] },
     contents: [{
       role: "user",
       parts: [
-        { text: `Customer list (id|name|other ways the shop has written this name):\n${customerList(input)}` },
+        { text: mode.context(input) },
         ...input.images.map(im => ({ inline_data: { mime_type: im.media_type, data: im.data } })),
-        { text: ASK },
+        { text: mode.ask },
       ],
     }],
-    generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema(SCHEMA), temperature: 0 },
+    generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema(mode.schema), temperature: 0 },
   });
   let r, j, lastStatus = 0;
   for (const model of models) {
@@ -182,9 +253,9 @@ async function readWithGemini(env, input) {
   }
   if (j.promptFeedback && j.promptFeedback.blockReason) return { error: "ما كدر يقرأ الصورة. جرّب صورة ثانية." };
   const cand = (j.candidates || [])[0] || {};
-  if (cand.finishReason === "MAX_TOKENS") return { error: "الورقة طويلة كلش. صوّرها على قسمين." };
+  if (cand.finishReason === "MAX_TOKENS") return { error: mode.tooLong };
   const text = ((cand.content && cand.content.parts) || []).filter(p => typeof p.text === "string" && !p.thought).map(p => p.text).join("");
-  try { return { rows: JSON.parse(text).rows }; } catch { throw new UserError("صار خطأ بقراءة النتيجة. حاول مرة ثانية."); }
+  try { return { rows: JSON.parse(text)[mode.key] }; } catch { throw new UserError("صار خطأ بقراءة النتيجة. حاول مرة ثانية."); }
 }
 
 // GitHub often skips its own scheduled runs, so Cloudflare's cron (wrangler.toml [triggers]) starts the 2-hour Telegram report
@@ -215,11 +286,29 @@ export default {
       if (auth.error) return json({ error: auth.error }, auth.status, cors);
       const input = readBody(await request.json().catch(() => null));
       if (input.error) return json({ error: input.error }, 400, cors);
+      // Only the owner adds items in the cashier app.
+      if (input.kind === "items" && auth.user.email !== env.OWNER_EMAIL) return json({ error: "إضافة المواد للمدير فقط." }, 403, cors);
 
       const useClaude = !!env.ANTHROPIC_API_KEY;
       const out = useClaude ? await readWithClaude(env, input) : await readWithGemini(env, input);
       if (out.error) return json({ error: out.error }, 422, cors);
       let rows = out.rows;
+
+      if (input.kind === "items") {
+        const pids = new Set(input.products.map(p => p.id));
+        const items = (Array.isArray(rows) ? rows : []).map(r => ({
+          name: String(r.name || "").replace(/\s+/g, " ").trim().slice(0, 80),
+          product_id: pids.has(r.product_id) ? r.product_id : "",
+          category: String(r.category || "").trim().slice(0, 30),
+          qty: Math.min(100000, Math.max(0, Math.round((Number(r.qty) || 0) * 1000) / 1000)),
+          pack_n: Math.min(1000, Math.max(0, Math.round(Number(r.pack_n) || 0))),
+          cost: Math.max(0, Math.round(Number(r.cost) || 0)),
+          weighed: !!r.weighed,
+          unsure: !!r.unsure,
+        })).filter(r => r.name).slice(0, MAX_ITEMS);
+        console.log(`read ${items.length} items for ${auth.user.email} via ${useClaude ? "claude" : "gemini"}`);
+        return json({ items }, 200, cors);
+      }
 
       // Never trust an id the model returned unless it is one of ours.
       const ids = new Set(input.customers.map(c => c.id));
