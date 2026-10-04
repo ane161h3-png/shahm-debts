@@ -679,7 +679,7 @@ function addToCart(p,qty,pack){
   if(!canSell())return;
   const l=S.cart.find(x=>x.key===lineKey(p,pack));
   if(l)l.qty=round3(l.qty+(qty||1));else S.cart.push(lineFor(p,pack||null,qty||1));
-  saveCart();refresh("cart");
+  saveCart();refresh("cart");sound("add");
 }
 function setQty(key,q){
   const l=S.cart.find(x=>x.key===key);if(!l)return;
@@ -874,7 +874,7 @@ function keypadForm(){
     document.addEventListener("keydown",onKey);modalCleanup=()=>document.removeEventListener("keydown",onKey);
     const add=()=>{const price=Number(val)||0;if(!(price>0)){m.querySelector("#kpErr").textContent="اكتب السعر أول.";return}
       S.cart.push({key:"c-"+uid(),pid:null,name:m.querySelector("#kpName").value.trim()||"مادة متفرقة",price,qty:1,cat:m.querySelector("#kpCat").value});
-      saveCart();refresh("cart");closeModal();toast("انضافت للفاتورة")};
+      saveCart();refresh("cart");closeModal();sound("add");toast("انضافت للفاتورة")};
     m.querySelector("#kpAdd").onclick=add;
   });
 }
@@ -989,8 +989,9 @@ function sellCode(code){
   if(f){if(sellItem(f.p,f.pack)){toast("انضافت: "+f.p.name+(f.pack?" ("+f.pack.name+")":""),1500);flashItem(f.p,f.pack)}return true}
   const sc=scaleCode(t);
   if(sc&&sc.p)return sellScaled(sc);
-  if(sc){toast(`رقم الميزان ${sc.plu} مو مربوط بأي مادة.${isAdmin()?" اكتبه بالمادة بخانة «رقمها بالميزان».":""}`,4500);return false}
+  if(sc){sound("err");toast(`رقم الميزان ${sc.plu} مو مربوط بأي مادة.${isAdmin()?" اكتبه بالمادة بخانة «رقمها بالميزان».":""}`,4500);return false}
   // The owner links an unknown code to an item on the spot (the ready-made list has names and prices, not barcodes).
+  sound("err");
   if(isAdmin()){linkCodeForm(t,p=>{if(sellItem(p))toast("انضافت: "+p.name,1500)});return true}
   toast("هذا الباركود مو مسجل على أي مادة.",3500);return false;
 }
@@ -1004,7 +1005,7 @@ function sellScaled(r){
   if(!(kg>0)){toast("الملصق ما بيه وزن.",3000);return false}
   if(l){const before=lineTotal(l);l.qty=round3(l.qty+kg);if(r.amt||l.fix>0)l.fix=before+amt}
   else{const nl=lineFor(p,null,kg);if(r.amt)nl.fix=r.amt;S.cart.push(nl)}
-  saveCart();refresh("cart");if(navigator.vibrate)navigator.vibrate(40);
+  saveCart();refresh("cart");sound("add");if(navigator.vibrate)navigator.vibrate(40);
   toast(`انضاف ${kgText(kg)} ${p.name} = ${fmt(amt)}`,1800);return true;
 }
 // A USB / Bluetooth scanner types the code fast and presses Enter. Catch it even when no field has focus.
@@ -1281,6 +1282,7 @@ function stockMoves(items){
   return m;
 }
 function saleDone(sale){
+  sound("paid");
   openModal(`<div class="done-mark">${I.check}</div>
     <h3 style="text-align:center">تم البيع</h3>
     <div class="due" style="text-align:center"><span class="k">فاتورة #<span class="num">${esc(sale.no)}</span></span><span class="v num">${fmt(sale.total)}</span></div>
@@ -1411,8 +1413,24 @@ async function receiptPdf(sale){
      An opening without a sale is logged and counted on the shift (noSale).
    - Scale: label scales are read by the barcode scanner (scaleCode); a scale on a cable is read by the weight form. */
 const HW_KEY="shahm-pos-hw";
-const HW_DEF={print:"off",paper:80,auto:true,logo:true,cut:true,drawer:true,baud:9600,scale:"off",sbaud:9600,sreq:""};
+const HW_DEF={sound:true,sadd:true,print:"off",paper:80,auto:true,logo:true,cut:true,drawer:true,baud:9600,scale:"off",sbaud:9600,sreq:""};
 let HW={...HW_DEF};
+/* ---------- sounds ----------
+   Made in the browser (no sound files): a short beep when an item goes on the invoice, like a scanner's; a rising
+   three-note beep when a sale is saved, so payment sounds different; a low double buzz for a code that is not on any item.
+   Per device, switched off from «الطابعة والدرج والميزان»; the item beep can go off alone when the scanner beeps by itself. */
+let AC=null;
+const SOUNDS={add:[[1900,0,.07]],paid:[[1760,0,.08],[2217,.11,.08],[2637,.22,.2]],err:[[330,0,.12],[330,.17,.12]]};
+function sound(k,force){
+  if(!force&&(!HW.sound||k==="add"&&!HW.sadd))return;
+  try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();if(AC.state==="suspended")AC.resume();
+    const t0=AC.currentTime+.01,vol=k==="err"?.12:.16;
+    for(const [f,at,d] of SOUNDS[k]||[]){const o=AC.createOscillator(),g=AC.createGain();o.type=k==="err"?"square":"triangle";o.frequency.value=f;
+      g.gain.setValueAtTime(0,t0+at);g.gain.linearRampToValueAtTime(vol,t0+at+.005);g.gain.setValueAtTime(vol,t0+at+d-.015);g.gain.linearRampToValueAtTime(0,t0+at+d);
+      o.connect(g).connect(AC.destination);o.start(t0+at);o.stop(t0+at+d+.02)}}catch(e){}
+}
+// Browsers only allow sound after the person has tapped or typed, so the audio is woken up on the first touch.
+["pointerdown","keydown"].forEach(ev=>document.addEventListener(ev,()=>{if(HW.sound&&!AC)try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}},{once:true,capture:true}));
 function loadHw(){try{HW={...HW_DEF,...JSON.parse(localStorage.getItem(HW_KEY)||"{}")}}catch(e){HW={...HW_DEF}}}
 function saveHw(){try{localStorage.setItem(HW_KEY,JSON.stringify(HW))}catch(e){}}
 const IS_ANDROID=/Android/i.test(navigator.userAgent);
@@ -1577,6 +1595,11 @@ function hwForm(){
       <label class="check"><input type="checkbox" id="hwPad"${HW.npad?" checked":""}> لوحة أرقام البرنامج لخانات السعر والكمية</label>
       <p class="hint">إذا ربطت السكانر بالموبايل، الأندرويد يخفي كيبورده. شغّل هذا الخيار، أو من إعدادات الموبايل: اللغة والإدخال ← لوحة المفاتيح الفعلية ← «إظهار لوحة المفاتيح على الشاشة».</p>
     </fieldset>
+    <fieldset class="sec"><legend>الأصوات</legend>
+      <label class="check"><input type="checkbox" id="hwSound"${HW.sound?" checked":""}> أصوات البرنامج على هذا الجهاز (تم الدفع، باركود مو مسجل)</label>
+      <label class="check"><input type="checkbox" id="hwSAdd"${HW.sadd?" checked":""}> صوت عند إضافة كل مادة (طفّيه إذا السكانر يصفّر بنفسه)</label>
+      <div class="tool-row" style="flex-wrap:wrap"><button class="btn sm" type="button" data-snd="add">صوت إضافة مادة</button><button class="btn sm" type="button" data-snd="paid">صوت تم الدفع</button><button class="btn sm" type="button" data-snd="err">صوت باركود مو مسجل</button></div>
+    </fieldset>
     <fieldset class="sec"><legend>درج الفلوس</legend>
       <p class="hint" id="hwDH"></p>
       <div id="hwDO" class="field" style="gap:10px"><label class="check"><input type="checkbox" id="hwDrawer"${HW.drawer?" checked":""}> افتح الدرج مع كل بيع كاش</label>
@@ -1628,12 +1651,13 @@ function hwForm(){
     m.querySelector("#hwP").addEventListener("click",e=>{const b=e.target.closest("[data-hp]");if(!b)return;HW.print=b.dataset.hp;draw()});
     m.querySelector("#hwW").addEventListener("click",e=>{const b=e.target.closest("[data-hw]");if(!b)return;HW.paper=Number(b.dataset.hw);draw()});
     q("#hwBaud").onchange=e=>{HW.baud=Number(e.target.value)};
-    [["#hwAuto","auto"],["#hwLogo","logo"],["#hwCut","cut"],["#hwDrawer","drawer"],["#hwPad","npad"]].forEach(([s,k])=>q(s).onchange=e=>{HW[k]=e.target.checked});
+    [["#hwAuto","auto"],["#hwLogo","logo"],["#hwCut","cut"],["#hwDrawer","drawer"],["#hwPad","npad"],["#hwSound","sound"],["#hwSAdd","sadd"]].forEach(([s,k])=>q(s).onchange=e=>{HW[k]=e.target.checked});
     q("#hwScanT").addEventListener("keydown",e=>{if(e.key!=="Enter")return;e.preventDefault();const v=normDigits(q("#hwScanT").value).trim();
       q("#hwScanR").textContent=v?`وصل: ${v}${findCode(v)?` (${findCode(v).p.name})`:""}`:"";q("#hwScanT").select()});
     q("#hwPick").onclick=async()=>{try{if(HW.print==="serial"){const p=await navigator.serial.requestPort();HW.pport=portInfo(p);if(samePort(HW.pport,HW.sport))HW.sport=null}
       else{HWC.bt=null;HWC.ch=null;HW.btId="";await btChar(true)}draw();toast("انربطت الطابعة",1500)}catch(e){hwFail(e)}};
     q("#hwTest").onclick=()=>printCanvas(testSlip,{ask:true});
+    m.querySelectorAll("[data-snd]").forEach(b=>b.onclick=()=>sound(b.dataset.snd,true));
     q("#hwKick").onclick=()=>kickDrawer(true).then(()=>toast("انرسل أمر فتح الدرج",1800)).catch(hwFail);
     if(admin){q("#scOn").onchange=draw;q("#scLen").addEventListener("click",e=>{const b=e.target.closest("[data-sl]");if(b){sd.len=Number(b.dataset.sl);draw()}});
       q("#scKind").addEventListener("click",e=>{const b=e.target.closest("[data-sk]");if(b){sd.kind=b.dataset.sk;draw()}});
