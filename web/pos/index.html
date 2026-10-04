@@ -123,6 +123,14 @@ fieldset.sec legend{padding:0 6px;font-family:var(--f-display);font-weight:700;f
 .scan-pick{display:flex;flex-direction:column;gap:8px}
 .scan-pick label{cursor:pointer}
 .scan-wait{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0;color:var(--muted);text-align:center}
+.npad{position:fixed;left:0;right:0;bottom:0;z-index:40;direction:ltr;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 8px calc(8px + env(safe-area-inset-bottom,0px));background:var(--paper-2);border-top:1px solid var(--line);box-shadow:var(--shadow)}
+.npad[hidden]{display:none}
+.npad button{height:48px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--paper);color:var(--ink);font-family:var(--f-display);font-weight:700;font-size:20px;cursor:pointer;touch-action:manipulation}
+.npad button.ok{grid-column:span 3;background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-size:17px}
+.npad button[hidden]{display:none}.npad button[hidden]+.ok{grid-column:span 4}
+.npad button.del{font-size:18px}
+body.npad-on .scrim{padding-bottom:250px}
+body.npad-on .toast{bottom:calc(250px + env(safe-area-inset-bottom,0px))}
 .todo-head{padding:10px 12px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)}
 .todo-head .banner{margin:0}
 .lk-list{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r-ctl)}
@@ -476,7 +484,7 @@ function openModal(html,onMount,cls){
   if(!root.querySelector("[autofocus]")){const f=root.querySelector("input:not([type=hidden]):not([type=radio]),textarea");if(f)f.focus()}
   else root.querySelector("[autofocus]").focus();
 }
-function closeModal(){if(modalCleanup){const f=modalCleanup;modalCleanup=null;try{f()}catch(e){}}$("#modalRoot").innerHTML=""}
+function closeModal(){padHide(true);if(modalCleanup){const f=modalCleanup;modalCleanup=null;try{f()}catch(e){}}$("#modalRoot").innerHTML=""}
 const modalOpen=()=>!!$("#modalRoot").innerHTML;
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(modalOpen())closeModal();else document.body.classList.remove("show-cart")}});
 
@@ -933,7 +941,7 @@ async function zxingDetector(){
 }
 async function scanBarcode(onCode){
   openModal(`<h3>مسح الباركود</h3><p class="hint">وجّه الكاميرا على الباركود وقرّبها لحد ما يوضح.</p><video class="scan-video" id="scv" playsinline muted autoplay></video><p class="err" id="scErr"></p>
-    <form id="scf" class="tool-row" novalidate><div class="field" style="flex:1"><input id="scMan" inputmode="numeric" style="direction:ltr;text-align:right" placeholder="أو اكتب الرقم اللي جوة الباركود" aria-label="رقم الباركود"></div><button class="btn" type="submit">تم</button></form>
+    <form id="scf" class="tool-row" novalidate><div class="field" style="flex:1"><input id="scMan" data-code inputmode="numeric" style="direction:ltr;text-align:right" placeholder="أو اكتب الرقم اللي جوة الباركود" aria-label="رقم الباركود"></div><button class="btn" type="submit">تم</button></form>
     <div class="foot"><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
     m.querySelector("#scf").addEventListener("submit",e=>{e.preventDefault();const v=normDigits(m.querySelector("#scMan").value).trim();if(v){closeModal();onCode(v)}});
   });
@@ -985,6 +993,71 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Enter"){if(scanBuf.length>=4){if(S.view==="count")countCode(scanBuf);else if(S.view==="products")codeOnItems(scanBuf);else sellCode(scanBuf);e.preventDefault()}scanBuf="";return}
   if(e.key.length===1)scanBuf+=e.key;
 });
+/* Inside a window, a scan belongs in its barcode field ([data-code]) wherever the cursor is, so it never lands in a price or a
+   quantity: the scanner's burst is taken back out of the box it was typed into and put in the barcode field. A scanner types
+   every key within a few milliseconds; a person never does, and a phone's own keyboard sends no key names at all. */
+let kb={s:"",at:0,el:null,snap:null};
+document.addEventListener("keydown",e=>{
+  if(!e.isTrusted)return;
+  const t=e.target,now=Date.now(),gap=now-kb.at;
+  if(e.key==="Enter"){
+    const code=normDigits(kb.s),scan=code.length>=6&&gap<=80&&kb.el===t,snap=kb.snap;kb={s:"",at:0,el:null,snap:null};
+    if(!scan)return;
+    noteScanner();
+    if(!modalOpen())return;
+    const field=$("#modalRoot [data-code]");
+    if(t===field){field.value=code;return}
+    e.preventDefault();e.stopPropagation();
+    if(t&&t.tagName==="INPUT"&&snap!==null){t.value=snap;t.dispatchEvent(new Event("input",{bubbles:true}))}
+    if(!field){toast("هنا ماكو خانة باركود. سد هاي النافذة وامسح.",3000);return}
+    putCode(field,code);return}
+  if(e.key.length!==1||e.ctrlKey||e.metaKey||e.altKey)return;
+  if(gap>45||kb.el!==t)kb={s:"",at:now,el:t,snap:t&&t.tagName==="INPUT"&&!/^(checkbox|radio)$/.test(t.type)?t.value:null};
+  kb.s+=e.key;kb.at=now;
+},true);
+// Puts a scanned code in a barcode field and goes on as if it was scanned there: the field's own Enter handling, else the next box.
+function putCode(field,code){
+  field.value=code;field.focus();field.dispatchEvent(new Event("input",{bubbles:true}));
+  const ev=new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true});field.dispatchEvent(ev);
+  if(!ev.defaultPrevented&&field.form&&!field.dataset.next)field.form.requestSubmit();
+}
+// Enter in a barcode field moves on to the next box (the price) instead of saving the form half-filled.
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Enter"||e.defaultPrevented)return;
+  const f=e.target.closest&&e.target.closest("[data-next]");if(!f)return;
+  e.preventDefault();const n=document.getElementById(f.dataset.next);if(n){n.focus();if(n.select)n.select()}
+});
+/* A scanner on a phone counts as a keyboard, and Android then hides its own keyboard. So the first scan on a touch screen turns
+   on the app's number pad for price and quantity boxes (HW.npad, per device; it can be turned off in the printer settings). */
+function noteScanner(){
+  if(HW.npad!==undefined||!matchMedia("(pointer:coarse)").matches)return;
+  HW.npad=true;saveHw();toast("انربط قارئ الباركود. شغّلت لوحة أرقام البرنامج لخانات السعر، تكدر تطفيها من «الطابعة والدرج والميزان».",6000);
+}
+const padField=el=>el&&el.tagName==="INPUT"&&/^(numeric|decimal)$/.test(el.dataset.im||el.getAttribute("inputmode")||"")&&!el.hasAttribute("data-code")&&el.dataset.k!=="barcode"&&!el.disabled&&!el.readOnly;
+let padEl=null;
+function padShow(el){
+  let pad=$("#npad");
+  if(!pad){pad=document.createElement("div");pad.id="npad";pad.className="npad";pad.setAttribute("role","group");pad.setAttribute("aria-label","لوحة الأرقام");
+    pad.innerHTML=["1","2","3","del","4","5","6","000","7","8","9","0",".","ok"].map(k=>`<button type="button" data-np="${k}" class="${k==="ok"?"ok":k==="del"?"del":""}"${k==="del"?' aria-label="مسح"':""}>${k==="del"?"⌫":k==="ok"?"تم":k}</button>`).join("");
+    pad.addEventListener("pointerdown",e=>e.preventDefault());
+    pad.addEventListener("click",e=>{const b=e.target.closest("[data-np]");if(!b||!padEl)return;const k=b.dataset.np,el=padEl;
+      if(k==="ok"){el.blur();return}
+      const s=el.selectionStart??el.value.length,en=el.selectionEnd??s;
+      if(k==="del"){if(s!==en)el.setRangeText("",s,en,"end");else if(s>0)el.setRangeText("",s-1,s,"end")}
+      else el.setRangeText(k,s,en,"end");
+      el.dispatchEvent(new Event("input",{bubbles:true}))});
+    document.body.appendChild(pad)}
+  padEl=el;pad.querySelector('[data-np="."]').hidden=(el.dataset.im||el.getAttribute("inputmode"))!=="decimal";
+  pad.hidden=false;document.body.classList.add("npad-on");setTimeout(()=>el.scrollIntoView({block:"center"}),50);
+}
+// Leaving a box only hides the pad: the window keeps its raised place until it closes, so a tap on «حفظ» doesn't miss
+// because the window moved under the finger.
+function padHide(full){const pad=$("#npad");if(pad)pad.hidden=true;if(full)document.body.classList.remove("npad-on");padEl=null}
+document.addEventListener("focusin",e=>{const el=e.target;
+  if(!HW.npad||!padField(el)){if(padEl&&el!==padEl)padHide();return}
+  if(!el.dataset.im){el.dataset.im=el.getAttribute("inputmode");el.setAttribute("inputmode","none")}
+  padShow(el)});
+document.addEventListener("focusout",e=>{if(e.target===padEl)setTimeout(()=>{if(padEl&&document.activeElement!==padEl)padHide()},0)});
 
 /* ---------- checkout ---------- */
 function checkout(resume){
@@ -1431,6 +1504,12 @@ function hwForm(){
         <div class="tool-row" style="flex-wrap:wrap"><button class="btn sm" type="button" id="hwPick">اختيار الطابعة</button><button class="btn sm" type="button" id="hwTest">${I.print}طباعة تجربة</button><span class="hint" id="hwDev"></span></div>
       </div>
     </fieldset>
+    <fieldset class="sec"><legend>قارئ الباركود</legend>
+      <p class="hint">السكانر (USB أو بلوتوث) يكتب الباركود بخانة الباركود بس، حتى لو المؤشر بخانة السعر.</p>
+      <div class="field"><label for="hwScanT">تجربة: امسح أي باركود</label><input id="hwScanT" data-code inputmode="numeric" style="direction:ltr;text-align:right" placeholder="امسح هنا"><span class="help" id="hwScanR"></span></div>
+      <label class="check"><input type="checkbox" id="hwPad"${HW.npad?" checked":""}> لوحة أرقام البرنامج لخانات السعر والكمية</label>
+      <p class="hint">إذا ربطت السكانر بالموبايل، الأندرويد يخفي كيبورده. شغّل هذا الخيار، أو من إعدادات الموبايل: اللغة والإدخال ← لوحة المفاتيح الفعلية ← «إظهار لوحة المفاتيح على الشاشة».</p>
+    </fieldset>
     <fieldset class="sec"><legend>درج الفلوس</legend>
       <p class="hint" id="hwDH"></p>
       <div id="hwDO" class="field" style="gap:10px"><label class="check"><input type="checkbox" id="hwDrawer"${HW.drawer?" checked":""}> افتح الدرج مع كل بيع كاش</label>
@@ -1482,7 +1561,9 @@ function hwForm(){
     m.querySelector("#hwP").addEventListener("click",e=>{const b=e.target.closest("[data-hp]");if(!b)return;HW.print=b.dataset.hp;draw()});
     m.querySelector("#hwW").addEventListener("click",e=>{const b=e.target.closest("[data-hw]");if(!b)return;HW.paper=Number(b.dataset.hw);draw()});
     q("#hwBaud").onchange=e=>{HW.baud=Number(e.target.value)};
-    [["#hwAuto","auto"],["#hwLogo","logo"],["#hwCut","cut"],["#hwDrawer","drawer"]].forEach(([s,k])=>q(s).onchange=e=>{HW[k]=e.target.checked});
+    [["#hwAuto","auto"],["#hwLogo","logo"],["#hwCut","cut"],["#hwDrawer","drawer"],["#hwPad","npad"]].forEach(([s,k])=>q(s).onchange=e=>{HW[k]=e.target.checked});
+    q("#hwScanT").addEventListener("keydown",e=>{if(e.key!=="Enter")return;e.preventDefault();const v=normDigits(q("#hwScanT").value).trim();
+      q("#hwScanR").textContent=v?`وصل: ${v}${findCode(v)?` (${findCode(v).p.name})`:""}`:"";q("#hwScanT").select()});
     q("#hwPick").onclick=async()=>{try{if(HW.print==="serial"){const p=await navigator.serial.requestPort();HW.pport=portInfo(p);if(samePort(HW.pport,HW.sport))HW.sport=null}
       else{HWC.bt=null;HWC.ch=null;HW.btId="";await btChar(true)}draw();toast("انربطت الطابعة",1500)}catch(e){hwFail(e)}};
     q("#hwTest").onclick=()=>printCanvas(testSlip,{ask:true});
@@ -1996,7 +2077,7 @@ function productForm(p){
       <div class="row3"><div class="field"><label for="pCat">الصنف</label><select id="pCat">${cl.map(c=>`<option${c===p.category?" selected":""}>${esc(c)}</option>`).join("")}<option value="__new">+ صنف جديد…</option></select>
           <input id="pCatNew" maxlength="30" placeholder="اسم الصنف الجديد" hidden></div>
         <div class="field"><label for="pUnit">الوحدة</label><input id="pUnit" list="unitList" maxlength="15" value="${esc(baseUnit(p))}"><datalist id="unitList">${UNITS.map(u=>`<option value="${u}">`).join("")}</datalist></div>
-        <div class="field"><label for="pCode">الباركود</label><div class="tool-row"><input id="pCode" inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(p.barcode||"")}" placeholder="اختياري">${canScan()?`<button class="icon-btn" type="button" id="pScan" aria-label="مسح بالكاميرا">${I.scan}</button>`:""}</div></div></div>
+        <div class="field"><label for="pCode">الباركود</label><div class="tool-row"><input id="pCode" data-code data-next="pPrice" inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(p.barcode||"")}" placeholder="اختياري">${canScan()?`<button class="icon-btn" type="button" id="pScan" aria-label="مسح بالكاميرا">${I.scan}</button>`:""}</div></div></div>
       <div class="row3"><div class="field"><label for="pPrice">سعر المفرد (${CUR})</label><input id="pPrice" class="big" inputmode="numeric" value="${p.price!==""&&p.price!=null?fmt(p.price):""}" placeholder="0"></div>
         <div class="field"><label for="pW">سعر الجملة</label><input id="pW" class="big" inputmode="numeric" value="${p.wprice>0?fmt(p.wprice):""}" placeholder="اختياري"></div>
         <div class="field"><label for="pCost">سعر الشراء</label><input id="pCost" class="big" inputmode="decimal" value="${p.cost>0?fmt(p.cost):""}" placeholder="للربح"></div></div>
@@ -2128,7 +2209,7 @@ function priceForm(p){
   const wg=isWeighed(p),codeOk=!noCode(p)||!!p.barcode;
   openModal(`<h3>${esc(p.name)}</h3><p class="hint">${esc(p.category||"")}${p.est?` · السعر التقديري <span class="num">${fmt(p.price)}</span>، صحّحه لسعر بيعك`:""}</p>
     <form id="qf" class="field" style="gap:12px" novalidate>
-      <div class="field"><label for="qCode">الباركود</label><div class="tool-row"><input id="qCode" inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(p.barcode||"")}" placeholder="${wg?"ما يحتاج للمواد اللي تنباع بالوزن":"امسحه بالسكانر أو الكاميرا"}"${codeOk?"":" autofocus"}>${canScan()?`<button class="icon-btn" type="button" id="qScan" aria-label="مسح بالكاميرا">${I.scan}</button>`:""}</div></div>
+      <div class="field"><label for="qCode">الباركود</label><div class="tool-row"><input id="qCode" data-code inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(p.barcode||"")}" placeholder="${wg?"ما يحتاج للمواد اللي تنباع بالوزن":"امسحه بالسكانر أو الكاميرا"}"${codeOk?"":" autofocus"}>${canScan()?`<button class="icon-btn" type="button" id="qScan" aria-label="مسح بالكاميرا">${I.scan}</button>`:""}</div></div>
       <div class="row2"><div class="field"><label for="qPrice">${wg?"سعر بيع الكيلو":"سعر البيع للمفرد"} (${CUR})</label><input id="qPrice" class="big" inputmode="numeric" value="${p.price>0?fmt(p.price):""}" placeholder="0"${codeOk?" autofocus":""}></div>
         <div class="field"><label for="qCost">سعر الشراء</label><input id="qCost" class="big" inputmode="decimal" value="${p.cost>0?fmt(p.cost):""}" placeholder="اختياري"></div></div>
       <span class="help" id="qHelp"></span>
@@ -2789,7 +2870,7 @@ function plStep(i){
       ${t?"":`<div class="row2"><div class="field"><label for="plName">اسم المادة</label><input id="plName" maxlength="80" value="${esc(d.name!=null?d.name:x.name)}"></div>
         <div class="field"><label for="plCat">الصنف</label><select id="plCat">${(cl.includes(x.category)?cl:[x.category,...cl]).map(c=>`<option${c===(d.cat||x.category)?" selected":""}>${esc(c)}</option>`).join("")}</select></div></div>`}
       ${x.unsure?`<p class="hint">الاسم أو الأرقام ما كانت واضحة بالصورة، تأكد منها.</p>`:""}
-      <div class="field"><label for="plCode">الباركود</label><div class="tool-row"><input id="plCode" inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(d.code||"")}" placeholder="${weighed?"ما يحتاج للمواد اللي تنباع بالوزن":"امسحه بالسكانر أو الكاميرا"}" autofocus>${canScan()?`<button class="icon-btn" type="button" id="plScan" aria-label="مسح بالكاميرا">${I.scan}</button>`:""}</div></div>
+      <div class="field"><label for="plCode">الباركود</label><div class="tool-row"><input id="plCode" data-code inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(d.code||"")}" placeholder="${weighed?"ما يحتاج للمواد اللي تنباع بالوزن":"امسحه بالسكانر أو الكاميرا"}" autofocus>${canScan()?`<button class="icon-btn" type="button" id="plScan" aria-label="مسح بالكاميرا">${I.scan}</button>`:""}</div></div>
       <div class="field"><label for="plPrice">${weighed?"سعر بيع الكيلو":"سعر البيع للمفرد"} (${CUR})</label><input id="plPrice" class="big" inputmode="numeric" value="${esc(price)}" placeholder="0">
         <span class="help" id="plHelp"></span></div>
       ${add?`<label class="check"><input type="checkbox" id="plStock"${d.stock===false?"":" checked"}> أضف <span class="num">${qtyText(add)}</span> ${esc(unit)} للمخزن${x.pack_n>1&&!t?` (والكارتون بيه <span class="num">${x.pack_n}</span>)`:""}</label>`:""}
