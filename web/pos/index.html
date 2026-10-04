@@ -123,6 +123,20 @@ fieldset.sec legend{padding:0 6px;font-family:var(--f-display);font-weight:700;f
 .scan-pick{display:flex;flex-direction:column;gap:8px}
 .scan-pick label{cursor:pointer}
 .scan-wait{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0;color:var(--muted);text-align:center}
+.tile .pic{width:100%;aspect-ratio:4/3;object-fit:contain;background:var(--paper);border-radius:8px;display:block}
+.cart-lines .cpic{width:40px;height:40px;border-radius:8px;object-fit:contain;background:var(--paper);border:1px solid var(--line);flex:none}
+img.avatar.pic-av{object-fit:cover;padding:0;background:var(--paper)}
+.pic-edit{display:flex;gap:12px;align-items:center}
+.pic-prev{width:92px;height:92px;flex:none;border-radius:12px;border:1px solid var(--line);background:var(--paper-2);display:grid;place-items:center;overflow:hidden;color:var(--muted)}
+.pic-prev.empty{border-style:dashed}
+.pic-prev svg{width:28px;height:28px}
+.pic-prev img{width:100%;height:100%;object-fit:contain;background:var(--paper)}
+.pic-btns{display:flex;flex-wrap:wrap;gap:6px}.pic-btns label{cursor:pointer}
+.flash{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:35;background:var(--paper);border:2px solid var(--accent);border-radius:16px;box-shadow:var(--shadow);padding:10px 14px 10px 10px;display:flex;gap:12px;align-items:center;max-width:calc(100% - 32px);pointer-events:none}
+.flash[hidden]{display:none}
+.flash img{width:96px;height:96px;object-fit:contain;border-radius:10px;background:var(--paper-2);flex:none}
+.flash b{display:block;font-size:16px;line-height:1.4}
+.flash .num{color:var(--accent);font-weight:800;font-family:var(--f-display);font-size:19px}
 .npad{position:fixed;left:0;right:0;bottom:0;z-index:40;direction:ltr;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 8px calc(8px + env(safe-area-inset-bottom,0px));background:var(--paper-2);border-top:1px solid var(--line);box-shadow:var(--shadow)}
 .npad[hidden]{display:none}
 .npad button{height:48px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--paper);color:var(--ink);font-family:var(--f-display);font-weight:700;font-size:20px;cursor:pointer;touch-action:manipulation}
@@ -750,19 +764,20 @@ function renderTiles(){
   if(!list.length){el.innerHTML=custom+`<div class="empty" style="grid-column:1/-1">${S.products.size?`<b>ماكو مادة بهذا الاسم</b>جرّب كلمة ثانية${canSell()?"، أو بيعها بـ «مادة بسعر»":""}.`:`<b>ماكو مواد بعد</b>${isAdmin()?`أضف المواد من تبويب <a href="#" data-go="products">المواد</a>.`:"المدير يضيف المواد وأسعارها."}`}</div>`;return}
   el.innerHTML=custom+list.slice(0,300).map(p=>{const al=alertsOf(p),left=tracked(p)?round3(stockOf(p)-(inCart.get(p.id)||0)):null;
     const reg=priceFor(p,null,S.whole),of=S.whole?null:priceLine({},p,null,false),shown=of&&of.was?of.price:reg;
-    return `<button class="tile" type="button" data-add="${esc(p.id)}"${canSell()?"":" disabled"}>
-    ${inCart.has(p.id)?`<span class="q num">${qtyText(inCart.get(p.id))}</span>`:""}
+    return `<button class="tile${p.pic?" has-pic":""}" type="button" data-add="${esc(p.id)}"${canSell()?"":" disabled"}>
+    ${inCart.has(p.id)?`<span class="q num">${qtyText(inCart.get(p.id))}</span>`:""}${picImg(p,"pic")}
     <span class="nm">${esc(p.name)}</span><span class="ct">${esc(p.category||"")}</span>
     ${left!==null||al.some(a=>a.startsWith("exp"))?`<span class="st${al.length||(left!==null&&left<=0)?" warn":""}">${left!==null?`باقي <span class="num">${qtyText(left)}</span>`:""}${al.includes("expired")?" · منتهية":al.includes("expiring")?" · قرب انتهاؤها":""}</span>`:""}
     ${of&&(of.was||of.deal)?`<span class="of">عرض${of.deal?" "+offerHtml(of.deal):""}</span>`:""}
     <span class="pr"><span class="num">${fmt(shown)}</span>${isWeighed(p)?`<small class="kg">/كغم</small>`:""}${shown<reg?` <s class="was num">${fmt(reg)}</s>`:""}${S.whole&&p.wprice>0?` <small>جملة</small>`:""}</span></button>`}).join("");
+  hydratePics(el);
 }
 function renderCart(){
   const el=$("#cart"),bar=$("#cartBar");if(!el)return;
   const t=totals();
   el.innerHTML=`<div class="cart-head"><h2>الفاتورة ${S.cart.length?`<span class="chip zero num">${S.cart.length}</span>`:""}</h2>
       <div style="display:flex;gap:4px;align-items:center"><span class="chips"><button type="button" data-act="whole" aria-pressed="${!!S.whole}" title="أسعار الجملة">جملة</button></span>${S.cart.length?`<button class="btn sm ghost danger-text" type="button" data-act="clear">${I.trash}تفريغ</button>`:""}<button class="btn sm ghost close-cart" type="button" data-act="hidecart" aria-label="إغلاق السلة">${I.close}</button></div></div>
-    ${S.cart.length?`<ul class="cart-lines">${S.cart.map(l=>`<li>
+    ${S.cart.length?`<ul class="cart-lines">${S.cart.map(l=>`<li>${l.pid?picImg(S.products.get(l.pid),"cpic"):""}
       <button class="info" type="button" data-line="${esc(l.key)}"><b>${esc(l.name)}</b><span><span class="num">${fmt(l.price)}</span>${l.w?" للكيلو":` × <span class="num">${qtyText(l.qty)}</span> ${esc(l.unit||"")}`}${l.was?` <s class="was num">${fmt(l.was)}</s>`:""}${l.deal||l.was?` <span class="of">عرض${l.deal?" "+offerHtml(l.deal):""}</span>`:""}</span></button>
       ${l.w?`<button class="wpill" type="button" data-line="${esc(l.key)}" aria-label="تعديل الوزن">${kgHtml(l.qty)}</button>`
         :`<div class="stepper"><button type="button" data-inc="${esc(l.key)}" aria-label="زيادة">${I.plus}</button><span class="num">${qtyText(l.qty)}</span><button type="button" data-dec="${esc(l.key)}" aria-label="نقصان">${l.qty>1?I.minus:I.trash}</button></div>`}
@@ -777,6 +792,7 @@ function renderCart(){
     </div>`;
   if(bar)bar.innerHTML=S.cart.length?`<button class="open" type="button" data-act="showcart"><span><span class="cnt num">${S.cart.length}</span>عرض الفاتورة</span><b class="num">${fmt(t.total)}</b></button>`:"";
   if(!S.cart.length)document.body.classList.remove("show-cart");
+  hydratePics(el);
 }
 
 /* line editing: quantity and unit for everyone, price only for the owner (the editor sells at the listed price) */
@@ -963,7 +979,7 @@ async function scanBarcode(onCode){
 function sellCode(code){
   const t=normDigits(code).trim();if(!t)return false;
   const f=findCode(t);
-  if(f){if(sellItem(f.p,f.pack))toast("انضافت: "+f.p.name+(f.pack?" ("+f.pack.name+")":""),1500);return true}
+  if(f){if(sellItem(f.p,f.pack)){toast("انضافت: "+f.p.name+(f.pack?" ("+f.pack.name+")":""),1500);flashItem(f.p,f.pack)}return true}
   const sc=scaleCode(t);
   if(sc&&sc.p)return sellScaled(sc);
   if(sc){toast(`رقم الميزان ${sc.plu} مو مربوط بأي مادة.${isAdmin()?" اكتبه بالمادة بخانة «رقمها بالميزان».":""}`,4500);return false}
@@ -2007,12 +2023,13 @@ function renderProducts(){
   const todoHead=S.pcat==="todo"?`<li class="todo-head"><p class="banner info">هاي المواد انضافت من «قائمة مواد جاهزة» وباقي عليها باركود أو سعر البيع. خذ المادة اللي جبتها وامسح باركودها (بالسكانر أو الكاميرا)، اختار اسمها إذا ما مربوط، واكتب سعر بيعها. اللي تخلص تطلع من هنا.</p>
       ${canScan()?`<button class="btn primary block" type="button" data-act="pricescan">${I.scan}امسح مادة وحط سعرها</button>`:""}</li>`:"";
   el.innerHTML=todoHead+(list.length?list.map(p=>{const al=alertsOf(p),of=offerOf(p);return `<li><div class="prow"><button class="r" type="button" data-prod="${esc(p.id)}">
-      <span class="avatar">${initial(p.name)}</span><div class="m"><b>${esc(p.name)}${p.active===false?` <span class="chip zero">موقوفة</span>`:""}${p.est&&S.pcat!=="todo"?` <span class="chip zero">سعر تقديري</span>`:""}</b>
+      ${p.pic?picImg(p,"avatar pic-av"):`<span class="avatar">${initial(p.name)}</span>`}<div class="m"><b>${esc(p.name)}${p.active===false?` <span class="chip zero">موقوفة</span>`:""}${p.est&&S.pcat!=="todo"?` <span class="chip zero">سعر تقديري</span>`:""}</b>
       <span>${S.pcat==="todo"?`<span class="chip warn">باقي ${[noCode(p)?"الباركود":"",p.est?"السعر":""].filter(Boolean).join(" و")}</span> `:""}${esc(p.category||"بدون صنف")}${tracked(p)?` · المخزن ${stockHtml(p)}`:""}${p.expiry?` · ينتهي <span class="num">${esc(p.expiry)}</span>`:""}${packsOf(p).length?` · ${packsOf(p).map(k=>esc(k.name)).join("، ")}`:""}</span>
       ${al.length||of?`<span class="al">${of?`<span class="of">عرض ${offerHtml(of)}${of.to?` لحد <span class="num">${esc(of.to)}</span>`:""}</span>`:""}${al.map(a=>`<span class="chip warn">${ALERT_TEXT[a]}</span>`).join(" ")}</span>`:""}</div>
       <div class="a"><span class="num">${fmt(p.price)}</span><small>${isWeighed(p)?"للكيلو":""}${p.cost>0?`${isWeighed(p)?" · ":""}شراء <span class="num">${fmt(p.cost)}</span>`:isWeighed(p)?"":CUR}</small></div></button>
       <button class="btn sm" type="button" data-restock="${esc(p.id)}" title="استلام كمية">${I.plus}كمية</button></div></li>`}).join("")
     :`<li class="empty"><b>${S.products.size?"ماكو نتائج":"ماكو مواد بعد"}</b>${S.products.size?"":"اضغط «قائمة مواد جاهزة» حتى تنضاف مواد الماركت بأسعار تقديرية، أو «مادة جديدة» وأضف كل مادة بسعرها."}</li>`);
+  hydratePics(el);
 }
 const UNITS=["حبة","كغم","علبة","قنينة","كيس","باكيت","لتر","متر"];
 const numVal=v=>{const n=parseAmt(v);return isFinite(n)?n:NaN};
@@ -2074,6 +2091,7 @@ function productForm(p){
     ${isNew&&!p.barcode?`<button class="btn sm" type="button" id="pPhoto">${I.camera}عندك فاتورة أو قائمة مواد؟ صوّرها وأضفها كلها</button>`:""}
     <form id="pf" class="field" style="gap:12px" novalidate>
       <div class="field"><label for="pName">اسم المادة</label><input id="pName" maxlength="80" value="${esc(p.name)}" placeholder="مثال: بيبسي علبة"></div>
+      ${picFieldHtml("pPic")}
       <div class="row3"><div class="field"><label for="pCat">الصنف</label><select id="pCat">${cl.map(c=>`<option${c===p.category?" selected":""}>${esc(c)}</option>`).join("")}<option value="__new">+ صنف جديد…</option></select>
           <input id="pCatNew" maxlength="30" placeholder="اسم الصنف الجديد" hidden></div>
         <div class="field"><label for="pUnit">الوحدة</label><input id="pUnit" list="unitList" maxlength="15" value="${esc(baseUnit(p))}"><datalist id="unitList">${UNITS.map(u=>`<option value="${u}">`).join("")}</datalist></div>
@@ -2106,6 +2124,7 @@ function productForm(p){
       <div class="foot"><button class="btn primary" type="submit">${isNew?"إضافة":"حفظ"}</button>${isNew?"":`<button class="btn ghost danger-text" type="button" id="pDel">${I.trash}حذف</button>`}<button class="btn" type="button" data-close>رجوع</button></div>
     </form>`,m=>{
     const ph=m.querySelector("#pPhoto");if(ph)ph.onclick=plOpen;
+    const pic=picField(m,"pPic",p,p.__picSt);
     const pc=m.querySelector("#pCat"),pcn=m.querySelector("#pCatNew");
     pc.onchange=()=>{pcn.hidden=pc.value!=="__new";if(!pcn.hidden)pcn.focus()};
     const wg=m.querySelector("#pWeighed"),un=m.querySelector("#pUnit"),plab=m.querySelector('label[for="pPrice"]');
@@ -2130,16 +2149,18 @@ function productForm(p){
       const draft={name:g("pName"),price:pv>=0?pv:"",category:g("pCat")==="__new"?g("pCatNew").trim():g("pCat"),unit:g("pUnit"),wprice:numVal(g("pW"))||0,cost:numVal(g("pCost"))||0,
         weighed:m.querySelector("#pWeighed").checked,plu:g("pPlu"),track:m.querySelector("#pTrack").checked,stock:numVal(g("pStock"))||0,min:numVal(g("pMin"))||0,expiry:g("pExp"),packs,active:p.active,
         offer:{type:m.querySelector('#ofT [aria-pressed="true"]').dataset.of,n:numVal(g("ofN"))||0,price:numVal(g("ofP"))||0,to:g("ofTo")}};
-      scanBarcode(code=>productForm({...p,...draft,barcode:code,__new:isNew}))};
+      scanBarcode(code=>productForm({...p,...draft,barcode:code,__new:isNew,__picSt:pic}))};
     const d=m.querySelector("#pDel");
     if(d)d.onclick=()=>{if(!confirm(`حذف «${p.name}» من القائمة؟ الفواتير القديمة تبقى مثل ما هي.`))return;
       S.products.delete(p.id);try{db.collection("products").doc(p.id).delete().catch(writeFail)}catch(e){writeFail(e)}
+      if(p.pic)commitPic(p.id,{url:"",changed:true});
       log("delete","product",{detail:`حذف المادة ${p.name}`});closeModal();renderProducts();toast("انحذفت المادة")};
     m.querySelector("#pf").addEventListener("submit",e=>{e.preventDefault();const err=m.querySelector("#pErr");
       const r=readProductForm(m,p);if(r.err){err.textContent=r.err;return}
       const o=r.obj,now=Date.now(),meta={updatedAt:now,updatedBy:S.me.name};
       if(isNew){
         const obj={id:uid(),createdAt:now,by:S.me.name,...o,...meta};
+        const pa=commitPic(obj.id,pic);if(pa)obj.pic=pa;
         S.products.set(obj.id,obj);try{db.collection("products").doc(obj.id).set(obj).catch(writeFail)}catch(x){writeFail(x)}
         log("add","product",{detail:`أضاف المادة ${o.name} بسعر ${fmt(o.price)}${o.track?`، الكمية ${qtyText(o.stock)}`:""}${o.offer?`، ${o.offer.type==="qty"?`عرض ${o.offer.n} بـ ${fmt(o.offer.price)}`:`سعر عرض ${fmt(o.offer.price)}`}`:""}`});
       }else{
@@ -2148,13 +2169,16 @@ function productForm(p){
         if(!o.track)patch.stock=firebase.firestore.FieldValue.delete();
         // Saving the item from its form means the owner checked its price (items from the ready-made list carry est until then).
         if(p.est)patch.est=firebase.firestore.FieldValue.delete();
-        S.products.set(p.id,{...p,...o,est:false});try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
+        const pa=commitPic(p.id,pic);if(pa)patch.pic=pa;else if(pa===null)patch.pic=firebase.firestore.FieldValue.delete();
+        const {__new,__picSt,...base}=p;
+        S.products.set(p.id,{...base,...o,est:false,...(pa!==undefined?{pic:pa||0}:{})});try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
         const ch=[];
         if(Number(p.price)!==o.price)ch.push(`سعر المفرد من ${fmt(p.price)} إلى ${fmt(o.price)}`);
         if((Number(p.wprice)||0)!==o.wprice)ch.push(`سعر الجملة إلى ${fmt(o.wprice)}`);
         if((Number(p.cost)||0)!==o.cost)ch.push(`سعر الشراء إلى ${fmt(o.cost)}`);
         if(o.track&&"stock" in patch)ch.push(`الكمية إلى ${qtyText(o.stock)}`);
         if(p.name!==o.name)ch.push(`الاسم من ${p.name}`);
+        if(pa!==undefined)ch.push(pa?"الصورة":"شال الصورة");
         const ofs=x=>x&&x.type?(x.type==="qty"?`عرض ${x.n} بـ ${fmt(x.price)}`:`سعر عرض ${fmt(x.price)}`)+(x.to?` لحد ${x.to}`:""):"";
         if(ofs(p.offer)!==ofs(o.offer))ch.push(o.offer?ofs(o.offer):"شال العرض");
         if(ch.length)log("edit","product",{detail:`عدّل ${o.name}: ${ch.join("، ")}`});
@@ -2163,6 +2187,62 @@ function productForm(p){
       if(isNew)setTimeout(()=>productForm(),50);
     });
   },"wide");
+}
+/* ---------- item photos ----------
+   One small photo per item, so the cashier sees at a glance that the tapped or scanned item is the right one. Each photo is
+   its own document in "itemPhotos" (id = the item's id), so the item list stays light; the item carries pic (the time its
+   photo was saved), so the app knows which items have one and which copy is current. Photos load as they come into view. */
+const PICS=new Map(),picWait=new Map();
+const picKey=p=>p.id+":"+p.pic;
+const picUrl=p=>p&&p.pic?PICS.get(picKey(p))||"":"";
+function loadPic(p){
+  const k=picKey(p);if(PICS.has(k))return Promise.resolve(PICS.get(k));if(picWait.has(k))return picWait.get(k);
+  const ref=db.collection("itemPhotos").doc(p.id);
+  const pr=ref.get({source:"cache"}).catch(()=>null).then(d=>d&&d.exists&&Number(d.data().at)===Number(p.pic)?d:ref.get())
+    .then(d=>{const u=d.exists?d.data().data||"":"";PICS.set(k,u);return u}).finally(()=>picWait.delete(k));
+  picWait.set(k,pr);return pr;
+}
+const picImg=(p,cls)=>p&&p.pic?`<img class="${cls}" data-pic="${esc(p.id)}" alt=""${picUrl(p)?` src="${picUrl(p)}"`:""}>`:"";
+let picIO=null;
+function fillPic(img){const p=S.products.get(img.dataset.pic);if(!p||!p.pic){img.remove();return}
+  loadPic(p).then(u=>{if(u)img.src=u;else img.remove()}).catch(()=>img.remove())}
+function hydratePics(root){
+  if(!root||!db)return;
+  const imgs=root.querySelectorAll("img[data-pic]:not([src])");if(!imgs.length)return;
+  if(!picIO&&"IntersectionObserver" in window)picIO=new IntersectionObserver(es=>{for(const e of es)if(e.isIntersecting){picIO.unobserve(e.target);fillPic(e.target)}},{rootMargin:"300px"});
+  imgs.forEach(img=>{const u=picUrl(S.products.get(img.dataset.pic));if(u)img.src=u;else if(picIO)picIO.observe(img);else fillPic(img)});
+}
+// A scanned item's photo flashes at the top of the screen for a moment, so the cashier can check it against what is in hand.
+let flashT=0;
+function flashItem(p,pack){
+  if(!p||!p.pic)return;
+  loadPic(p).then(u=>{if(!u)return;let f=$("#flash");
+    if(!f){f=document.createElement("div");f.id="flash";f.className="flash";f.setAttribute("aria-hidden","true");document.body.appendChild(f)}
+    f.innerHTML=`<img src="${u}" alt=""><div><b>${esc(p.name)}${pack?` (${esc(pack.name)})`:""}</b><span class="num">${fmt(priceFor(p,pack||null,S.whole))}</span></div>`;
+    f.hidden=false;clearTimeout(flashT);flashT=setTimeout(()=>{f.hidden=true},1800)}).catch(()=>{});
+}
+// The photo box in the item forms: take a photo, pick one, or remove it. The change is saved with the form (commitPic).
+const picFieldHtml=x=>`<div class="pic-edit"><div class="pic-prev" id="${x}Prev"></div><div class="pic-btns">
+  <label class="btn sm">${I.camera}تصوير المادة<input type="file" accept="image/*" capture="environment" hidden id="${x}Cam"></label>
+  <label class="btn sm">من المعرض<input type="file" accept="image/*" hidden id="${x}Gal"></label>
+  <button class="btn sm ghost danger-text" type="button" id="${x}Del">${I.trash}شيل الصورة</button></div></div>`;
+function picField(m,x,p,init){
+  const st=init||{url:"",changed:false},prev=m.querySelector("#"+x+"Prev"),del=m.querySelector("#"+x+"Del");
+  const show=()=>{prev.innerHTML=st.url?`<img src="${st.url}" alt="صورة المادة">`:I.camera;prev.classList.toggle("empty",!st.url);del.hidden=!st.url};
+  const pick=async f=>{if(!f)return;try{const r=await shrinkImage(f,480,.8);st.url=r.url;st.changed=true;show()}catch(e){console.warn(e);toast("تعذّر فتح الصورة.")}};
+  m.querySelector("#"+x+"Cam").addEventListener("change",e=>pick(e.target.files[0]));
+  m.querySelector("#"+x+"Gal").addEventListener("change",e=>pick(e.target.files[0]));
+  del.onclick=()=>{st.url="";st.changed=true;show()};
+  if(!init&&p&&p.pic)loadPic(p).then(u=>{if(!st.changed){st.url=u;show()}}).catch(()=>{});
+  show();return st;
+}
+// Saves a changed photo. Returns the item's new pic: a time, null when the photo was removed, undefined when unchanged.
+function commitPic(id,st){
+  if(!st||!st.changed)return undefined;
+  if(!st.url){try{db.collection("itemPhotos").doc(id).delete().catch(()=>{})}catch(e){}return null}
+  const at=Date.now();PICS.set(id+":"+at,st.url);
+  try{db.collection("itemPhotos").doc(id).set({id,data:st.url,at,by:S.me.name}).catch(writeFail)}catch(e){writeFail(e)}
+  return at;
 }
 /* ---------- linking barcodes ----------
    Scan an item from the shelf, then pick its name: the code is saved on that item, or a new item is made with it.
@@ -2213,6 +2293,7 @@ function priceForm(p){
       <div class="row2"><div class="field"><label for="qPrice">${wg?"سعر بيع الكيلو":"سعر البيع للمفرد"} (${CUR})</label><input id="qPrice" class="big" inputmode="numeric" value="${p.price>0?fmt(p.price):""}" placeholder="0"${codeOk?" autofocus":""}></div>
         <div class="field"><label for="qCost">سعر الشراء</label><input id="qCost" class="big" inputmode="decimal" value="${p.cost>0?fmt(p.cost):""}" placeholder="اختياري"></div></div>
       <span class="help" id="qHelp"></span>
+      ${picFieldHtml("qPic")}
       <p class="err" id="qErr"></p>
       <div class="foot"><button class="btn primary" type="submit">${I.check}حفظ</button>${canScan()?`<button class="btn" type="button" id="qNext">${I.scan}حفظ وامسح التالي</button>`:""}<button class="btn" type="button" id="qFull">${I.edit}كل التفاصيل</button><button class="btn" type="button" data-close>رجوع</button></div>
     </form>`,m=>{
@@ -2221,7 +2302,8 @@ function priceForm(p){
     pr.addEventListener("input",upd);co.addEventListener("input",upd);upd();
     if(document.activeElement===pr)pr.select();
     code.addEventListener("keydown",e=>{if(e.key!=="Enter")return;e.preventDefault();pr.focus();pr.select()});
-    const draft=()=>({...p,barcode:normDigits(code.value).trim(),price:numVal(pr.value)>=0?numVal(pr.value):p.price,cost:numVal(co.value)>=0?numVal(co.value):p.cost});
+    const pic=picField(m,"qPic",p,p.__picSt);
+    const draft=()=>({...p,barcode:normDigits(code.value).trim(),price:numVal(pr.value)>=0?numVal(pr.value):p.price,cost:numVal(co.value)>=0?numVal(co.value):p.cost,__picSt:pic});
     const sc=m.querySelector("#qScan");if(sc)sc.onclick=()=>{const d=draft();scanBarcode(c=>priceForm({...d,barcode:c}))};
     m.querySelector("#qFull").onclick=()=>productForm(S.products.get(p.id)||p);
     const save=next=>{err.textContent="";
@@ -2232,7 +2314,8 @@ function priceForm(p){
       const cur=S.products.get(p.id)||p,now=Date.now(),patch={price:v,barcode:c,cost,updatedAt:now,updatedBy:S.me.name},ch=[];
       if(Number(cur.price)!==v||cur.est)ch.push(`السعر ${fmt(v)}`);if((cur.barcode||"")!==c)ch.push(c?`الباركود ${c}`:"شال الباركود");if((Number(cur.cost)||0)!==cost)ch.push(`سعر الشراء ${fmt(cost)}`);
       if(cur.est)patch.est=firebase.firestore.FieldValue.delete();
-      S.products.set(p.id,{...cur,price:v,barcode:c,cost,updatedAt:now,updatedBy:S.me.name,est:false});
+      const pa=commitPic(p.id,pic);if(pa)patch.pic=pa;else if(pa===null)patch.pic=firebase.firestore.FieldValue.delete();if(pa!==undefined)ch.push(pa?"الصورة":"شال الصورة");
+      S.products.set(p.id,{...cur,price:v,barcode:c,cost,updatedAt:now,updatedBy:S.me.name,est:false,...(pa!==undefined?{pic:pa||0}:{})});
       try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
       if(ch.length)log("edit","product",{detail:`عدّل ${cur.name}: ${ch.join("، ")}`});
       closeModal();renderProducts();toast(`انحفظت «${cur.name}»`,1500);
@@ -2772,7 +2855,7 @@ async function shrinkImage(file,max=1568,q=.85){
   cv.getContext("2d").drawImage(src,0,0,cv.width,cv.height);
   let url=cv.toDataURL("image/jpeg",q);
   for(let qq=q-.1;url.length>900000&&qq>.3;qq-=.1)url=cv.toDataURL("image/jpeg",qq);
-  return {data:url.slice(url.indexOf(",")+1),media_type:"image/jpeg"};
+  return {url,data:url.slice(url.indexOf(",")+1),media_type:"image/jpeg"};
 }
 // The items button: carries on with a list in progress, or reads a new photo.
 function plOpen(){
