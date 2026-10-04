@@ -80,13 +80,23 @@ For every distinct item, in the order it appears:
 - weighed: true for goods sold by the kilogram (vegetables, fruit, loose nuts and sweets, meat), otherwise false.
 - unsure: true when the name or the numbers are hard to read.
 
-Merge repeated lines of the same item by adding their quantities. Skip crossed-out lines, totals, discounts, the supplier's name and phone, and dates. Never invent items that are not in the photos. If the photos show no goods, return an empty list.`;
+Merge repeated lines of the same item by adding their quantities. Skip crossed-out lines, totals, discounts, the supplier's name and phone, and dates: they are not items. Never invent items that are not in the photos. If the photos show no goods, return an empty list.
+
+When the photo is an invoice or delivery note, also read its header (otherwise leave these empty):
+- supplier_name: the shop, store or company that issued it (letterhead, stamp or written at the top), as written there, e.g. محلات المحبة. "" when not shown.
+- supplier_phone: its phone number, digits only (keep a leading 0 or +). "" when not shown.
+- invoice_no: the invoice or delivery note number. "" when not shown.
+- invoice_total: the grand total to pay, in whole Iraqi dinars (same thousands rule as cost). 0 when not shown.`;
 
 const ITEMS_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["items"],
+  required: ["supplier_name", "supplier_phone", "invoice_no", "invoice_total", "items"],
   properties: {
+    supplier_name: { type: "string" },
+    supplier_phone: { type: "string" },
+    invoice_no: { type: "string" },
+    invoice_total: { type: "integer" },
     items: {
       type: "array",
       items: {
@@ -202,7 +212,7 @@ async function readWithClaude(env, input) {
   if (response.stop_reason === "refusal") return { error: "ما كدر يقرأ الصورة. جرّب صورة ثانية." };
   if (response.stop_reason === "max_tokens") return { error: mode.tooLong };
   const text = response.content.filter(b => b.type === "text").map(b => b.text).join("");
-  try { return { rows: JSON.parse(text)[mode.key] }; } catch { throw new UserError("صار خطأ بقراءة النتيجة. حاول مرة ثانية."); }
+  try { const all = JSON.parse(text); return { rows: all[mode.key], all }; } catch { throw new UserError("صار خطأ بقراءة النتيجة. حاول مرة ثانية."); }
 }
 
 // Gemini's response schema uses the OpenAPI subset: no additionalProperties.
@@ -255,7 +265,7 @@ async function readWithGemini(env, input) {
   const cand = (j.candidates || [])[0] || {};
   if (cand.finishReason === "MAX_TOKENS") return { error: mode.tooLong };
   const text = ((cand.content && cand.content.parts) || []).filter(p => typeof p.text === "string" && !p.thought).map(p => p.text).join("");
-  try { return { rows: JSON.parse(text)[mode.key] }; } catch { throw new UserError("صار خطأ بقراءة النتيجة. حاول مرة ثانية."); }
+  try { const all = JSON.parse(text); return { rows: all[mode.key], all }; } catch { throw new UserError("صار خطأ بقراءة النتيجة. حاول مرة ثانية."); }
 }
 
 // GitHub often skips its own scheduled runs, so Cloudflare's cron (wrangler.toml [triggers]) starts the 2-hour Telegram report
@@ -306,8 +316,16 @@ export default {
           weighed: !!r.weighed,
           unsure: !!r.unsure,
         })).filter(r => r.name).slice(0, MAX_ITEMS);
+        // The invoice header, for the receiving screen: who it came from and its number and total.
+        const a = out.all || {};
+        const head = {
+          supplier_name: String(a.supplier_name || "").replace(/\s+/g, " ").trim().slice(0, 60),
+          supplier_phone: String(a.supplier_phone || "").replace(/[^\d+]/g, "").slice(0, 20),
+          invoice_no: String(a.invoice_no || "").replace(/\s+/g, " ").trim().slice(0, 30),
+          invoice_total: Math.max(0, Math.round(Number(a.invoice_total) || 0)),
+        };
         console.log(`read ${items.length} items for ${auth.user.email} via ${useClaude ? "claude" : "gemini"}`);
-        return json({ items }, 200, cors);
+        return json({ items, ...head }, 200, cors);
       }
 
       // Never trust an id the model returned unless it is one of ours.

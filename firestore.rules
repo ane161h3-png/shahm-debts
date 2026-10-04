@@ -67,6 +67,11 @@ service cloud.firestore {
       allow read: if active();
       allow write: if isOwner();
     }
+    // Deliveries received (استلام المواد): the items, quantities and purchase prices, with the supplier.
+    match /receipts/{id} {
+      allow read: if active();
+      allow write: if isOwner();
+    }
     match /users/{uid} {
       allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
       allow create: if isOwner() || (signedIn() && request.auth.uid == uid
