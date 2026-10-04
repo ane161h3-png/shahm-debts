@@ -173,7 +173,7 @@ function daySummary(customers, txns, settings, now, sales = [], products = [], s
   const closed = shifts.filter(x => x.status === "closed" && x.closedAt && isoDay(Number(x.closedAt)) === day).sort((a, b) => a.closedAt - b.closedAt);
   if (closed.length) {
     const dt = d => d === 0 ? "مضبوط ✅" : d > 0 ? `زايد ${fmt(d)}` : `ناقص ${fmt(-d)} ⚠️`;
-    lines.push("🔒 الورديات:", ...closed.map(x => `  • ${x.openedBy || "؟"} ${hm(Number(x.openedAt))} إلى ${hm(Number(x.closedAt))}: مبيعات ${fmt((x.z && x.z.total) || 0)}، الدرج ${dt(Number(x.diff) || 0)}`), "");
+    lines.push("🔒 الورديات:", ...closed.map(x => `  • ${x.openedBy || "؟"} ${hm(Number(x.openedAt))} إلى ${hm(Number(x.closedAt))}: مبيعات ${fmt((x.z && x.z.total) || 0)}، الدرج ${dt(Number(x.diff) || 0)}${x.noSale ? `، فتح الدرج بدون بيع ${x.noSale} مرة` : ""}`), "");
   }
   // Stocktakes saved that day: how many items were counted and what was missing, at purchase price.
   const takes = stocktakes.filter(x => x.at && isoDay(Number(x.at)) === day);

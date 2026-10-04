@@ -118,6 +118,13 @@ fieldset.sec{border:1px solid var(--line);border-radius:12px;padding:10px 12px 1
 fieldset.sec legend{padding:0 6px;font-family:var(--f-display);font-weight:700;font-size:14px}
 .check{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
 .check input{width:18px;height:18px;accent-color:var(--accent)}
+.check input{flex:none}
+.seg.wrap{flex-wrap:wrap}.seg.wrap button{flex:1 1 auto;white-space:nowrap}
+.lk-list{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r-ctl)}
+.ct-list{list-style:none;margin:0;padding:0;max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.ct-list li{border:1px solid var(--line);border-radius:var(--r-ctl);padding:8px 10px;background:var(--paper-2)}
+.ct-list .check{align-items:flex-start}.ct-list .check input{margin-top:2px}
+.ct-list small{display:block;color:var(--muted);font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:62vw}
 input:disabled{opacity:.55}
 .pack{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;align-items:end;padding-bottom:10px;border-bottom:1px dashed var(--line)}
 .pack .icon-btn{justify-self:end}
@@ -221,7 +228,7 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 .stat .v small{font-size:12px;font-weight:500;color:var(--muted);margin-inline-start:4px}
 .stat.main{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);border-bottom:4px solid var(--brand-orange)}
 .stat.main .k,.stat.main .v small{color:inherit;opacity:.85}
-.v.debt{color:var(--debt)}.v.paid{color:var(--paid)}
+.v.debt{color:var(--debt)}.v.paid{color:var(--paid)}.v.warn{color:var(--warn)}
 .rep-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:12px;align-items:start}
 .rep-side{display:flex;flex-direction:column;gap:12px}
 .pane h2{margin:0;padding:12px 14px;font-family:var(--f-display);font-size:16px;border-bottom:1px solid var(--line)}
@@ -435,7 +442,11 @@ const I={
   left:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m15 6-6 6 6 6"/></svg>',
   right:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg>',
   sheet:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/></svg>',
-  edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>'
+  edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>',
+  print:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M7 8V3h10v5M7 17H4v-7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7h-3"/><path d="M7 14h10v7H7z"/></svg>',
+  drawer:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M3 10h18v9H3zM5 10l2-5h10l2 5M10 14.5h4"/></svg>',
+  scale:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 4v15M7 19h10M5 8h14M5 8l-3 7a3 3 0 0 0 6 0zM19 8l-3 7a3 3 0 0 0 6 0z"/></svg>',
+  list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>'
 };
 function toast(msg,ms){
   document.querySelectorAll(".toast").forEach(t=>t.remove());
@@ -564,6 +575,22 @@ function findCode(code){
   for(const p of productList()){if(p.barcode&&p.barcode===code)return {p,pack:null};const k=packsOf(p).find(k=>k.barcode&&k.barcode===code);if(k)return {p,pack:k}}
   return null;
 }
+/* ---------- scale labels ----------
+   A label scale prints an EAN-13 that starts with an in-store flag (20–29): flag (2 digits), the item's number on the scale (PLU),
+   the weight in grams or the price in dinars, and a check digit. The layout is set once for the shop (settings/pos.scale),
+   and each item sold by weight carries its scale number (plu). */
+function scaleCfg(){const c=S.pos.scale||{};return {on:!!c.on,pre:String(c.pre||"2"),len:[4,5,6].includes(Number(c.len))?Number(c.len):5,kind:c.kind==="p"?"p":"w"}}
+function ean13ok(c){if(!/^\d{13}$/.test(c))return false;let t=0;for(let i=0;i<12;i++)t+=Number(c[i])*(i%2?3:1);return (10-t%10)%10===Number(c[12])}
+// {p, kg} or {p, amt} for a label, {plu} when no item has that scale number, null when the code is not a scale label.
+function scaleCode(code,cfg){
+  const c=cfg||scaleCfg();if(!c.on||!ean13ok(code))return null;
+  if(!c.pre.split(/[\s,،]+/).filter(Boolean).some(x=>code.startsWith(x)))return null;
+  const plu=String(Number(code.slice(2,2+c.len))),v=Number(code.slice(2+c.len,12));
+  const p=cfg?null:productList().find(x=>isWeighed(x)&&x.plu&&String(Number(x.plu))===plu);
+  if(!p)return {plu,v,kind:c.kind};
+  if(!(v>0))return null;
+  return c.kind==="p"?{p,amt:v}:{p,kg:round3(v/1000)};
+}
 const stockHtml=p=>`<span class="num">${qtyText(round3(stockOf(p)))}</span> ${esc(baseUnit(p))}`;
 
 /* ---------- offers ----------
@@ -581,7 +608,7 @@ function offerOf(p){
 const offerHtml=o=>o.n>=2?`<span class="num">${o.n}</span> بـ <span class="num">${fmt(o.price)}</span>`:`<span class="num">${fmt(o.price)}</span>`;
 // Sets a line's price for retail or wholesale, with the item's current offer on a retail base-unit line.
 function priceLine(l,p,pack,whole){
-  l.price=priceFor(p,pack,whole);delete l.was;delete l.deal;
+  l.price=priceFor(p,pack,whole);delete l.was;delete l.deal;delete l.fix;
   const o=!pack&&!whole?offerOf(p):null;
   if(o&&o.type==="price"&&o.price<l.price){l.was=l.price;l.price=o.price}
   if(o&&o.type==="qty"&&o.price<o.n*l.price)l.deal={n:o.n,price:o.price};
@@ -589,6 +616,7 @@ function priceLine(l,p,pack,whole){
 }
 // A line's amount: whole deals at the deal price, the remainder at the unit price.
 function lineTotal(l){
+  if(l.fix>0)return Math.round(l.fix);
   const q=Number(l.qty)||0,full=Math.round((Number(l.price)||0)*q);
   if(!l.deal||!(l.deal.n>=2))return full;
   const k=Math.floor(q/l.deal.n+1e-9);
@@ -620,7 +648,7 @@ function addToCart(p,qty,pack){
 }
 function setQty(key,q){
   const l=S.cart.find(x=>x.key===key);if(!l)return;
-  if(!(q>0))S.cart=S.cart.filter(x=>x!==l);else l.qty=round3(q);
+  if(!(q>0))S.cart=S.cart.filter(x=>x!==l);else{if(round3(q)!==l.qty)delete l.fix;l.qty=round3(q)}
   if(!S.cart.length){S.discount=0;S.whole=false}saveCart();refresh("cart");
 }
 function clearCart(){S.cart=[];S.discount=0;S.whole=false;S.approval=null;saveCart();refresh("cart")}
@@ -673,6 +701,7 @@ function sellView(){
         <div class="tool-row">
           <label class="search">${I.search}<input id="q" type="search" placeholder="ابحث باسم المادة أو الباركود" autocomplete="off" value="${esc(S.q)}" aria-label="بحث عن مادة"></label>
           ${canScan()?`<button class="icon-btn" type="button" data-act="scan" aria-label="مسح باركود بالكاميرا" title="مسح باركود بالكاميرا">${I.scan}</button>`:""}
+          ${canSell()&&canKick()?`<button class="icon-btn" type="button" data-act="drawer" aria-label="فتح الدرج" title="فتح الدرج">${I.drawer}</button>`:""}
         </div>
         <div class="chips" id="chips"></div>
       </div>
@@ -766,7 +795,7 @@ function editLine(key,raw){
         const other=S.cart.find(x=>x.key===nl.key);
         if(other){other.qty=round3(other.qty+qv);S.cart=S.cart.filter(x=>x!==l)}else S.cart[S.cart.indexOf(l)]=nl;
         saveCart();refresh("cart");closeModal();return}
-      if(priceOk&&pv!==l.price){l.price=pv;delete l.was;delete l.deal}setQty(key,qv);closeModal()});
+      if(priceOk&&pv!==l.price){l.price=pv;delete l.was;delete l.deal;delete l.fix}setQty(key,qv);closeModal()});
   });
 }
 function discountForm(){
@@ -828,7 +857,8 @@ function weightForm(p,line){
     <div class="seg" role="group" aria-label="طريقة البيع"><button type="button" data-wm="w">بالوزن</button><button type="button" data-wm="a">بالمبلغ</button></div>
     <form id="wf" class="field" style="gap:10px" novalidate>
       <div class="tool-row"><div class="field" style="flex:1"><input id="wv" class="big" inputmode="decimal" autocomplete="off"></div>
-        <div class="seg" id="wu" role="group" aria-label="وحدة الوزن" style="flex:none"><button type="button" data-wu="kg">كغم</button><button type="button" data-wu="g">غرام</button></div></div>
+        <div class="seg" id="wu" role="group" aria-label="وحدة الوزن" style="flex:none"><button type="button" data-wu="kg">كغم</button><button type="button" data-wu="g">غرام</button></div>
+        ${HW.scale==="serial"&&hasSerial()?`<button class="btn" type="button" id="wScale" title="قراءة الوزن من الميزان">${I.scale}الميزان</button>`:""}</div>
       <div class="quick" id="wq"></div>
       <div class="due"><span class="k" id="wl"></span><span class="v"><span class="num" id="wt">0</span> <small style="font-size:16px">${CUR}</small></span></div>
       <p class="err" id="wErr"></p>
@@ -854,6 +884,11 @@ function weightForm(p,line){
       if(mode==="a")inp.value=fmt(v);else setFromKg(v);show();inp.focus()});
     inp.addEventListener("input",show);
     if(line)setFromKg(line.qty);draw();setTimeout(()=>{inp.focus();inp.select()},20);
+    // A scale on a cable: its weight fills the box (read once when the form opens for a new line, and on the button).
+    const sb=m.querySelector("#wScale");
+    if(sb){const rd=ask=>{sb.disabled=true;readScale(ask).then(kg=>{if(!m.isConnected)return;if(kg>0){mode="w";setFromKg(kg);draw();inp.select()}else if(ask)toast("الميزان ما عطى وزن. حط المادة عليه وحاول مرة ثانية.",3000)})
+        .catch(e=>{if(ask)hwFail(e)}).finally(()=>{sb.disabled=false})};
+      sb.onclick=()=>rd(true);if(!line)rd(false)}
     const del=m.querySelector("#wDel");if(del)del.onclick=()=>{setQty(line.key,0);closeModal()};
     const wp=m.querySelector("#wPrice");if(wp)wp.onclick=()=>editLine(line.key,true);
     m.querySelector("#wf").addEventListener("submit",e=>{e.preventDefault();
@@ -915,15 +950,33 @@ function sellCode(code){
   const t=normDigits(code).trim();if(!t)return false;
   const f=findCode(t);
   if(f){if(sellItem(f.p,f.pack))toast("انضافت: "+f.p.name+(f.pack?" ("+f.pack.name+")":""),1500);return true}
-  toast(isAdmin()?"هذا الباركود مو مسجل. أضفه من تبويب المواد.":"هذا الباركود مو مسجل على أي مادة.",3500);return false;
+  const sc=scaleCode(t);
+  if(sc&&sc.p)return sellScaled(sc);
+  if(sc){toast(`رقم الميزان ${sc.plu} مو مربوط بأي مادة.${isAdmin()?" اكتبه بالمادة بخانة «رقمها بالميزان».":""}`,4500);return false}
+  // The owner links an unknown code to an item on the spot (the ready-made list has names and prices, not barcodes).
+  if(isAdmin()){linkCodeForm(t,p=>{if(sellItem(p))toast("انضافت: "+p.name,1500)});return true}
+  toast("هذا الباركود مو مسجل على أي مادة.",3500);return false;
+}
+// A scale label: its weight (or its price) goes on the item's line; a price label keeps the label's amount exactly.
+function sellScaled(r){
+  if(!canSell())return false;
+  const p=r.p,l=S.cart.find(x=>x.key===lineKey(p,null));
+  const price=l?l.price:priceLine({},p,null,S.whole).price;
+  if(!(price>0)){toast("هذي المادة ما عليها سعر.",3000);return false}
+  const kg=r.kg||round3(r.amt/price),amt=r.amt||Math.round(kg*price);
+  if(!(kg>0)){toast("الملصق ما بيه وزن.",3000);return false}
+  if(l){const before=lineTotal(l);l.qty=round3(l.qty+kg);if(r.amt||l.fix>0)l.fix=before+amt}
+  else{const nl=lineFor(p,null,kg);if(r.amt)nl.fix=r.amt;S.cart.push(nl)}
+  saveCart();refresh("cart");if(navigator.vibrate)navigator.vibrate(40);
+  toast(`انضاف ${kgText(kg)} ${p.name} = ${fmt(amt)}`,1800);return true;
 }
 // A USB / Bluetooth scanner types the code fast and presses Enter. Catch it even when no field has focus.
 let scanBuf="",scanAt=0;
 document.addEventListener("keydown",e=>{
-  if(!S.me||(S.view!=="sell"&&!(S.view==="count"&&S.count))||modalOpen())return;
+  if(!S.me||(S.view!=="sell"&&!(S.view==="count"&&S.count)&&!(S.view==="products"&&isAdmin()))||modalOpen())return;
   const tag=(e.target&&e.target.tagName)||"";if(/INPUT|TEXTAREA|SELECT/.test(tag))return;
   const now=Date.now();if(now-scanAt>80)scanBuf="";scanAt=now;
-  if(e.key==="Enter"){if(scanBuf.length>=4){if(S.view==="count")countCode(scanBuf);else sellCode(scanBuf);e.preventDefault()}scanBuf="";return}
+  if(e.key==="Enter"){if(scanBuf.length>=4){if(S.view==="count")countCode(scanBuf);else if(S.view==="products")codeOnItems(scanBuf);else sellCode(scanBuf);e.preventDefault()}scanBuf="";return}
   if(e.key.length===1)scanBuf+=e.key;
 });
 
@@ -1044,7 +1097,7 @@ const itemName=i=>i.name+(Number(i.n)>1&&i.unit?` (${i.unit})`:"");
 const itemQty=i=>i.w?kgText(Number(i.qty)||0):qtyText(i.qty);
 const itemOffer=i=>i.deal?`عرض ${i.deal.n} بـ ${fmt(i.deal.price)}`:i.was?`عرض بدل ${fmt(i.was)}`:"";
 // What the offers took off an invoice: the usual price of every line minus what it came to.
-const offerSaving=items=>items.reduce((a,i)=>a+Math.max(0,Math.round((Number(i.was)||Number(i.price)||0)*(Number(i.qty)||0))-(Number(i.total)||0)),0);
+const offerSaving=items=>items.reduce((a,i)=>a+(i.was||i.deal?Math.max(0,Math.round((Number(i.was)||Number(i.price)||0)*(Number(i.qty)||0))-(Number(i.total)||0)):0),0);
 const usdPaidText=s=>`${usdFmt(s.usd)} (= ${fmt(s.usdIqd)} ${CUR})${s.topUp?` + ${fmt(s.topUp)} دينار`:""}`;
 function itemsText(items,max){const s=items.map(i=>i.w?`${itemName(i)} ${itemQty(i)}`:`${itemName(i)} ×${qtyText(i.qty)}`).join("، ");return max&&s.length>max?s.slice(0,max-1)+"…":s}
 /* One sale = one batch: the sale, and when part of it is on credit, the debt transaction on the customer's account
@@ -1089,10 +1142,13 @@ function saleDone(sale){
     ${sale.change>0?`<div class="banner info" style="text-align:center;font-size:17px">الباقي للزبون: <b class="num">${fmt(sale.change)}</b> ${CUR}</div>`:""}
     ${sale.debt>0?`<div class="banner bad">انكتب <b class="num">${fmt(sale.debt)}</b> ${CUR} دين على ${esc(sale.customerName)}${sale.cash>0?`، واستلمت <b class="num">${fmt(sale.cash)}</b> كاش`:""}.</div>`:""}
     <div class="foot"><button class="btn primary" type="button" data-close autofocus style="flex:1">بيع جديد</button>
-      <button class="btn" type="button" id="rPdf">${I.pdf}وصل PDF</button><button class="btn wa" type="button" id="rWa">${I.wa}واتساب</button></div>`,m=>{
+      ${canPrint()?`<button class="btn" type="button" id="rPrint">${I.print}طباعة</button>`:""}<button class="btn" type="button" id="rPdf">${I.pdf}وصل PDF</button><button class="btn wa" type="button" id="rWa">${I.wa}واتساب</button></div>`,m=>{
     m.querySelector("#rPdf").onclick=()=>receiptPdf(sale);
     m.querySelector("#rWa").onclick=()=>shareWhatsApp(sale);
+    // The drawer already opened with the sale (afterSaleHw), so a print from here is only paper.
+    const rp=m.querySelector("#rPrint");if(rp)rp.onclick=()=>printReceipt(sale,{ask:true});
   });
+  afterSaleHw(sale);
 }
 
 /* ---------- receipts ---------- */
@@ -1135,44 +1191,322 @@ async function saveFile(filename,blob){
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},5000);return true;
 }
-/* 80mm receipt drawn on a canvas (Arabic shapes correctly), one long page sized to its content. */
-async function receiptPdf(sale){
-  toast("جارِ تجهيز الوصل…");if(!await pdfReady())return;
-  const W=576,M=28,rowH=34,c=S.customers.get(sale.customerId);
-  const lines=sale.items.length;
-  const saved=offerSaving(sale.items);
-  const H=330+lines*rowH*1.6+(sale.discount?60:0)+(saved?30:0)+(sale.debt>0?120:40)+(sale.usd?60:0)+(sale.change>0?34:0)+90;
+/* ---------- printed slips (receipt, Z report) ----------
+   Each slip is drawn on a canvas (Arabic shapes correctly) 576px wide = 72mm of an 80mm roll at 203 dpi, the dots of a thermal head.
+   The PDF uses the brand colours; a thermal printer gets plain black (MONO), since it prints dots, not shades.
+   A 58mm roll is drawn narrower (448) and scaled to its 384 dots. */
+const MONO={green:"#000",orange:"#000",ink:"#000",muted:"#222",line:"#000",head:"#fff",shade:"#fff",debt:"#000",paid:"#000"};
+let logoImgs={};
+// The brand mark (BRAND_MARK) as an image: the letter in the brand green with its three coloured fruits, or all black for thermal paper.
+function logoImage(mono){
+  if(logoImgs[mono?1:0])return logoImgs[mono?1:0];
+  let svg=BRAND_MARK.replace("<svg ",'<svg xmlns="http://www.w3.org/2000/svg" width="218" height="218" ').replace(/currentColor/g,mono?"#000":PDFC.green);
+  if(mono)svg=svg.replace(/fill="#(F39A1E|E2412B|7BC043)"/gi,'fill="#000"');
+  return logoImgs[mono?1:0]=new Promise(res=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>res(null);im.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg)});
+}
+// Shared slip header: brand bar, logo, shop name, address. Returns the canvas, its context, palette and the next y.
+async function slipStart(o,H){
+  const W=o.w||576,C=o.mono?MONO:PDFC;
   const cv=document.createElement("canvas");cv.width=W;cv.height=Math.round(H);const x=cv.getContext("2d");
-  x.fillStyle="#fff";x.fillRect(0,0,W,cv.height);x.fillStyle=PDFC.green;x.fillRect(0,0,W,12);x.fillStyle=PDFC.orange;x.fillRect(0,12,W,4);
+  x.fillStyle="#fff";x.fillRect(0,0,W,cv.height);
+  if(o.mono){x.fillStyle="#000";x.fillRect(0,0,W,6)}else{x.fillStyle=PDFC.green;x.fillRect(0,0,W,12);x.fillStyle=PDFC.orange;x.fillRect(0,12,W,4)}
   x.direction="rtl";x.textAlign="center";let y=70;
-  x.fillStyle=PDFC.green;x.font=`400 40px ${PDF_BRAND}`;x.fillText(shopName(),W/2,y);y+=34;
-  x.fillStyle=PDFC.muted;x.font=`400 18px ${PDF_F}`;
+  if(o.logo!==false){const im=await logoImage(!!o.mono);if(im){const s=96;x.drawImage(im,(W-s)/2,26,s,s);y=26+s+40}}
+  x.fillStyle=C.green;x.font=`400 40px ${PDF_BRAND}`;x.fillText(shopName(),W/2,y);y+=34;
+  return {cv,x,C,W,y};
+}
+function slipTrim(cv,y){const h=Math.min(cv.height,Math.round(y));const out=document.createElement("canvas");out.width=cv.width;out.height=h;out.getContext("2d").drawImage(cv,0,0);return out}
+async function receiptCanvas(sale,o){
+  o=o||{};
+  const M=o.w&&o.w<576?18:28,rowH=34,c=S.customers.get(sale.customerId);
+  const saved=offerSaving(sale.items);
+  const H=470+sale.items.length*rowH*1.6+(sale.discount?60:0)+(saved?30:0)+(sale.debt>0?120:40)+(sale.usd?60:0)+(sale.change>0?34:0)+90;
+  const {cv,x,C,W,y:y0}=await slipStart(o,H);let y=y0;
+  x.fillStyle=C.muted;x.font=`400 18px ${PDF_F}`;
   const sub=[S.settings.address,S.settings.phone].filter(Boolean).join(" · ");if(sub){x.fillText(sub,W/2,y);y+=28}
-  x.fillStyle=PDFC.ink;x.font=`700 20px ${PDF_F}`;x.fillText(`فاتورة #${sale.no}`,W/2,y+6);y+=32;
-  x.fillStyle=PDFC.muted;x.font=`400 18px ${PDF_F}`;x.fillText(`${sale.date} · ${hm12(sale.at)} · ${sale.by}`,W/2,y);y+=22;
-  const rule=(dash)=>{x.strokeStyle=PDFC.line;x.lineWidth=2;x.setLineDash(dash?[6,6]:[]);x.beginPath();x.moveTo(M,y);x.lineTo(W-M,y);x.stroke();x.setLineDash([])};
+  x.fillStyle=C.ink;x.font=`700 20px ${PDF_F}`;x.fillText(`فاتورة #${sale.no}`,W/2,y+6);y+=32;
+  x.fillStyle=C.muted;x.font=`400 18px ${PDF_F}`;x.fillText(`${sale.date} · ${hm12(sale.at)} · ${sale.by}`,W/2,y);y+=22;
+  const rule=(dash)=>{x.strokeStyle=C.line;x.lineWidth=2;x.setLineDash(dash?[6,6]:[]);x.beginPath();x.moveTo(M,y);x.lineTo(W-M,y);x.stroke();x.setLineDash([])};
   rule(true);y+=34;
-  const lr=(r,l,o)=>{o=o||{};x.font=`${o.w||400} ${o.s||20}px ${o.f||PDF_F}`;x.fillStyle=o.c||PDFC.ink;x.textAlign="right";x.direction="rtl";
-    let s=String(r);const maxW=W-2*M-170;while(s.length>2&&x.measureText(s).width>maxW)s=s.slice(0,-2);if(s!==String(r))s+="…";x.fillText(s,W-M,y);
-    x.textAlign="left";x.direction="ltr";x.font=`${o.w2||o.w||700} ${o.s2||o.s||20}px ${o.f2||PDF_D}`;x.fillText(l,M,y);x.direction="rtl"};
-  for(const i of sale.items){lr(itemName(i),fmt(i.total));y+=24;x.font=`400 16px ${PDF_F}`;x.fillStyle=PDFC.muted;x.textAlign="right";x.direction="rtl";
+  const lr=(r,l,s)=>{s=s||{};x.font=`${s.w||400} ${s.s||20}px ${s.f||PDF_F}`;x.fillStyle=s.c||C.ink;x.textAlign="right";x.direction="rtl";
+    let t=String(r);const maxW=W-2*M-(W<576?140:170);while(t.length>2&&x.measureText(t).width>maxW)t=t.slice(0,-2);if(t!==String(r))t+="…";x.fillText(t,W-M,y);
+    x.textAlign="left";x.direction="ltr";x.font=`${s.w2||s.w||700} ${s.s2||s.s||20}px ${s.f2||PDF_D}`;x.fillText(l,M,y);x.direction="rtl"};
+  for(const i of sale.items){lr(itemName(i),fmt(i.total));y+=24;x.font=`400 16px ${PDF_F}`;x.fillStyle=C.muted;x.textAlign="right";x.direction="rtl";
     x.fillText(`${itemQty(i)} × ${fmt(i.price)}${itemOffer(i)?" · "+itemOffer(i):""}`,W-M,y);y+=rowH*1.6-24}
   y-=14;rule(true);y+=34;
-  if(saved){lr("وفّرت بالعروض",fmt(saved),{c:PDFC.debt,s:18});y+=30}
+  if(saved){lr("وفّرت بالعروض",fmt(saved),{c:C.debt,s:18});y+=30}
   if(sale.discount){lr("المجموع",fmt(sale.subtotal));y+=30;lr("الخصم","-"+fmt(sale.discount));y+=30}
-  lr("المطلوب",fmt(sale.total)+" IQD",{w:700,s:26,c:PDFC.green,w2:800});y+=40;
-  if(sale.debt>0){if(sale.cash>0){lr("واصل كاش",fmt(sale.cash),{c:PDFC.paid});y+=30}
-    lr("دين على "+(sale.customerName||""),fmt(sale.debt),{c:PDFC.debt});y+=30;
-    if(c){lr("رصيد الحساب الآن",fmt(balanceOf(c.id)),{c:PDFC.debt,s:18});y+=30}}
+  lr("المطلوب",fmt(sale.total)+" IQD",{w:700,s:26,c:C.green,w2:800});y+=40;
+  if(sale.debt>0){if(sale.cash>0){lr("واصل كاش",fmt(sale.cash),{c:C.paid});y+=30}
+    lr("دين على "+(sale.customerName||""),fmt(sale.debt),{c:C.debt});y+=30;
+    if(c){lr("رصيد الحساب الآن",fmt(balanceOf(c.id)),{c:C.debt,s:18});y+=30}}
   else{lr("الدفع","كاش",{f2:PDF_F});y+=30;if(sale.received){lr("المستلم",fmt(sale.received),{s:18});y+=28}
     if(sale.usd){lr("المستلم بالدولار",usdFmt(sale.usd)+" = "+fmt(sale.usdIqd),{s:18});y+=28;if(sale.topUp){lr("والباقي بالدينار",fmt(sale.topUp),{s:18});y+=28}}}
   if(sale.change>0){lr("الباقي للزبون",fmt(sale.change),{s:18});y+=30}
-  if(sale.status==="void"){x.textAlign="center";x.fillStyle=PDFC.debt;x.font=`700 22px ${PDF_F}`;x.fillText("فاتورة ملغية",W/2,y+4);y+=34}
-  y+=4;rule(false);y+=34;x.textAlign="center";x.direction="rtl";x.fillStyle=PDFC.green;x.font=`700 20px ${PDF_D}`;x.fillText(SLOGAN,W/2,y);
-  const hPx=Math.min(cv.height,y+40);const out=document.createElement("canvas");out.width=W;out.height=hPx;out.getContext("2d").drawImage(cv,0,0);
-  const {jsPDF}=window.jspdf;const wMM=80,hMM=hPx*wMM/W;const pdf=new jsPDF({unit:"mm",format:[wMM,hMM],orientation:hMM<wMM?"landscape":"portrait"});
-  pdf.addImage(out.toDataURL("image/jpeg",0.95),"JPEG",0,0,wMM,hMM);
-  try{if(await saveFile(`وصل-${sale.no}.pdf`,pdf.output("blob")))toast("تم حفظ الوصل")}catch(e){console.warn(e);toast("تعذّر حفظ الملف.")}
+  if(sale.status==="void"){x.textAlign="center";x.fillStyle=C.debt;x.font=`700 22px ${PDF_F}`;x.fillText("فاتورة ملغية",W/2,y+4);y+=34}
+  y+=4;rule(false);y+=34;x.textAlign="center";x.direction="rtl";x.fillStyle=C.green;x.font=`700 20px ${PDF_D}`;x.fillText(SLOGAN,W/2,y);
+  return slipTrim(cv,y+40);
+}
+// A slip canvas (576 wide) as an 80mm PDF.
+function slipPdf(cv){const {jsPDF}=window.jspdf;const wMM=80,hMM=cv.height*wMM/cv.width;const pdf=new jsPDF({unit:"mm",format:[wMM,hMM],orientation:hMM<wMM?"landscape":"portrait"});
+  pdf.addImage(cv.toDataURL("image/jpeg",0.95),"JPEG",0,0,wMM,hMM);return pdf.output("blob")}
+async function receiptPdf(sale){
+  toast("جارِ تجهيز الوصل…");if(!await pdfReady())return;
+  try{if(await saveFile(`وصل-${sale.no}.pdf`,slipPdf(await receiptCanvas(sale))))toast("تم حفظ الوصل")}catch(e){console.warn(e);toast("تعذّر حفظ الملف.")}
+}
+
+/* ---------- printer, cash drawer and scale ----------
+   These are the devices at the counter, so the choice is kept on this device (HW_KEY), except the scale label layout,
+   which is the same for the whole shop (settings/pos.scale).
+   - Printer: «طابعة الجهاز» prints the slip image through the system print dialog (any printer with its driver; Chrome
+     started with --kiosk-printing prints without the dialog). «USB مباشر» (Web Serial) and «بلوتوث» (Web Bluetooth) send
+     ESC/POS straight to a thermal printer, and «RawBT» hands it to the RawBT app on Android (the APK too).
+   - Cash drawer: plugged into the printer (RJ11) and opened by its ESC p pulse, with each cash sale and from «فتح الدرج».
+     An opening without a sale is logged and counted on the shift (noSale).
+   - Scale: label scales are read by the barcode scanner (scaleCode); a scale on a cable is read by the weight form. */
+const HW_KEY="shahm-pos-hw";
+const HW_DEF={print:"off",paper:80,auto:true,logo:true,cut:true,drawer:true,baud:9600,scale:"off",sbaud:9600,sreq:""};
+let HW={...HW_DEF};
+function loadHw(){try{HW={...HW_DEF,...JSON.parse(localStorage.getItem(HW_KEY)||"{}")}}catch(e){HW={...HW_DEF}}}
+function saveHw(){try{localStorage.setItem(HW_KEY,JSON.stringify(HW))}catch(e){}}
+const IS_ANDROID=/Android/i.test(navigator.userAgent);
+const hasSerial=()=>!NATIVE&&!!(navigator.serial&&window.isSecureContext);
+const hasBt=()=>!NATIVE&&!!(navigator.bluetooth&&window.isSecureContext);
+const escpos=m=>m==="serial"||m==="bt"||m==="rawbt";
+function printModes(){return [["off","بدون"],...(NATIVE?[]:[["system","طابعة الجهاز"]]),...(hasSerial()?[["serial","USB مباشر"]]:[]),...(hasBt()?[["bt","بلوتوث"]]:[]),...(IS_ANDROID?[["rawbt","RawBT"]]:[])]}
+const canPrint=()=>HW.print!=="off"&&printModes().some(m=>m[0]===HW.print);
+const canKick=()=>canPrint()&&escpos(HW.print);
+const slipOpts=()=>({mono:true,logo:HW.logo,w:HW.paper===58?448:576});
+
+// ESC/POS: the slip goes as a raster image (GS v 0), 1 bit per dot, in bands the printer's buffer takes.
+// The drawer pulse goes on both drawer pins (2 and 5), so either wiring opens.
+const ESC_INIT=[0x1b,0x40],ESC_KICK=[0x1b,0x70,0x00,0x19,0xfa,0x1b,0x70,0x01,0x19,0xfa],ESC_FEED=[0x1b,0x64,0x04],ESC_CUT=[0x1d,0x56,0x42,0x00];
+function rasterBytes(cv,dots){
+  const h=Math.round(cv.height*dots/cv.width),c=document.createElement("canvas");c.width=dots;c.height=h;
+  const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,dots,h);x.drawImage(cv,0,0,dots,h);
+  const d=x.getImageData(0,0,dots,h).data,bw=dots>>3,BAND=128,parts=[];
+  for(let y0=0;y0<h;y0+=BAND){const bh=Math.min(BAND,h-y0),b=new Uint8Array(8+bw*bh);
+    b.set([0x1d,0x76,0x30,0,bw&255,bw>>8,bh&255,bh>>8]);
+    for(let yy=0;yy<bh;yy++)for(let xb=0;xb<bw;xb++){let v=0;
+      for(let k=0;k<8;k++){const i=((y0+yy)*dots+xb*8+k)*4;if(d[i]*.299+d[i+1]*.587+d[i+2]*.114<160)v|=128>>k}
+      b[8+yy*bw+xb]=v}
+    parts.push(b)}
+  return parts;
+}
+function joinBytes(parts){const out=new Uint8Array(parts.reduce((a,p)=>a+p.length,0));let o=0;for(const p of parts){out.set(p,o);o+=p.length}return out}
+const slipJob=(cv,kick)=>joinBytes([new Uint8Array(ESC_INIT),...(kick?[new Uint8Array(ESC_KICK)]:[]),...rasterBytes(cv,HW.paper===58?384:576),new Uint8Array(ESC_FEED),...(HW.cut?[new Uint8Array(ESC_CUT)]:[])]);
+
+// Web Serial: the printer and the scale are told apart by their USB ids, saved when each is picked.
+const HWC={};
+const portInfo=p=>{try{const i=p.getInfo();return {v:i.usbVendorId||0,p:i.usbProductId||0}}catch(e){return {v:0,p:0}}};
+const samePort=(a,b)=>!!(a&&b&&a.v===b.v&&a.p===b.p);
+async function serialPort(role,ask){
+  const key=role==="scale"?"sport":"pport",want=HW[key],other=HW[role==="scale"?"pport":"sport"];
+  const ports=await navigator.serial.getPorts();
+  let port=want?ports.find(p=>samePort(portInfo(p),want)):ports.find(p=>!samePort(portInfo(p),other));
+  if(!port&&ask){port=await navigator.serial.requestPort();HW[key]=portInfo(port);saveHw()}
+  return port||null;
+}
+async function serialOpen(port,baud){if(!port.writable)await port.open({baudRate:Number(baud)||9600});return port}
+async function sendSerial(bytes,ask){
+  const port=await serialPort("printer",ask);if(!port)throw new Error("pick");await serialOpen(port,HW.baud);
+  const w=port.writable.getWriter();try{for(let i=0;i<bytes.length;i+=4096)await w.write(bytes.subarray(i,i+4096))}finally{w.releaseLock()}
+}
+// Web Bluetooth (BLE): the usual services of thermal printers; any writable characteristic in them takes the bytes.
+const BT_SERVICES=["000018f0-0000-1000-8000-00805f9b34fb","0000ff00-0000-1000-8000-00805f9b34fb","0000ffe0-0000-1000-8000-00805f9b34fb",
+  "0000fee7-0000-1000-8000-00805f9b34fb","0000ae30-0000-1000-8000-00805f9b34fb","49535343-fe7d-4ae5-8fa9-9fafd205e455","e7810a71-73ae-499d-8c15-faa9aef0c3f2"];
+async function btChar(ask){
+  if(HWC.ch&&HWC.bt&&HWC.bt.gatt.connected)return HWC.ch;
+  let dev=HWC.bt||null;
+  if(!dev&&HW.btId&&navigator.bluetooth.getDevices){try{dev=(await navigator.bluetooth.getDevices()).find(d=>d.id===HW.btId)||null}catch(e){}}
+  if(!dev){if(!ask)throw new Error("pick");dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:BT_SERVICES});HW.btId=dev.id;HW.btName=dev.name||"";saveHw()}
+  const srv=await dev.gatt.connect();
+  for(const sv of await srv.getPrimaryServices())for(const c of await sv.getCharacteristics())
+    if(c.properties.writeWithoutResponse||c.properties.write){HWC.bt=dev;HWC.ch=c;return c}
+  throw new Error("bt-char");
+}
+async function sendBt(bytes,ask){
+  const c=await btChar(ask),fast=c.properties.writeWithoutResponse&&c.writeValueWithoutResponse;
+  for(let i=0;i<bytes.length;i+=180){const part=bytes.slice(i,i+180);if(fast){await c.writeValueWithoutResponse(part);await new Promise(r=>setTimeout(r,4))}else await c.writeValue(part)}
+}
+// RawBT (Android app) takes ESC/POS as a base64 link.
+function sendRawbt(bytes){
+  let s="";for(let i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));
+  const url="rawbt:base64,"+btoa(s);
+  if(NATIVE)plugin("AppLauncher").openUrl({url}).catch(()=>toast("ثبّت تطبيق RawBT من Google Play حتى تطبع.",4500));else location.href=url;
+}
+// System print: the slip image alone on a page the size of the roll.
+function systemPrint(cv){
+  return new Promise(res=>{
+    const wmm=HW.paper===58?48:72,hmm=Math.ceil(cv.height*wmm/cv.width)+6;
+    const f=document.createElement("iframe");f.setAttribute("aria-hidden","true");f.tabIndex=-1;f.style.cssText="position:fixed;width:0;height:0;border:0;left:-9999px;top:0";document.body.appendChild(f);
+    const d=f.contentDocument;d.open();d.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(shopName())}</title><style>@page{size:${HW.paper}mm ${hmm}mm;margin:0}html,body{margin:0;background:#fff}img{display:block;width:${wmm}mm;margin:2mm auto 0}</style></head><body><img alt=""></body></html>`);d.close();
+    const img=d.querySelector("img");
+    img.onload=()=>setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print()}catch(e){console.warn(e)}res(true);setTimeout(()=>f.remove(),1500)},60);
+    img.onerror=()=>{f.remove();res(false)};
+    img.src=cv.toDataURL("image/png");
+  });
+}
+async function sendBytes(bytes,ask){if(HW.print==="serial")await sendSerial(bytes,ask);else if(HW.print==="bt")await sendBt(bytes,ask);else if(HW.print==="rawbt")sendRawbt(bytes)}
+function hwFail(e){
+  console.warn(e);const n=e&&e.name,msg=String(e&&e.message||"");
+  if(msg==="pick")toast(HW.print==="bt"?"اضغط «طباعة» حتى تتصل الطابعة.":"اختار الطابعة من قائمة الحساب ← الطابعة والدرج والميزان.",4500);
+  else if(msg==="pick-scale")toast("اختار الميزان من قائمة الحساب ← الطابعة والدرج والميزان.",4500);
+  else if(n==="NotFoundError")toast("ما اخترت جهاز.",2500);
+  else if(n==="SecurityError"||n==="NotAllowedError")toast("المتصفح ما سمح بالاتصال. اضغط الزر مرة ثانية.",4000);
+  else toast("تعذّر الاتصال بالجهاز. تأكد إنه شغال وموصول، وجرّب مرة ثانية.",4500);
+}
+async function printCanvas(make,o){
+  o=o||{};if(!canPrint())return false;
+  try{await pdfFonts();const cv=await make(slipOpts());
+    if(HW.print==="system")await systemPrint(cv);else await sendBytes(slipJob(cv,o.kick),o.ask);
+    return true}catch(e){hwFail(e);return false}
+}
+// kick: open the drawer with this receipt (a new cash sale, not a reprint).
+const printReceipt=(sale,o)=>printCanvas(w=>receiptCanvas(sale,w),o);
+const printZ=(x,o)=>printCanvas(w=>zCanvas(x,w),o);
+const isCashSale=s=>s&&s.status!=="void"&&(Number(s.cash)>0||Number(s.usd)>0);
+// After a sale: print (with the drawer) or just open the drawer, as this device is set up.
+function afterSaleHw(sale){
+  if(canPrint()&&HW.auto)printReceipt(sale,{kick:HW.drawer&&isCashSale(sale)});
+  else if(canKick()&&HW.drawer&&isCashSale(sale))kickDrawer(false).catch(hwFail);
+}
+async function kickDrawer(ask){await sendBytes(new Uint8Array([...ESC_INIT,...ESC_KICK]),ask)}
+function openDrawerNoSale(){
+  if(!canSell())return;
+  if(!canKick()){toast(HW.print==="system"?"مع «طابعة الجهاز» الدرج ينفتح من تعريف الطابعة بويندوز. للفتح من البرنامج اختار «USB مباشر» أو «بلوتوث».":"الدرج ينربط بالطابعة. اختار الطابعة أول من قائمة الحساب.",5000);return}
+  if(!confirm("فتح الدرج بدون بيع؟ ينكتب بالسجل وبتقرير الوردية."))return;
+  kickDrawer(true).then(()=>{
+    toast("انفتح الدرج",1500);
+    log("edit","drawer",{detail:`فتح درج الفلوس بدون بيع${S.shift?"":" (ماكو وردية مفتوحة)"}`});
+    if(S.shift){S.shift.noSale=(Number(S.shift.noSale)||0)+1;try{db.collection("shifts").doc(S.shift.id).update({noSale:firebase.firestore.FieldValue.increment(1)}).catch(writeFail)}catch(e){writeFail(e)}
+      if(S.view==="sales"&&S.repMode==="shift")renderSales()}
+  }).catch(hwFail);
+}
+// A scale on a cable sends lines like "ST,GS,+  1.234kg"; the last complete reading wins (unstable "US" lines are skipped).
+function parseScale(t){
+  t=String(t||"");let parts=t.split(/[\r\n\x02\x03]+/).map(x=>x.trim()).filter(Boolean);
+  if(parts.length>1&&!/[\r\n\x03]$/.test(t))parts=parts.slice(0,-1);
+  for(let i=parts.length-1;i>=0;i--){if(/^US\b/i.test(parts[i]))continue;
+    const m=parts[i].match(/(-?\d+(?:[.,]\d+)?)\s*(kg|g|lb)?/i);if(!m)continue;
+    let v=parseFloat(m[1].replace(",","."));if(!isFinite(v))continue;const u=(m[2]||"").toLowerCase();
+    if(u==="g")v/=1000;else if(u==="lb")v*=0.45359237;else if(!u&&!/[.,]/.test(m[1])&&v>=50)v/=1000;
+    return round3(Math.max(0,v))}
+  return null;
+}
+async function readScale(ask){
+  const port=await serialPort("scale",ask);if(!port)throw new Error("pick-scale");
+  await serialOpen(port,HW.sbaud);
+  if(HW.sreq){const w=port.writable.getWriter();try{await w.write(new Uint8Array(HW.sreq==="enq"?[5]:[87,13,10]))}finally{w.releaseLock()}}
+  const r=port.readable.getReader(),dec=new TextDecoder();let t="",kg=null,lines=0;
+  const stop=setTimeout(()=>r.cancel().catch(()=>{}),1500);
+  try{for(;;){const {value,done}=await r.read();if(done)break;t+=dec.decode(value);if(t.length>4000)t=t.slice(-800);
+    const n=(t.match(/[\r\n\x03]+/g)||[]).length;if(n>lines){lines=n;const v=parseScale(t);if(v!==null){kg=v;if(HW.sreq||lines>=2)break}}}}
+  finally{clearTimeout(stop);try{r.releaseLock()}catch(e){}}
+  return kg!==null?kg:parseScale(t);
+}
+
+/* Device setup (anyone who sells), plus the shop's scale label layout (owner). */
+function hwForm(){
+  if(!canSell())return;
+  const before={...HW},sc=scaleCfg(),admin=isAdmin();let saved=false,sd={...sc};
+  const bauds=v=>[9600,19200,38400,57600,115200].map(b=>`<option${b===Number(v)?" selected":""}>${b}</option>`).join("");
+  openModal(`<h3>الطابعة والدرج والميزان</h3><p class="hint">إعدادات هذا الجهاز. تكدر تجهزها هسه وتشتغل أول ما توصل الأجهزة.</p>
+    <form id="hwf" class="field" style="gap:12px" novalidate>
+    <fieldset class="sec"><legend>طابعة الوصل</legend>
+      <div class="seg wrap" id="hwP" role="group" aria-label="نوع الطابعة">${printModes().map(([k,l])=>`<button type="button" data-hp="${k}">${l}</button>`).join("")}</div>
+      <p class="hint" id="hwPH"></p>
+      <div id="hwPO" class="field" style="gap:10px">
+        <div class="row2"><div class="field"><label>عرض الورق</label><div class="seg" id="hwW" role="group" aria-label="عرض الورق"><button type="button" data-hw="80"><span class="num">80</span> ملم</button><button type="button" data-hw="58"><span class="num">58</span> ملم</button></div></div>
+          <div class="field" id="hwBaudF"><label for="hwBaud">سرعة المنفذ</label><select id="hwBaud">${bauds(HW.baud)}</select></div></div>
+        <label class="check"><input type="checkbox" id="hwAuto"${HW.auto?" checked":""}> اطبع الوصل تلقائياً بعد كل بيع</label>
+        <label class="check"><input type="checkbox" id="hwLogo"${HW.logo?" checked":""}> الشعار بأعلى الوصل</label>
+        <label class="check" id="hwCutL"><input type="checkbox" id="hwCut"${HW.cut?" checked":""}> قص الورق بعد الطباعة</label>
+        <div class="tool-row" style="flex-wrap:wrap"><button class="btn sm" type="button" id="hwPick">اختيار الطابعة</button><button class="btn sm" type="button" id="hwTest">${I.print}طباعة تجربة</button><span class="hint" id="hwDev"></span></div>
+      </div>
+    </fieldset>
+    <fieldset class="sec"><legend>درج الفلوس</legend>
+      <p class="hint" id="hwDH"></p>
+      <div id="hwDO" class="field" style="gap:10px"><label class="check"><input type="checkbox" id="hwDrawer"${HW.drawer?" checked":""}> افتح الدرج مع كل بيع كاش</label>
+        <div class="tool-row"><button class="btn sm" type="button" id="hwKick">${I.drawer}تجربة فتح الدرج</button></div></div>
+    </fieldset>
+    <fieldset class="sec"><legend>الميزان</legend>
+      ${admin?`<label class="check"><input type="checkbox" id="scOn"${sc.on?" checked":""}> ميزان ملصقات (يطبع على الكيس باركود بيه الوزن أو السعر)</label>
+      <div id="scO" class="field" style="gap:10px">
+        <div class="row3"><div class="field"><label for="scPre">أول الباركود</label><input id="scPre" inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(sc.pre)}" placeholder="2"><span class="help">مثلاً 2، أو 20 و21</span></div>
+          <div class="field"><label>رقم المادة</label><div class="seg" id="scLen" role="group" aria-label="عدد أرقام المادة">${[4,5,6].map(n=>`<button type="button" data-sl="${n}">${n} أرقام</button>`).join("")}</div></div>
+          <div class="field"><label>الملصق يحمل</label><div class="seg" id="scKind" role="group" aria-label="الملصق يحمل"><button type="button" data-sk="w">الوزن</button><button type="button" data-sk="p">السعر</button></div></div></div>
+        <div class="field"><label for="scTry">جرّب ملصق</label><input id="scTry" inputmode="numeric" style="direction:ltr;text-align:right" placeholder="امسح أو اكتب باركود ملصق من الميزان"><p class="hint" id="scTryR">كل مادة بالوزن تاخذ «رقمها بالميزان» من نموذج المادة.</p></div>
+      </div>`:""}
+      ${hasSerial()?`<label class="check"><input type="checkbox" id="smOn"${HW.scale==="serial"?" checked":""}> ميزان موصول بهذا الجهاز بكيبل (USB / Serial)</label>
+      <div id="smO" class="field" style="gap:10px"><div class="row2"><div class="field"><label for="smBaud">سرعة المنفذ</label><select id="smBaud">${bauds(HW.sbaud)}</select></div>
+          <div class="field"><label for="smReq">إرسال الوزن</label><select id="smReq">${[["","الميزان يرسل لحاله"],["w","عند طلب W"],["enq","عند طلب ENQ"]].map(([k,l])=>`<option value="${k}"${HW.sreq===k?" selected":""}>${l}</option>`).join("")}</select></div></div>
+        <div class="tool-row" style="flex-wrap:wrap"><button class="btn sm" type="button" id="smPick">اختيار الميزان</button><button class="btn sm" type="button" id="smTest">${I.scale}قراءة الوزن</button><span class="hint" id="smR"></span></div></div>`
+      :`<p class="hint">الميزان اللي ينربط بكيبل يشتغل من Chrome أو Edge على اللابتوب.</p>`}
+    </fieldset>
+    <p class="err" id="hwErr"></p>
+    <div class="foot"><button class="btn primary" type="submit">حفظ</button><button class="btn" type="button" data-close>رجوع</button></div>
+    </form>`,m=>{
+    modalCleanup=()=>{if(!saved)HW=before};
+    const q=s=>m.querySelector(s);
+    const PH={off:"ما ينطبع وصل. يبقى الوصل PDF وواتساب.",
+      system:"أي طابعة معرّفة على الجهاز: ثبّت تعريفها (ويندوز) واختار ورق 80 ملم. يطلع شباك الطباعة كل مرة؛ حتى يطبع مباشرة شغّل Chrome بخيار <bdi dir=\"ltr\">--kiosk-printing</bdi>.",
+      serial:"طابعة حرارية موصولة USB أو Serial، من Chrome أو Edge على اللابتوب. البرنامج يرسل لها الوصل مباشرة ويقص الورق ويفتح الدرج. إذا ما طلعت بالقائمة استخدم «طابعة الجهاز».",
+      bt:"طابعة بلوتوث (BLE) من Chrome على أندرويد أو اللابتوب. شغّل البلوتوث واضغط «اختيار الطابعة».",
+      rawbt:"نزّل تطبيق RawBT من Google Play واربط بيه الطابعة (بلوتوث أو USB)، والكاشير يرسل له الوصل."};
+    const draw=()=>{
+      m.querySelectorAll("[data-hp]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.hp===HW.print)));
+      m.querySelectorAll("[data-hw]").forEach(b=>b.setAttribute("aria-pressed",String(Number(b.dataset.hw)===HW.paper)));
+      const on=HW.print!=="off",raw=escpos(HW.print);
+      q("#hwPH").innerHTML=PH[HW.print]||"";q("#hwPO").hidden=!on;q("#hwBaudF").hidden=HW.print!=="serial";q("#hwCutL").hidden=!raw;
+      q("#hwPick").hidden=!(HW.print==="serial"||HW.print==="bt");
+      q("#hwDev").textContent=HW.print==="serial"?(HW.pport?"الطابعة مختارة":"ما مختارة بعد"):HW.print==="bt"?(HW.btId?"الطابعة: "+(HW.btName||"مختارة"):"ما مختارة بعد"):"";
+      q("#hwDH").textContent=raw?"الدرج ينربط بمنفذ الطابعة (RJ11) وينفتح بأمر منها، ويطلع زر «فتح الدرج» بشاشة البيع.":HW.print==="system"?"مع «طابعة الجهاز» الدرج ينفتح من تعريف الطابعة بويندوز (Cash Drawer: Open before printing). حتى ينفتح من البرنامج اختار «USB مباشر» أو «بلوتوث».":"الدرج ينربط بالطابعة، فاختار الطابعة أول.";
+      q("#hwDO").hidden=!raw;
+      if(admin){q("#scO").hidden=!q("#scOn").checked;
+        m.querySelectorAll("[data-sl]").forEach(b=>b.setAttribute("aria-pressed",String(Number(b.dataset.sl)===sd.len)));
+        m.querySelectorAll("[data-sk]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.sk===sd.kind)));tryLabel()}
+      const so=q("#smO");if(so)so.hidden=!q("#smOn").checked;
+    };
+    const tryLabel=()=>{const el=q("#scTry"),out=q("#scTryR"),t=normDigits(el.value).trim();if(!t)return;
+      const r=scaleCode(t,{...sd,on:true,pre:q("#scPre").value.trim()||"2"});
+      if(!r){out.textContent=ean13ok(t)?"هذا مو ملصق ميزان بهذا الإعداد (أول الباركود ما يطابق).":"الباركود لازم يكون 13 رقم صحيحة.";return}
+      const p=[...S.products.values()].find(x=>isWeighed(x)&&x.plu&&String(Number(x.plu))===r.plu);
+      out.textContent=`رقم المادة ${r.plu}${p?` = «${p.name}»`:" (ما مربوط بمادة بعد)"} · ${r.kind==="p"?`السعر ${fmt(r.v)} ${CUR}`:`الوزن ${kgText(round3(r.v/1000))}`}`};
+    m.querySelector("#hwP").addEventListener("click",e=>{const b=e.target.closest("[data-hp]");if(!b)return;HW.print=b.dataset.hp;draw()});
+    m.querySelector("#hwW").addEventListener("click",e=>{const b=e.target.closest("[data-hw]");if(!b)return;HW.paper=Number(b.dataset.hw);draw()});
+    q("#hwBaud").onchange=e=>{HW.baud=Number(e.target.value)};
+    [["#hwAuto","auto"],["#hwLogo","logo"],["#hwCut","cut"],["#hwDrawer","drawer"]].forEach(([s,k])=>q(s).onchange=e=>{HW[k]=e.target.checked});
+    q("#hwPick").onclick=async()=>{try{if(HW.print==="serial"){const p=await navigator.serial.requestPort();HW.pport=portInfo(p);if(samePort(HW.pport,HW.sport))HW.sport=null}
+      else{HWC.bt=null;HWC.ch=null;HW.btId="";await btChar(true)}draw();toast("انربطت الطابعة",1500)}catch(e){hwFail(e)}};
+    q("#hwTest").onclick=()=>printCanvas(testSlip,{ask:true});
+    q("#hwKick").onclick=()=>kickDrawer(true).then(()=>toast("انرسل أمر فتح الدرج",1800)).catch(hwFail);
+    if(admin){q("#scOn").onchange=draw;q("#scLen").addEventListener("click",e=>{const b=e.target.closest("[data-sl]");if(b){sd.len=Number(b.dataset.sl);draw()}});
+      q("#scKind").addEventListener("click",e=>{const b=e.target.closest("[data-sk]");if(b){sd.kind=b.dataset.sk;draw()}});
+      q("#scTry").addEventListener("input",tryLabel);q("#scPre").addEventListener("input",tryLabel)}
+    const sm=q("#smOn");
+    if(sm){sm.onchange=()=>{HW.scale=sm.checked?"serial":"off";draw()};q("#smBaud").onchange=e=>{HW.sbaud=Number(e.target.value)};q("#smReq").onchange=e=>{HW.sreq=e.target.value};
+      q("#smPick").onclick=async()=>{try{const p=await navigator.serial.requestPort();HW.sport=portInfo(p);if(samePort(HW.sport,HW.pport))HW.pport=null;q("#smR").textContent="الميزان مختار"}catch(e){hwFail(e)}};
+      q("#smTest").onclick=()=>{q("#smR").textContent="…";readScale(true).then(kg=>{q("#smR").textContent=kg!==null?`الوزن: ${kgText(kg)}`:"ما وصل وزن. تأكد من السرعة وطريقة الإرسال."}).catch(e=>{q("#smR").textContent="";hwFail(e)})}}
+    m.querySelector("#hwf").addEventListener("submit",e=>{e.preventDefault();
+      if(admin){const on=q("#scOn").checked,pre=normDigits(q("#scPre").value).replace(/[^\d,\s،]/g,"").trim()||"2";
+        if(on&&!pre.split(/[\s,،]+/).filter(Boolean).every(x=>/^2\d?$/.test(x))){q("#hwErr").textContent="أول باركود الميزان يبدي بـ 2 (مثلاً 2 أو 21).";return}
+        const nv={on,pre,len:sd.len,kind:sd.kind},ov=S.pos.scale||{};
+        if(nv.on!==!!ov.on||(on&&(nv.pre!==String(ov.pre||"2")||nv.len!==sc.len||nv.kind!==sc.kind))){S.pos={...S.pos,scale:nv};
+          try{db.doc("settings/pos").set({scale:nv},{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
+          log("edit","settings",{detail:on?`باركود الميزان: يبدي بـ ${pre}، رقم المادة ${nv.len} أرقام، يحمل ${nv.kind==="p"?"السعر":"الوزن"}`:"طفّى باركود الميزان"})}}
+      saved=true;saveHw();closeModal();toast("انحفظت الإعدادات",1500);render()});
+    draw();
+  },"wide");
+}
+// Test slip: the logo, the shop name and a ruler line, so the paper width and darkness can be checked.
+async function testSlip(o){
+  const {cv,x,C,W,y:y0}=await slipStart(o,420);let y=y0+10;
+  x.fillStyle=C.ink;x.font=`700 22px ${PDF_F}`;x.fillText("طباعة تجربة",W/2,y);y+=30;
+  x.font=`400 18px ${PDF_F}`;x.fillText(`${dayName(todayISO())} · ${hm12(Date.now())} · ورق ${HW.paper} ملم`,W/2,y);y+=26;
+  x.fillStyle="#000";for(let i=0;i<W;i+=16)x.fillRect(i,y,8,10);y+=40;
+  x.font=`700 20px ${PDF_D}`;x.fillText(SLOGAN,W/2,y);
+  return slipTrim(cv,y+30);
 }
 
 /* ---------- sales reports: one day, or one month ---------- */
@@ -1281,9 +1615,10 @@ function saleDetail(id){
       ${sale.usd?`<div class="ln"><span>استلم ${esc(usdFmt(sale.usd))} بسعر <span class="num">$100 = ${esc(fmt(sale.rate*100))}</span>${sale.topUp?` + ${esc(fmt(sale.topUp))} دينار`:""}</span><span class="num">${sale.change>0?"باقي "+fmt(sale.change):""}</span></div>`:""}
       ${sale.debt>0?`<div class="ln" style="color:var(--debt)"><span>دين على ${esc(sale.customerName||"")}</span><span class="num">${fmt(sale.debt)}</span></div>`:""}
       ${sale.status==="void"?`<div class="ln" style="color:var(--muted)"><span>ألغاها ${esc(sale.voidBy||"")}</span><span>${sale.voidAt?hm12(sale.voidAt):""}</span></div>`:""}</div>
-    <div class="foot"><button class="btn" type="button" id="sdPdf">${I.pdf}وصل PDF</button><button class="btn wa" type="button" id="sdWa">${I.wa}واتساب</button>
+    <div class="foot">${canPrint()?`<button class="btn" type="button" id="sdPrint">${I.print}طباعة</button>`:""}<button class="btn" type="button" id="sdPdf">${I.pdf}وصل PDF</button><button class="btn wa" type="button" id="sdWa">${I.wa}واتساب</button>
       ${isAdmin()&&sale.status!=="void"?`<button class="btn ghost danger-text" type="button" id="sdVoid">${I.trash}إلغاء الفاتورة</button>`:""}<button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
     m.querySelector("#sdPdf").onclick=()=>receiptPdf(sale);m.querySelector("#sdWa").onclick=()=>shareWhatsApp(sale);
+    const sp=m.querySelector("#sdPrint");if(sp)sp.onclick=()=>printReceipt(sale,{ask:true});
     const vb=m.querySelector("#sdVoid");if(vb)vb.onclick=()=>voidSale(sale);
   });
 }
@@ -1421,6 +1756,7 @@ function renderShift(){
       <div class="stat"><div class="k">دين على الزبائن</div><div class="v debt"><span class="num">${fmt(z.debt)}</span></div></div>
       <div class="stat"><div class="k">الخصومات</div><div class="v"><span class="num">${fmt(z.disc)}</span></div></div>
       <div class="stat"><div class="k">عدد الفواتير</div><div class="v"><span class="num">${z.n}</span>${z.voids?`<small>(${z.voids} ملغية)</small>`:""}</div></div>
+      ${S.shift.noSale?`<div class="stat"><div class="k">فتح الدرج بدون بيع</div><div class="v warn"><span class="num">${S.shift.noSale}</span></div></div>`:""}
     </div>
     <div class="rep-grid">${log}
       <section class="pane"><h2>حسب الكاشير</h2>${z.who.length?`<ul class="rows">${z.who.map(w=>`<li><div class="r static"><div class="m"><b>${esc(w.name)}</b><span><span class="num">${w.n}</span> فاتورة</span></div><div class="a num">${fmt(w.v)}</div></div></li>`).join("")}</ul>`:`<div class="empty">ماكو مبيعات بهاي الوردية بعد.</div>`}</section>
@@ -1462,7 +1798,7 @@ function closeShiftForm(){
       try{db.collection("shifts").doc(sh.id).update(upd).catch(writeFail)}catch(x){writeFail(x)}
       log("edit","shift",{amount:z2.total,detail:`قفّل الوردية: مبيعات ${fmt(z2.total)}، المفروض بالدرج ${fmt(z2.expected)}، المعدود ${fmt(counted)} (${diffText(counted-z2.expected)})${"usdCounted" in upd?`، الدولار ${usdFmt(upd.usdCounted)} (${usdDiffText(upd.usdDiff)})`:""}`});
       const done={...sh,...upd};S.shift=null;if(S.shiftLog)S.shiftLog.unshift(done);
-      closeModal();refresh();zModal(done);
+      closeModal();refresh();zModal(done);if(canPrint()&&HW.auto)printZ(done);
     });
   });
 }
@@ -1474,43 +1810,43 @@ function zModal(x){
       <div class="ln big" style="color:var(--${diffCls(x.diff)})"><span>الفرق</span><span>${esc(diffText(x.diff))}</span></div>
       ${"usdCounted" in x?`<hr>${ln("دولار المفروض",usdFmt(x.usdExpected))}${ln("دولار المعدود",usdFmt(x.usdCounted))}<div class="ln" style="color:var(--${diffCls(x.usdDiff)})"><span>فرق الدولار</span><span>${esc(usdDiffText(x.usdDiff))}</span></div>`:""}<hr>
       ${ln("مجموع المبيعات",fmt(z.total))}${ln("دين على الزبائن",fmt(z.debt),"color:var(--debt)")}${ln("الخصومات",fmt(z.disc))}${admin&&z.profit!=null?ln("الربح",fmt(z.profit)):""}
-      ${ln("عدد الفواتير",String(z.n||0)+(z.voids?` (+${z.voids} ملغية)`:""))}
+      ${ln("عدد الفواتير",String(z.n||0)+(z.voids?` (+${z.voids} ملغية)`:""))}${x.noSale?ln("فتح الدرج بدون بيع",String(x.noSale)):""}
       ${(z.who||[]).length>1?"<hr>"+z.who.map(w=>ln(esc(w.name),fmt(w.v))).join(""):""}
       ${x.note?`<hr><div class="ln"><span>${esc(x.note)}</span></div>`:""}</div>
-    <div class="foot"><button class="btn primary" type="button" id="zPdf">${I.pdf}تقرير PDF</button><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
+    <div class="foot">${canPrint()?`<button class="btn primary" type="button" id="zPrint">${I.print}طباعة</button>`:""}<button class="btn${canPrint()?"":" primary"}" type="button" id="zPdf">${I.pdf}تقرير PDF</button><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
     m.querySelector("#zPdf").onclick=()=>zPdf(x);
+    const zp=m.querySelector("#zPrint");if(zp)zp.onclick=()=>printZ(x,{ask:true});
   });
 }
 /* Z report as an 80mm slip, like the receipt. */
+async function zCanvas(x,o){
+  o=o||{};
+  const z=x.z||{},M=o.w&&o.w<576?18:28,who=(z.who||[]).length>1?z.who:[];
+  const {cv,x:c,C,W,y:y0}=await slipStart(o,1040+who.length*30+(x.note?40:0)+(z.usdIqd?32:0)+("usdCounted" in x?110:0)+(x.noSale?32:0));let y=y0+6;
+  c.fillStyle=C.ink;c.font=`700 22px ${PDF_F}`;c.fillText("تقرير الوردية (Z)",W/2,y);y+=30;
+  c.fillStyle=C.muted;c.font=`400 18px ${PDF_F}`;c.fillText(`${isoOf(new Date(x.openedAt))} · ${hm12(x.openedAt)} إلى ${hm12(x.closedAt)}`,W/2,y);y+=26;
+  c.fillText(x.openedBy+(x.closedBy&&x.closedBy!==x.openedBy?" ← "+x.closedBy:""),W/2,y);y+=22;
+  const rule=()=>{c.strokeStyle=C.line;c.lineWidth=2;c.setLineDash([6,6]);c.beginPath();c.moveTo(M,y);c.lineTo(W-M,y);c.stroke();c.setLineDash([])};
+  const lr=(r,l,s)=>{s=s||{};c.font=`${s.w||400} ${s.s||20}px ${PDF_F}`;c.fillStyle=s.c||C.ink;c.textAlign="right";c.direction="rtl";c.fillText(r,W-M,y);
+    c.textAlign="left";c.direction=s.rtl?"rtl":"ltr";if(s.rtl)c.textAlign="left";c.font=`${s.w||700} ${s.s||20}px ${s.rtl?PDF_F:PDF_D}`;c.fillText(l,M,y);c.direction="rtl";y+=s.gap||32};
+  rule();y+=34;
+  lr("كاش البداية",fmt(z.float));lr("مبيعات كاش",fmt(z.cash),{c:C.paid});if(z.usdIqd)lr("منها مدفوعة بالدولار","-"+fmt(z.usdIqd));
+  lr("المفروض بالدرج",fmt(x.expected),{w:700});lr("المعدود",fmt(x.counted),{w:700});
+  lr("الفرق",diffText(x.diff),{w:700,s:24,c:x.diff===0?C.paid:C.debt,rtl:true,gap:40});
+  if("usdCounted" in x){lr("دولار المفروض",usdFmt(x.usdExpected));lr("دولار المعدود",usdFmt(x.usdCounted));lr("فرق الدولار",usdDiffText(x.usdDiff),{w:700,c:x.usdDiff===0?C.paid:C.debt,rtl:true})}
+  y-=8;rule();y+=34;
+  lr("مجموع المبيعات",fmt(z.total)+" IQD",{w:700,c:C.green});lr("دين على الزبائن",fmt(z.debt),{c:C.debt});lr("الخصومات",fmt(z.disc));
+  lr("عدد الفواتير",String(z.n||0)+(z.voids?` (+${z.voids})`:""));
+  if(x.noSale)lr("فتح الدرج بدون بيع",String(x.noSale));
+  if(isAdmin()&&z.profit!=null)lr("الربح",fmt(z.profit));
+  for(const w of who)lr(w.name,fmt(w.v),{s:18,c:C.muted,gap:28});
+  if(x.note){lr(x.note,"",{s:17,c:C.muted})}
+  y-=8;rule();y+=34;c.textAlign="center";c.fillStyle=C.green;c.font=`700 20px ${PDF_D}`;c.fillText(SLOGAN,W/2,y);
+  return slipTrim(cv,y+40);
+}
 async function zPdf(x){
   toast("جارِ تجهيز التقرير…");if(!await pdfReady())return;
-  const z=x.z||{},W=576,M=28,who=(z.who||[]).length>1?z.who:[];
-  const cv=document.createElement("canvas");cv.width=W;cv.height=900+who.length*30+(x.note?40:0)+(z.usdIqd?32:0)+("usdCounted" in x?110:0);const c=cv.getContext("2d");
-  c.fillStyle="#fff";c.fillRect(0,0,W,cv.height);c.fillStyle=PDFC.green;c.fillRect(0,0,W,12);c.fillStyle=PDFC.orange;c.fillRect(0,12,W,4);
-  c.direction="rtl";c.textAlign="center";let y=70;
-  c.fillStyle=PDFC.green;c.font=`400 40px ${PDF_BRAND}`;c.fillText(shopName(),W/2,y);y+=40;
-  c.fillStyle=PDFC.ink;c.font=`700 22px ${PDF_F}`;c.fillText("تقرير الوردية (Z)",W/2,y);y+=30;
-  c.fillStyle=PDFC.muted;c.font=`400 18px ${PDF_F}`;c.fillText(`${isoOf(new Date(x.openedAt))} · ${hm12(x.openedAt)} إلى ${hm12(x.closedAt)}`,W/2,y);y+=26;
-  c.fillText(x.openedBy+(x.closedBy&&x.closedBy!==x.openedBy?" ← "+x.closedBy:""),W/2,y);y+=22;
-  const rule=()=>{c.strokeStyle=PDFC.line;c.lineWidth=2;c.setLineDash([6,6]);c.beginPath();c.moveTo(M,y);c.lineTo(W-M,y);c.stroke();c.setLineDash([])};
-  const lr=(r,l,o)=>{o=o||{};c.font=`${o.w||400} ${o.s||20}px ${PDF_F}`;c.fillStyle=o.c||PDFC.ink;c.textAlign="right";c.direction="rtl";c.fillText(r,W-M,y);
-    c.textAlign="left";c.direction=o.rtl?"rtl":"ltr";if(o.rtl)c.textAlign="left";c.font=`${o.w||700} ${o.s||20}px ${o.rtl?PDF_F:PDF_D}`;c.fillText(l,M,y);c.direction="rtl";y+=o.gap||32};
-  rule();y+=34;
-  lr("كاش البداية",fmt(z.float));lr("مبيعات كاش",fmt(z.cash),{c:PDFC.paid});if(z.usdIqd)lr("منها مدفوعة بالدولار","-"+fmt(z.usdIqd));
-  lr("المفروض بالدرج",fmt(x.expected),{w:700});lr("المعدود",fmt(x.counted),{w:700});
-  lr("الفرق",diffText(x.diff),{w:700,s:24,c:x.diff===0?PDFC.paid:PDFC.debt,rtl:true,gap:40});
-  if("usdCounted" in x){lr("دولار المفروض",usdFmt(x.usdExpected));lr("دولار المعدود",usdFmt(x.usdCounted));lr("فرق الدولار",usdDiffText(x.usdDiff),{w:700,c:x.usdDiff===0?PDFC.paid:PDFC.debt,rtl:true})}
-  y-=8;rule();y+=34;
-  lr("مجموع المبيعات",fmt(z.total)+" IQD",{w:700,c:PDFC.green});lr("دين على الزبائن",fmt(z.debt),{c:PDFC.debt});lr("الخصومات",fmt(z.disc));
-  lr("عدد الفواتير",String(z.n||0)+(z.voids?` (+${z.voids})`:""));
-  if(isAdmin()&&z.profit!=null)lr("الربح",fmt(z.profit));
-  for(const w of who)lr(w.name,fmt(w.v),{s:18,c:PDFC.muted,gap:28});
-  if(x.note){lr(x.note,"",{s:17,c:PDFC.muted})}
-  y-=8;rule();y+=34;c.textAlign="center";c.fillStyle=PDFC.green;c.font=`700 20px ${PDF_D}`;c.fillText(SLOGAN,W/2,y);
-  const hPx=Math.min(cv.height,y+40);const out=document.createElement("canvas");out.width=W;out.height=hPx;out.getContext("2d").drawImage(cv,0,0);
-  const {jsPDF}=window.jspdf;const wMM=80,hMM=hPx*wMM/W;const pdf=new jsPDF({unit:"mm",format:[wMM,hMM],orientation:hMM<wMM?"landscape":"portrait"});
-  pdf.addImage(out.toDataURL("image/jpeg",0.95),"JPEG",0,0,wMM,hMM);
-  try{if(await saveFile(`وردية-${isoOf(new Date(x.openedAt))}-${hm12(x.openedAt).replace(/[:\s]/g,"")}.pdf`,pdf.output("blob")))toast("تم حفظ التقرير")}catch(e){console.warn(e);toast("تعذّر حفظ الملف.")}
+  try{if(await saveFile(`وردية-${isoOf(new Date(x.openedAt))}-${hm12(x.openedAt).replace(/[:\s]/g,"")}.pdf`,slipPdf(await zCanvas(x))))toast("تم حفظ التقرير")}catch(e){console.warn(e);toast("تعذّر حفظ الملف.")}
 }
 
 /* ---------- discount approval ----------
@@ -1555,28 +1891,35 @@ function productsView(){
       <div class="tool-row"><label class="search">${I.search}<input id="pq" type="search" placeholder="ابحث بالاسم أو الباركود" autocomplete="off" value="${esc(S.pq)}" aria-label="بحث بالمواد"></label>
       <button class="btn primary" type="button" data-act="newprod">${I.plus}مادة جديدة</button></div>
       <div class="tool-row" style="flex-wrap:wrap"><button class="btn sm" type="button" data-go="count">${I.box}جرد المخزن${S.count?` <span class="chip warn">مفتوح</span>`:""}</button>
-        <button class="btn sm" type="button" data-act="excel">${I.sheet}Excel: استيراد وتصدير</button></div>
+        <button class="btn sm" type="button" data-act="excel">${I.sheet}Excel: استيراد وتصدير</button>
+        <button class="btn sm" type="button" data-act="catalog">${I.list}قائمة مواد جاهزة</button>
+        <button class="btn sm" type="button" data-act="linkscan">${I.scan}ربط باركود</button></div>
       <div class="chips" id="pchips"></div></div>
     <ul class="rows" id="plist"></ul></section>`;
 }
+// Weighed items with a scale number get their barcode from the scale label, so they don't count as missing one.
+const noCode=p=>!p.barcode&&!packsOf(p).some(k=>k.barcode)&&!(isWeighed(p)&&(p.plu||!scaleCfg().on));
 function renderProducts(){
   const el=$("#plist");if(!el)return;
   const used=new Set([...S.products.values()].map(p=>p.category||""));const nAl=alertCount(),nOf=[...S.products.values()].filter(offerOf).length;
-  if(S.pcat==="alerts"&&!nAl||S.pcat==="offers"&&!nOf)S.pcat="all";
-  $("#pchips").innerHTML=[["all","الكل ("+S.products.size+")"],...(nAl?[["alerts","⚠ تنبيهات ("+nAl+")"]]:[]),...(nOf?[["offers","العروض ("+nOf+")"]]:[]),...cats().filter(c=>used.has(c)).map(c=>[c,c])].map(([k,l])=>`<button type="button" data-pcat="${esc(k)}" aria-pressed="${S.pcat===k}">${esc(l)}</button>`).join("");
+  const nNo=[...S.products.values()].filter(noCode).length,nEst=[...S.products.values()].filter(p=>p.est).length;
+  if(S.pcat==="alerts"&&!nAl||S.pcat==="offers"&&!nOf||S.pcat==="nocode"&&!nNo||S.pcat==="est"&&!nEst)S.pcat="all";
+  $("#pchips").innerHTML=[["all","الكل ("+S.products.size+")"],...(nAl?[["alerts","⚠ تنبيهات ("+nAl+")"]]:[]),...(nOf?[["offers","العروض ("+nOf+")"]]:[]),
+    ...(nNo?[["nocode","بلا باركود ("+nNo+")"]]:[]),...(nEst?[["est","سعر تقديري ("+nEst+")"]]:[]),...cats().filter(c=>used.has(c)).map(c=>[c,c])].map(([k,l])=>`<button type="button" data-pcat="${esc(k)}" aria-pressed="${S.pcat===k}">${esc(l)}</button>`).join("");
   let list=[...S.products.values()];
-  if(S.pcat==="alerts")list=list.filter(p=>alertsOf(p).length);else if(S.pcat==="offers")list=list.filter(offerOf);else if(S.pcat!=="all")list=list.filter(p=>(p.category||"")===S.pcat);
+  if(S.pcat==="alerts")list=list.filter(p=>alertsOf(p).length);else if(S.pcat==="offers")list=list.filter(offerOf);
+  else if(S.pcat==="nocode")list=list.filter(noCode);else if(S.pcat==="est")list=list.filter(p=>p.est);else if(S.pcat!=="all")list=list.filter(p=>(p.category||"")===S.pcat);
   const q=normDigits(S.pq).trim();
   const codeHit=p=>p.barcode===q||packsOf(p).some(k=>k.barcode===q);
   list=q?list.map(p=>({p,s:codeHit(p)?20:matchScore(p.name,q,p.category)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).map(x=>x.p):list.sort((a,b)=>a.name.localeCompare(b.name,"ar"));
   if(!S.ready.p){el.innerHTML=`<li><div class="spinner" style="margin:30px auto"></div></li>`;return}
   el.innerHTML=list.length?list.map(p=>{const al=alertsOf(p),of=offerOf(p);return `<li><div class="prow"><button class="r" type="button" data-prod="${esc(p.id)}">
-      <span class="avatar">${initial(p.name)}</span><div class="m"><b>${esc(p.name)}${p.active===false?` <span class="chip zero">موقوفة</span>`:""}</b>
+      <span class="avatar">${initial(p.name)}</span><div class="m"><b>${esc(p.name)}${p.active===false?` <span class="chip zero">موقوفة</span>`:""}${p.est?` <span class="chip zero">سعر تقديري</span>`:""}</b>
       <span>${esc(p.category||"بدون صنف")}${tracked(p)?` · المخزن ${stockHtml(p)}`:""}${p.expiry?` · ينتهي <span class="num">${esc(p.expiry)}</span>`:""}${packsOf(p).length?` · ${packsOf(p).map(k=>esc(k.name)).join("، ")}`:""}</span>
       ${al.length||of?`<span class="al">${of?`<span class="of">عرض ${offerHtml(of)}${of.to?` لحد <span class="num">${esc(of.to)}</span>`:""}</span>`:""}${al.map(a=>`<span class="chip warn">${ALERT_TEXT[a]}</span>`).join(" ")}</span>`:""}</div>
       <div class="a"><span class="num">${fmt(p.price)}</span><small>${isWeighed(p)?"للكيلو":""}${p.cost>0?`${isWeighed(p)?" · ":""}شراء <span class="num">${fmt(p.cost)}</span>`:isWeighed(p)?"":CUR}</small></div></button>
       <button class="btn sm" type="button" data-restock="${esc(p.id)}" title="استلام كمية">${I.plus}كمية</button></div></li>`}).join("")
-    :`<li class="empty"><b>${S.products.size?"ماكو نتائج":"ماكو مواد بعد"}</b>${S.products.size?"":"اضغط «مادة جديدة» وأضف المواد وأسعارها، وبعدها تطلع بشاشة البيع."}</li>`;
+    :`<li class="empty"><b>${S.products.size?"ماكو نتائج":"ماكو مواد بعد"}</b>${S.products.size?"":"اضغط «قائمة مواد جاهزة» حتى تنضاف مواد الماركت بأسعار تقديرية، أو «مادة جديدة» وأضف كل مادة بسعرها."}</li>`;
 }
 const UNITS=["حبة","كغم","علبة","قنينة","كيس","باكيت","لتر","متر"];
 const numVal=v=>{const n=parseAmt(v);return isFinite(n)?n:NaN};
@@ -1623,12 +1966,15 @@ function readProductForm(m,p){
       if(!(on>=2))return {err:"اكتب عدد العرض (2 أو أكثر)."};
       if(!(op<on*price))return {err:`سعر العرض لازم يكون أقل من ${fmt(on*price)} (سعر ${on} بدون عرض).`}}
     offer={type:ot,...(ot==="qty"?{n:on}:{}),price:op,...(oto?{to:oto}:{})}}
+  const pl=normDigits(v("pPlu")).trim(),plu=weighed&&pl?String(Number(pl)):"";
+  if(pl&&weighed&&!/^\d{1,6}$/.test(pl))return {err:"رقم الميزان لازم يكون أرقام بس."};
+  if(plu){const f=[...S.products.values()].find(x=>x.id!==p.id&&isWeighed(x)&&x.plu&&String(Number(x.plu))===plu);if(f)return {err:`رقم الميزان ${plu} مسجل على «${f.name}».`}}
   const act=m.querySelector("#pActive");
-  return {obj:{name,price,category,barcode,unit:weighed?"كغم":unit,weighed,wprice,cost,packs,track,min,expiry:expiry||"",offer,active:act?act.checked:true,...(track?{stock}:{})}};
+  return {obj:{name,price,category,barcode,unit:weighed?"كغم":unit,weighed,plu,wprice,cost,packs,track,min,expiry:expiry||"",offer,active:act?act.checked:true,...(track?{stock}:{})}};
 }
 function productForm(p){
   // A draft coming back from the camera scan carries __new, so a new item stays new.
-  const isNew=!p||!!p.__new;p=p||{name:"",price:"",category:!["all","alerts","offers"].includes(S.pcat)?S.pcat:cats()[0],barcode:"",active:true,unit:"حبة",packs:[]};
+  const isNew=!p||!!p.__new;p=p||{name:"",price:"",category:!["all","alerts","offers","nocode","est"].includes(S.pcat)?S.pcat:cats()[0],barcode:"",active:true,unit:"حبة",packs:[]};
   const cl=cats().includes(p.category)||!p.category?cats():[p.category,...cats()];
   const origStock=tracked(p)?stockOf(p):null;
   openModal(`<h3>${isNew?"مادة جديدة":"تعديل مادة"}</h3>
@@ -1642,6 +1988,8 @@ function productForm(p){
         <div class="field"><label for="pW">سعر الجملة</label><input id="pW" class="big" inputmode="numeric" value="${p.wprice>0?fmt(p.wprice):""}" placeholder="اختياري"></div>
         <div class="field"><label for="pCost">سعر الشراء</label><input id="pCost" class="big" inputmode="decimal" value="${p.cost>0?fmt(p.cost):""}" placeholder="للربح"></div></div>
       <label class="check"><input type="checkbox" id="pWeighed" ${isWeighed(p)?"checked":""}> تنباع بالوزن (السعر للكيلو، والكاشير يكتب الوزن أو المبلغ)</label>
+      <div class="field" id="pPluF"><label for="pPlu">رقمها بالميزان (PLU)</label><input id="pPlu" inputmode="numeric" maxlength="6" style="direction:ltr;text-align:right;max-width:200px" value="${esc(p.plu||"")}" placeholder="اختياري">
+        <span class="help">${scaleCfg().on?"نفس الرقم اللي مسجل لهاي المادة بميزان الملصقات، حتى ينقرا ملصقها بالسكانر.":"لميزان الملصقات. فعّل «باركود الميزان» من قائمة الحساب ← الطابعة والميزان."}</span></div>
       <fieldset class="sec"><legend>عرض</legend>
         <div class="seg" id="ofT" role="group" aria-label="نوع العرض">${[["","بدون"],["price","سعر خاص"],["qty","كمية بسعر"]].map(([k,l])=>`<button type="button" data-of="${k}" aria-pressed="${((p.offer&&p.offer.type)||"")===k}">${l}</button>`).join("")}</div>
         <div class="row3" id="ofF"><div class="field" id="ofNf"><label for="ofN">العدد</label><input id="ofN" inputmode="numeric" value="${p.offer&&p.offer.n?p.offer.n:""}" placeholder="3"></div>
@@ -1666,7 +2014,7 @@ function productForm(p){
     const pc=m.querySelector("#pCat"),pcn=m.querySelector("#pCatNew");
     pc.onchange=()=>{pcn.hidden=pc.value!=="__new";if(!pcn.hidden)pcn.focus()};
     const wg=m.querySelector("#pWeighed"),un=m.querySelector("#pUnit"),plab=m.querySelector('label[for="pPrice"]');
-    const syncW=()=>{if(wg.checked)un.value="كغم";un.readOnly=wg.checked;plab.textContent=wg.checked?`سعر الكيلو (${CUR})`:`سعر المفرد (${CUR})`};
+    const syncW=()=>{if(wg.checked)un.value="كغم";un.readOnly=wg.checked;plab.textContent=wg.checked?`سعر الكيلو (${CUR})`:`سعر المفرد (${CUR})`;m.querySelector("#pPluF").hidden=!wg.checked};
     wg.onchange=syncW;un.addEventListener("change",()=>{if(un.value.trim()==="كغم"&&!wg.checked){wg.checked=true;syncW()}});syncW();
     // Offer: the fields follow the chosen kind, and the hint shows how it will sell.
     const ofT=m.querySelector("#ofT"),ofN=m.querySelector("#ofN"),ofP=m.querySelector("#ofP"),ofTo=m.querySelector("#ofTo"),ofH=m.querySelector("#ofH");
@@ -1685,7 +2033,7 @@ function productForm(p){
       const pv=numVal(m.querySelector("#pPrice").value),g=id=>m.querySelector("#"+id).value;
       const packs=[...m.querySelectorAll("[data-pack]")].map(row=>{const q=k=>row.querySelector(`[data-k="${k}"]`).value;return {name:q("name"),n:numVal(q("n"))||"",price:numVal(q("price")),wprice:numVal(q("wprice"))||0,barcode:q("barcode")}});
       const draft={name:g("pName"),price:pv>=0?pv:"",category:g("pCat")==="__new"?g("pCatNew").trim():g("pCat"),unit:g("pUnit"),wprice:numVal(g("pW"))||0,cost:numVal(g("pCost"))||0,
-        weighed:m.querySelector("#pWeighed").checked,track:m.querySelector("#pTrack").checked,stock:numVal(g("pStock"))||0,min:numVal(g("pMin"))||0,expiry:g("pExp"),packs,active:p.active,
+        weighed:m.querySelector("#pWeighed").checked,plu:g("pPlu"),track:m.querySelector("#pTrack").checked,stock:numVal(g("pStock"))||0,min:numVal(g("pMin"))||0,expiry:g("pExp"),packs,active:p.active,
         offer:{type:m.querySelector('#ofT [aria-pressed="true"]').dataset.of,n:numVal(g("ofN"))||0,price:numVal(g("ofP"))||0,to:g("ofTo")}};
       scanBarcode(code=>productForm({...p,...draft,barcode:code,__new:isNew}))};
     const d=m.querySelector("#pDel");
@@ -1703,7 +2051,9 @@ function productForm(p){
         // Stock is written only when the owner changed it here, so sales made meanwhile are not overwritten.
         const patch={...o,...meta};if(o.track&&origStock!==null&&o.stock===origStock)delete patch.stock;
         if(!o.track)patch.stock=firebase.firestore.FieldValue.delete();
-        S.products.set(p.id,{...p,...o});try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
+        // Saving the item from its form means the owner checked its price (items from the ready-made list carry est until then).
+        if(p.est)patch.est=firebase.firestore.FieldValue.delete();
+        S.products.set(p.id,{...p,...o,est:false});try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
         const ch=[];
         if(Number(p.price)!==o.price)ch.push(`سعر المفرد من ${fmt(p.price)} إلى ${fmt(o.price)}`);
         if((Number(p.wprice)||0)!==o.wprice)ch.push(`سعر الجملة إلى ${fmt(o.wprice)}`);
@@ -1718,6 +2068,43 @@ function productForm(p){
       if(isNew)setTimeout(()=>productForm(),50);
     });
   },"wide");
+}
+/* ---------- linking barcodes ----------
+   Scan an item from the shelf, then pick its name: the code is saved on that item, or a new item is made with it.
+   This is how the ready-made list (names and prices, no barcodes) gets its barcodes. */
+function linkCodeForm(code,after){
+  if(!isAdmin())return;
+  let q="";
+  openModal(`<h3>باركود جديد</h3><p class="hint">الباركود <b class="num">${esc(code)}</b> مو مسجل. اختار المادة اللي عليها وينحفظ عليها.</p>
+    <label class="search">${I.search}<input id="lkQ" type="search" placeholder="اكتب أول حروف اسم المادة" autocomplete="off" aria-label="بحث بالمواد"></label>
+    <ul class="rows lk-list" id="lkL"></ul>
+    <div class="foot"><button class="btn primary" type="button" id="lkNew">${I.plus}مادة جديدة بهذا الباركود</button><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
+    const draw=()=>{const t=normDigits(q).trim();let list=[...S.products.values()];
+      list=t?list.map(p=>({p,s:matchScore(p.name,t,p.category)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s||noCode(b.p)-noCode(a.p)||a.p.name.localeCompare(b.p.name,"ar")).map(x=>x.p)
+        :list.filter(noCode).sort((a,b)=>a.name.localeCompare(b.name,"ar"));
+      m.querySelector("#lkL").innerHTML=list.length?list.slice(0,40).map(p=>`<li><button class="r" type="button" data-lk="${esc(p.id)}"><div class="m"><b>${esc(p.name)}</b>
+          <span>${esc(p.category||"")}${p.barcode?` · عليها <span class="num">${esc(p.barcode)}</span>`:""}</span></div><div class="a"><span class="num">${fmt(p.price)}</span></div></button></li>`).join("")
+        :`<li class="empty">${t?"ماكو مادة بهذا الاسم. سوّيها «مادة جديدة».":"كل المواد عليها باركود. ابحث بالاسم."}</li>`};
+    const inp=m.querySelector("#lkQ");inp.addEventListener("input",()=>{q=inp.value;draw()});draw();setTimeout(()=>inp.focus(),30);
+    inp.addEventListener("keydown",e=>{if(e.key!=="Enter")return;e.preventDefault();const b=m.querySelector("[data-lk]");if(b&&m.querySelectorAll("[data-lk]").length===1)b.click()});
+    m.querySelector("#lkL").addEventListener("click",e=>{const b=e.target.closest("[data-lk]");if(!b)return;const p=S.products.get(b.dataset.lk);if(!p)return;
+      if(p.barcode&&!confirm(`«${p.name}» عليها باركود ${p.barcode}. تبدله بـ ${code}؟`))return;
+      setCode(p,code);closeModal();toast(`انحفظ الباركود على «${p.name}»`,2200);if(after)after(S.products.get(p.id))});
+    m.querySelector("#lkNew").onclick=()=>productForm({name:q.trim(),price:"",category:cats()[0],barcode:code,active:true,unit:"حبة",packs:[],__new:true});
+  },"wide");
+}
+function setCode(p,code){
+  const meta={barcode:code,updatedAt:Date.now(),updatedBy:S.me.name};
+  S.products.set(p.id,{...p,...meta});try{db.collection("products").doc(p.id).set(meta,{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
+  log("edit","product",{detail:`ربط الباركود ${code} بـ ${p.name}`});
+  if(S.view==="products")renderProducts();
+}
+// A code scanned on the items tab: opens its item, or links it.
+function codeOnItems(code){
+  const t=normDigits(code).trim();if(!t)return;
+  const f=findCode(t);if(f){productForm(f.p);return}
+  const sc=scaleCode(t);if(sc&&sc.p){productForm(sc.p);return}
+  linkCodeForm(t);
 }
 /* Receiving stock: add a quantity (in the base unit or a pack), optionally with the new purchase price and expiry date. */
 function restockForm(p){
@@ -1839,9 +2226,11 @@ function countInput(inp){
 }
 // A scan adds one piece (or the whole pack for a pack's barcode) to that item's count.
 function countCode(code){
-  const f=findCode(normDigits(code).trim());
-  if(!f){toast("هذا الباركود مو مسجل على أي مادة.",3000);return}
-  const p=f.p,e=S.count.items[p.id],q=round3((e?e.q:0)+(f.pack?f.pack.n:1));
+  const t=normDigits(code).trim(),f=findCode(t),sc=f?null:scaleCode(t);
+  // A scale label counts its weight (a price label: its price over the kilo price).
+  const add=f?(f.pack?f.pack.n:1):sc&&sc.p?(sc.kg||(sc.p.price>0?round3(sc.amt/sc.p.price):0)):0;
+  if(!(add>0)){toast(sc?`رقم الميزان ${sc.plu} مو مربوط بأي مادة.`:"هذا الباركود مو مسجل على أي مادة.",3000);return}
+  const p=f?f.p:sc.p,e=S.count.items[p.id],q=round3((e?e.q:0)+add);
   setCount(p,q);if(navigator.vibrate)navigator.vibrate(40);
   S.cq="";const cq=$("#cq");if(cq)cq.value="";
   if(S.cshow==="todo")S.cshow="all";
@@ -2175,12 +2564,52 @@ function xlApply(plan,fname){
   for(const u of plan.updates){const {__stock,...fields}=u.patch,patch={...fields,...meta};
     // Stock from the file is applied as a difference, so a sale made meanwhile still counts.
     if(__stock!==undefined){if(tracked(u.p))patch.stock=FV.increment(round3(__stock-stockOf(u.p)));else{patch.stock=__stock;patch.track=true}}
+    if("price" in fields&&u.p.est){patch.est=FV.delete();fields.est=false}
     S.products.set(u.p.id,{...u.p,...fields,...(__stock!==undefined?{stock:__stock,track:true}:{})});writes.push(b=>b.update(db.collection("products").doc(u.p.id),patch))}
   const a=activityDoc("add","product",{detail:`استيراد Excel (${fname}): ${plan.adds.length} مادة جديدة، ${plan.updates.length} تحدّثت`});
   writes.push(b=>b.set(db.collection("activity").doc(a.id),a));
   for(let i=0;i<writes.length;i+=450){const b=db.batch();writes.slice(i,i+450).forEach(w=>w(b));b.commit().catch(writeFail)}
   closeModal();S.pcat="all";S.pq="";render();
   toast(`انضافت ${plan.adds.length} مادة وتحدّثت ${plan.updates.length}`,3500);
+}
+
+/* ---------- ready-made item list ----------
+   catalog.json: groups of the items an Iraqi neighbourhood market sells, with estimated prices and no barcodes.
+   Added items carry est:true (chip «سعر تقديري») until the owner saves them or imports a price; the owner then scans each item
+   once and picks its name (linkCodeForm). An item already on the list (same name) is skipped. */
+let CATALOG=null;
+async function catalogForm(){
+  if(!isAdmin())return;
+  if(!CATALOG){toast("جارِ تحميل القائمة…",1500);try{const r=await fetch("catalog.json",{cache:"no-cache"});if(!r.ok)throw new Error(r.status);CATALOG=await r.json()}catch(e){console.warn(e);toast("تعذّر تحميل القائمة. تحقق من الإنترنت.");return}}
+  const have=new Set([...S.products.values()].map(p=>foldAr(p.name)));
+  const groups=CATALOG.map((g,i)=>({i,g:g.g,items:g.items,fresh:g.items.filter(x=>!have.has(foldAr(x.n)))}));
+  const sel=new Set(groups.filter(g=>g.fresh.length).map(g=>g.i));
+  openModal(`<h3>قائمة مواد جاهزة</h3><p class="hint">مواد ماركت عراقي بأسعار تقديرية وبدون باركود. اختار الأقسام اللي تريدها. بعدين امسح باركود كل مادة مرة وحدة واختار اسمها، والأسعار تطلع عليها «سعر تقديري» لحد ما تراجعها.</p>
+    <div class="tool-row"><button class="btn sm" type="button" id="ctAll">اختيار الكل</button><button class="btn sm" type="button" id="ctNone">إلغاء الكل</button></div>
+    <ul class="ct-list" id="ctL">${groups.map(g=>`<li><label class="check"><input type="checkbox" data-ct="${g.i}"${sel.has(g.i)?" checked":""}${g.fresh.length?"":" disabled"}>
+      <span><b>${esc(g.g)}</b> · <span class="num">${g.fresh.length}</span> مادة${g.fresh.length<g.items.length?` (<span class="num">${g.items.length-g.fresh.length}</span> موجودة)`:""}<small>${esc(g.items.slice(0,4).map(x=>x.n).join("، "))}…</small></span></label></li>`).join("")}</ul>
+    <div class="foot"><button class="btn primary" type="button" id="ctGo"></button><button class="btn" type="button" data-close>رجوع</button></div>`,m=>{
+    const sync=()=>{const n=groups.filter(g=>sel.has(g.i)).reduce((a,g)=>a+g.fresh.length,0),b=m.querySelector("#ctGo");b.textContent=n?`إضافة ${fmt(n)} مادة`:"اختار قسم";b.disabled=!n};
+    const all=v=>{m.querySelectorAll("[data-ct]").forEach(c=>{if(c.disabled)return;c.checked=v;if(v)sel.add(Number(c.dataset.ct));else sel.delete(Number(c.dataset.ct))});sync()};
+    m.querySelector("#ctL").addEventListener("change",e=>{const c=e.target.closest("[data-ct]");if(!c)return;if(c.checked)sel.add(Number(c.dataset.ct));else sel.delete(Number(c.dataset.ct));sync()});
+    m.querySelector("#ctAll").onclick=()=>all(true);m.querySelector("#ctNone").onclick=()=>all(false);
+    m.querySelector("#ctGo").onclick=()=>catalogApply(groups.filter(g=>sel.has(g.i)).flatMap(g=>g.fresh));
+    sync();
+  },"wide");
+}
+function catalogApply(items){
+  if(!isAdmin()||!items.length)return;
+  const now=Date.now(),meta={updatedAt:now,updatedBy:S.me.name},seen=new Set(),objs=[];
+  for(const x of items){const k=foldAr(x.n);if(seen.has(k)||!(x.p>=0))continue;seen.add(k);
+    objs.push({id:uid(),createdAt:now,by:S.me.name,name:x.n,price:Math.round(x.p),category:x.c||"مشكل",barcode:"",unit:x.w?"كغم":x.u||"حبة",weighed:!!x.w,plu:"",wprice:0,cost:0,
+      packs:x.k&&x.k.q>0?[{name:x.k.n||"كارتون",n:x.k.q,price:Math.round(x.k.p)||0,wprice:0,barcode:""}]:[],track:false,min:0,expiry:"",offer:null,active:true,est:true,src:"catalog",...meta})}
+  const writes=objs.map(o=>b=>b.set(db.collection("products").doc(o.id),o));
+  const a=activityDoc("add","product",{detail:`أضاف ${objs.length} مادة من القائمة الجاهزة`});
+  writes.push(b=>b.set(db.collection("activity").doc(a.id),a));
+  for(let i=0;i<writes.length;i+=450){const b=db.batch();writes.slice(i,i+450).forEach(w=>w(b));b.commit().catch(writeFail)}
+  objs.forEach(o=>S.products.set(o.id,o));
+  closeModal();S.pcat="all";S.pq="";render();
+  toast(`انضافت ${fmt(objs.length)} مادة. امسح باركود أي مادة واختار اسمها حتى ينربط.`,5000);
 }
 
 /* ---------- dollar rate (owner) ---------- */
@@ -2210,6 +2639,7 @@ function accountMenu(){
   openModal(`<h3>${esc(S.me.name)} <span class="role">${ROLE_LABEL[S.me.role]}</span></h3>
     <div class="menu">
       <a class="btn" href="${DEBTS_URL}">${I.book}فتح دفتر الديون</a>
+      ${canSell()?`<button class="btn" type="button" data-act="hw">${I.print}الطابعة والدرج والميزان</button>`:""}
       ${isAdmin()?`<button class="btn" type="button" id="mRate">$ سعر الدولار${usdRate()?`: <span class="num">$100 = ${fmt(usdRate()*100)}</span>`:" (ما محدد)"}</button>`:""}
       <div class="seg" role="group" aria-label="المظهر">${[["system","تلقائي"],["light","فاتح"],["dark","ليلي"]].map(([k,l])=>`<button type="button" data-th="${k}" aria-pressed="${th===k}">${l}</button>`).join("")}</div>
       <button class="btn danger-text" type="button" id="mOut">${I.out}تسجيل الخروج</button>
@@ -2263,6 +2693,10 @@ document.addEventListener("click",e=>{
     case "countcancel":if(confirm("إلغاء الجرد؟ العد اللي سويته ينمسح وما تتغير أي كمية.")){S.count=null;saveCount();renderCount()}break;
     case "countscan":scanBarcode(countCode);break;
     case "excel":excelForm();break;
+    case "catalog":catalogForm();break;
+    case "linkscan":scanBarcode(codeOnItems);break;
+    case "hw":hwForm();break;
+    case "drawer":openDrawerNoSale();break;
   }
 });
 // Tapping the dark area above the cart sheet closes it (the ::after overlay sits on body).
@@ -2285,16 +2719,22 @@ document.addEventListener("keydown",e=>{
     if(all[i+1]){all[i+1].focus();all[i+1].select()}else{const q=$("#cq");if(q)q.focus()}return}
   if(e.target.id!=="cq")return;e.preventDefault();
   const t=normDigits(e.target.value).trim();if(!t)return;
-  if(findCode(t)){countCode(t);setTimeout(()=>{const q=$("#cq");if(q)q.focus()},20);return}
+  if(findCode(t)||(scaleCode(t)||{}).p){countCode(t);setTimeout(()=>{const q=$("#cq");if(q)q.focus()},20);return}
   const list=countList();if(list.length===1){const i=$(`[data-count="${CSS.escape(list[0].id)}"]`);if(i){i.focus();i.select()}}
   else if(/^\d{6,}$/.test(t))toast("هذا الباركود مو مسجل على أي مادة.",3000);
+});
+document.addEventListener("keydown",e=>{
+  if(e.target.id!=="pq"||e.key!=="Enter")return;
+  const t=normDigits(e.target.value).trim();if(!/^\d{6,}$/.test(t))return;
+  e.preventDefault();S.pq="";e.target.value="";renderProducts();codeOnItems(t);
 });
 document.addEventListener("keydown",e=>{
   if(e.target.id!=="q"||e.key!=="Enter")return;e.preventDefault();
   const v=e.target.value.trim();if(!v)return;
   const t=normDigits(v);const byCode=findCode(t);
   if(byCode){if(sellItem(byCode.p,byCode.pack))toast("انضافت: "+byCode.p.name+(byCode.pack?" ("+byCode.pack.name+")":""),1500)}
-  else{const list=filteredProducts(v,S.cat);if(list.length===1)sellItem(list[0]);else{if(/^\d{6,}$/.test(t))sellCode(t);return}}
+  else if(/^\d{6,}$/.test(t)){if(!sellCode(t))return}
+  else{const list=filteredProducts(v,S.cat);if(list.length===1)sellItem(list[0]);else return}
   S.q="";e.target.value="";renderTiles();
 });
 
@@ -2302,7 +2742,7 @@ if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceW
 
 /* ---------- boot ---------- */
 (async()=>{
-  loadCart();loadCount();
+  loadCart();loadCount();loadHw();
   const cfg=window.FIREBASE_CONFIG;
   if(!window.firebase){showError("تعذّر تحميل ملفات البرنامج.");return}
   if(!cfg||!cfg.apiKey||/^PUT/.test(cfg.apiKey)){showError("لم يتم ربط قاعدة البيانات (Firebase) بعد.");return}
