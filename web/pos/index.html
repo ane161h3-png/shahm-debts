@@ -344,6 +344,8 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 .crow.done input{border-color:var(--accent);background:var(--accent-soft)}
 .crow .cd{min-width:78px;flex:none;text-align:left}
 .crow.hit{background:var(--accent-soft)}
+.ip-row{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line)}.ip-row .m{flex:1;min-width:0}
+.ip-row .m>b,.ip-row .m>small{display:block}.ip-row .m>small{color:var(--muted);font-size:12.5px}.ip-row .btn{flex:none}
 @media (max-width:560px){.crow{flex-wrap:wrap}.crow .m{flex-basis:100%}.crow input{flex:1}}
 .rv-in{display:flex;gap:6px;align-items:center;flex:none}
 .rv-in select{flex:none;max-width:140px;border:1px solid var(--line);background:var(--paper-2);border-radius:var(--r-ctl);padding:9px 8px}
@@ -515,6 +517,9 @@ const cats=()=>{const base=Array.isArray(S.settings.categories)&&S.settings.cate
   return [...new Set([...base,...MARKET_CATS,...[...S.products.values()].map(p=>p.category).filter(Boolean)])]};
 const isAdmin=()=>S.me&&S.me.role==="owner";
 const canSell=()=>S.me&&(S.me.role==="owner"||S.me.role==="editor");
+// The owner can trust an editor with the items and prices («يدير المواد», users/{uid}.items, set only by the owner): that
+// editor gets the items tab (add, edit, prices, photos, receiving, stocktake) but nothing else of the owner's.
+const canItems=()=>isAdmin()||!!(S.me&&S.me.role==="editor"&&S.me.items);
 const isSup=c=>c&&c.kind==="supplier";
 const qtyText=q=>Number.isInteger(q)?String(q):String(Math.round(q*1000)/1000);
 const waNumber=p=>{let d=normDigits(p).replace(/\D/g,"");if(!d)return "";if(d.startsWith("00"))d=d.slice(2);if(d.startsWith("0"))d="964"+d.slice(1);else if(d.length===10&&d.startsWith("7"))d="964"+d;return d};
@@ -777,12 +782,12 @@ function setWhole(v){
 }
 
 /* ---------- shell ---------- */
-const NAV=()=>[["sell","البيع",I.cart],["sales","المبيعات",I.chart],...(isAdmin()?[["products","المواد",I.box]]:[])];
+const NAV=()=>[["sell","البيع",I.cart],["sales","المبيعات",I.chart],...(canItems()?[["products","المواد",I.box]]:[])];
 function showApp(){$("#gate").hidden=true;$("#gate").innerHTML="";$("#app").hidden=false;render()}
 function go(v){S.view=v;S.rvPend=null;S.rvNewName=null;document.body.classList.remove("show-cart");if(v==="sales"&&!S.repDay)S.repDay=todayISO();render();window.scrollTo(0,0)}
 function render(){
   if(!S.me||$("#app").hidden)return;
-  if((S.view==="products"||S.view==="count"||S.view==="recv")&&!isAdmin())S.view="sell";
+  if((S.view==="products"||S.view==="count"||S.view==="recv")&&!canItems())S.view="sell";
   renderHeader();
   const v=$("#view");
   if(S.view==="sell"){v.innerHTML=sellView();renderChips();renderTiles();renderCart()}
@@ -794,7 +799,7 @@ function render(){
 function renderHeader(){
   $("#today").textContent=dayName(todayISO())+(S.shift?" · وردية من "+hm12(S.shift.openedAt):"");
   $("#shopTitle").textContent="كاشير "+shopName();
-  const nAl=isAdmin()?alertCount():0;
+  const nAl=canItems()?alertCount():0;
   const cur=S.view==="count"||S.view==="recv"?"products":S.view;
   $("#tabs").innerHTML=NAV().map(([k,l,ic])=>`<button type="button" data-go="${k}" aria-current="${cur===k?"page":"false"}">${ic}${l}${k==="products"&&nAl?`<span class="badge num" title="تنبيهات المخزن">${nAl}</span>`:""}</button>`).join("");
   $("#meBox").innerHTML=`<span class="avatar" aria-hidden="true">${initial(S.me.name)}</span><span class="nm">${esc(S.me.name)}</span><span class="role">${ROLE_LABEL[S.me.role]}</span>${prNew().length?`<span class="badge num" title="تغيّرت أسعار">${prNew().length}</span>`:""}`;
@@ -860,7 +865,7 @@ function renderTiles(){
   const list=filteredProducts(S.q,S.cat);
   const custom=canSell()?`<button class="tile custom" type="button" data-act="keypad">${I.keypad}<span>مادة بسعر${kk("keypad")}</span></button>`:"";
   if(!S.ready.p){el.innerHTML=`<div class="spinner" style="grid-column:1/-1"></div>`;return}
-  if(!list.length){el.innerHTML=custom+`<div class="empty" style="grid-column:1/-1">${S.products.size?`<b>ماكو مادة بهذا الاسم</b>جرّب كلمة ثانية${canSell()?"، أو بيعها بـ «مادة بسعر»":""}.`:`<b>ماكو مواد بعد</b>${isAdmin()?`أضف المواد من تبويب <a href="#" data-go="products">المواد</a>.`:"المدير يضيف المواد وأسعارها."}`}</div>`;return}
+  if(!list.length){el.innerHTML=custom+`<div class="empty" style="grid-column:1/-1">${S.products.size?`<b>ماكو مادة بهذا الاسم</b>جرّب كلمة ثانية${canSell()?"، أو بيعها بـ «مادة بسعر»":""}.`:`<b>ماكو مواد بعد</b>${canItems()?`أضف المواد من تبويب <a href="#" data-go="products">المواد</a>.`:"المدير يضيف المواد وأسعارها."}`}</div>`;return}
   // «مواد الوزن»: the items sold by the kilo, grouped under their category so they are quick to find.
   const grouped=S.cat==="__w"&&!normDigits(S.q).trim();
   if(grouped){const ord=cats();list.sort((a,b)=>{const ca=a.category||"",cb=b.category||"",ia=ord.indexOf(ca),ib=ord.indexOf(cb);
@@ -1001,7 +1006,7 @@ function weightForm(p,line){
       <div class="due"><span class="k" id="wl"></span><span class="v"><span class="num" id="wt">0</span> <small style="font-size:16px">${CUR}</small></span></div>
       <p class="err" id="wErr"></p>
       <div class="foot"><button class="btn primary" type="submit" style="flex:1">${line?"تم":"إضافة للفاتورة"}</button>
-        ${line?`<button class="btn ghost danger-text" type="button" id="wDel">${I.trash}حذف</button>${isAdmin()?`<button class="btn" type="button" id="wPrice">السعر</button>`:""}`:""}<button class="btn" type="button" data-close>رجوع</button></div>
+        ${line?`<button class="btn ghost danger-text" type="button" id="wDel">${I.trash}حذف</button>${canItems()?`<button class="btn" type="button" id="wPrice">السعر</button>`:""}`:""}<button class="btn" type="button" data-close>رجوع</button></div>
     </form>`,m=>{
     const inp=m.querySelector("#wv"),wu=m.querySelector("#wu");
     const kg=()=>{const v=parseAmt(inp.value);if(!(v>0))return 0;return round3(mode==="a"?v/price:gram?v/1000:v)};
@@ -1094,10 +1099,10 @@ function sellCode(code){
   if(f){if(sellItem(f.p,f.pack)){toast("انضافت: "+f.p.name+(f.pack?" ("+f.pack.name+")":""),1500);flashItem(f.p,f.pack);splitView(true)}return true}
   const sc=scaleCode(t);
   if(sc&&sc.p){const ok=sellScaled(sc);if(ok)splitView(true);return ok}
-  if(sc){sound("err");toast(`رقم الميزان ${sc.plu} مو مربوط بأي مادة.${isAdmin()?" اكتبه بالمادة بخانة «رقمها بالميزان».":""}`,4500);return false}
+  if(sc){sound("err");toast(`رقم الميزان ${sc.plu} مو مربوط بأي مادة.${canItems()?" اكتبه بالمادة بخانة «رقمها بالميزان».":""}`,4500);return false}
   // The owner links an unknown code to an item on the spot (the ready-made list has names and prices, not barcodes).
   sound("err");
-  if(isAdmin()){linkCodeForm(t,p=>{if(sellItem(p))toast("انضافت: "+p.name,1500)});return true}
+  if(canItems()){linkCodeForm(t,p=>{if(sellItem(p))toast("انضافت: "+p.name,1500)});return true}
   toast("هذا الباركود مو مسجل على أي مادة.",3500);return false;
 }
 // A scale label: its weight (or its price) goes on the item's line; a price label keeps the label's amount exactly.
@@ -1116,7 +1121,7 @@ function sellScaled(r){
 // A USB / Bluetooth scanner types the code fast and presses Enter. Catch it even when no field has focus.
 let scanBuf="",scanAt=0;
 document.addEventListener("keydown",e=>{
-  if(!S.me||(S.view!=="sell"&&!(S.view==="count"&&S.count)&&!((S.view==="products"||S.view==="recv")&&isAdmin()))||modalOpen())return;
+  if(!S.me||(S.view!=="sell"&&!(S.view==="count"&&S.count)&&!((S.view==="products"||S.view==="recv")&&canItems()))||modalOpen())return;
   const tag=(e.target&&e.target.tagName)||"";if(/INPUT|TEXTAREA|SELECT/.test(tag))return;
   const now=Date.now();if(now-scanAt>80)scanBuf="";scanAt=now;
   if(e.key==="Enter"){if(scanBuf.length>=4){if(S.view==="count")countCode(scanBuf);else if(S.view==="recv")recvCode(scanBuf);else if(S.view==="products")codeOnItems(scanBuf);else sellCode(scanBuf);e.preventDefault()}scanBuf="";return}
@@ -2516,7 +2521,7 @@ function commitPic(id,st){
    Scan an item from the shelf, then pick its name: the code is saved on that item, or a new item is made with it.
    This is how the ready-made list (names and prices, no barcodes) gets its barcodes. */
 function linkCodeForm(code,after){
-  if(!isAdmin())return;
+  if(!canItems())return;
   let q="";
   openModal(`<h3>باركود جديد</h3><p class="hint">الباركود <b class="num">${esc(code)}</b> مو مسجل. اختار المادة اللي عليها وينحفظ عليها.</p>
     <label class="search">${I.search}<input id="lkQ" type="search" placeholder="اكتب أول حروف اسم المادة" autocomplete="off" aria-label="بحث بالمواد"></label>
@@ -2553,7 +2558,7 @@ function codeOnItems(code){
 /* The short form for an item from the ready-made list: its barcode and real sale price (and the purchase price if known).
    Saving it clears «سعر تقديري», so the item leaves the «من القائمة الجاهزة» chip once it also has a barcode. */
 function priceForm(p){
-  if(!isAdmin()||!p)return;
+  if(!canItems()||!p)return;
   const wg=isWeighed(p),codeOk=!noCode(p)||!!p.barcode;
   openModal(`<h3>${esc(p.name)}</h3><p class="hint">${esc(p.category||"")}${p.est?` · السعر التقديري <span class="num">${fmt(p.price)}</span>، صحّحه لسعر بيعك`:""}</p>
     <form id="qf" class="field" style="gap:12px" novalidate>
@@ -3434,7 +3439,7 @@ function xlTemplate(){
   saveFile("نموذج-مواد.xlsx",xlsxBlob(rows,"المواد",XL_COLS.map(c=>c[3]))).then(ok=>{if(ok)toast("تم تنزيل النموذج")}).catch(()=>toast("تعذّر حفظ الملف."));
 }
 function excelForm(){
-  if(!isAdmin())return;
+  if(!canItems())return;
   openModal(`<h3>Excel: استيراد وتصدير المواد</h3>
     <p class="hint">ملف Excel أو CSV أول سطر بيه عناوين الأعمدة: اسم المادة، الباركود، الصنف، سعر المفرد… (نزّل النموذج تشوف كل الأعمدة). المادة الموجودة تنعرف بالباركود أو بالاسم وتتحدث أسعارها، والجديدة تنضاف.</p>
     <label class="xl-file" id="xlDrop">${I.sheet.replace("<svg",'<svg width="34" height="34"')}<b>اختار ملف المواد</b><span>.xlsx أو .csv، أو اسحبه هنا</span><input type="file" id="xlF" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"></label>
@@ -3500,7 +3505,7 @@ const TRASH_KEY="shahm-pos-trash";
 const delAble=p=>noCode(p)&&!inWeigh(p);
 function trashOf(){try{const t=JSON.parse(localStorage.getItem(TRASH_KEY)||"null");return t&&Array.isArray(t.items)&&t.items.length&&Date.now()-t.at<3*864e5?t:null}catch(e){return null}}
 function delNoCode(){
-  if(!isAdmin())return;
+  if(!canItems())return;
   const list=[...S.products.values()].filter(delAble);if(!list.length)return;
   if(!confirm(`تنحذف ${list.length} مادة ما عليها باركود (مواد الوزن تبقى). الفواتير القديمة تبقى مثل ما هي.\n\nمتأكد؟`))return;
   try{localStorage.setItem(TRASH_KEY,JSON.stringify({at:Date.now(),items:list.map(p=>({...p,pic:null}))}))}catch(e){}
@@ -3512,7 +3517,7 @@ function delNoCode(){
   S.pcat="all";render();toast(`انحذفت ${list.length} مادة. إذا غلطت تكدر تسترجعها من فوك القائمة.`,5000);
 }
 function undoNoCode(){
-  const t=trashOf();if(!isAdmin()||!t)return;
+  const t=trashOf();if(!canItems()||!t)return;
   if(!confirm(`ترجع ${t.items.length} مادة اللي انحذفت؟`))return;
   const back=t.items.filter(p=>!S.products.has(p.id)).map(p=>{const o={...p};delete o.pic;return o});
   const writes=back.map(o=>b=>b.set(db.collection("products").doc(o.id),o));
@@ -3541,7 +3546,7 @@ const WEIGH_LIST=[
   ["حلويات وشوكولاتة",["جكليت"]],
   ["صلصات ومربيات",["دبس"]]];
 function weighListForm(){
-  if(!isAdmin())return;
+  if(!canItems())return;
   const have=new Map([...S.products.values()].map(p=>[foldAr(p.name),p]));
   const rows=WEIGH_LIST.flatMap(([c,xs])=>xs.map(x=>{const [n,bag]=Array.isArray(x)?x:[x,0];return {n,c,bag,p:have.get(foldAr(n))||null}}));
   const fresh=rows.filter(r=>!r.p).length;
@@ -3572,7 +3577,7 @@ function weighListForm(){
    once and picks its name (linkCodeForm). An item already on the list (same name) is skipped. */
 let CATALOG=null;
 async function catalogForm(){
-  if(!isAdmin())return;
+  if(!canItems())return;
   if(!CATALOG){toast("جارِ تحميل القائمة…",1500);try{const r=await fetch("catalog.json",{cache:"no-cache"});if(!r.ok)throw new Error(r.status);CATALOG=await r.json()}catch(e){console.warn(e);toast("تعذّر تحميل القائمة. تحقق من الإنترنت.");return}}
   const have=new Set([...S.products.values()].map(p=>foldAr(p.name)));
   const groups=CATALOG.map((g,i)=>({i,g:g.g,items:g.items,fresh:g.items.filter(x=>!have.has(foldAr(x.n)))}));
@@ -3591,7 +3596,7 @@ async function catalogForm(){
   },"wide");
 }
 function catalogApply(items){
-  if(!isAdmin()||!items.length)return;
+  if(!canItems()||!items.length)return;
   const now=Date.now(),meta={updatedAt:now,updatedBy:S.me.name},seen=new Set(),objs=[];
   for(const x of items){const k=foldAr(x.n);if(seen.has(k)||!(x.p>=0))continue;seen.add(k);
     objs.push({id:uid(),createdAt:now,by:S.me.name,name:x.n,price:Math.round(x.p),category:x.c||"مشكل",barcode:"",unit:x.w?"كغم":x.u||"حبة",weighed:!!x.w,plu:"",wprice:0,cost:0,
@@ -3633,7 +3638,7 @@ async function shrinkImage(file,max=1568,q=.85){
 }
 // The items button: carries on with a list in progress, or reads a new photo.
 function plOpen(){
-  if(!isAdmin())return;
+  if(!canItems())return;
   if(!plLeft()){PL=null;savePl();plStart();return}
   openModal(`<h3>قائمة من صورة</h3><p class="hint">عندك قائمة باقي بيها <b class="num">${plLeft()}</b> مادة ما خلصتها.</p>
     <div class="foot"><button class="btn primary" type="button" id="plGo">كمّل القائمة</button><button class="btn" type="button" id="plNew">${I.camera}صورة جديدة</button><button class="btn" type="button" data-close>رجوع</button></div>`,m=>{
@@ -3816,12 +3821,13 @@ function rateForm(after){
 /* ---------- account menu ---------- */
 function accountMenu(){
   let th="system";try{th=localStorage.getItem(THEME_KEY)||"system"}catch(e){}
-  openModal(`<h3>${esc(S.me.name)} <span class="role">${ROLE_LABEL[S.me.role]}</span></h3>
+  openModal(`<h3>${esc(S.me.name)} <span class="role">${ROLE_LABEL[S.me.role]}${S.me.role==="editor"&&S.me.items?" · يدير المواد":""}</span></h3>
     <div class="menu">
       <a class="btn" href="${DEBTS_URL}">${I.book}فتح دفتر الديون</a>
       ${canSell()?`<button class="btn" type="button" data-act="hw">${I.print}الطابعة والدرج والميزان</button>`:""}
       <button class="btn" type="button" data-act="prices">${I.bell}تغييرات الأسعار${prNew().length?` <span class="chip warn">جديد <span class="num">${prNew().length}</span></span>`:""}</button>
       <button class="btn keys-only" type="button" data-act="keys">${I.keypad}اختصارات الكيبورد${kbd("F1")}</button>
+      ${isAdmin()?`<button class="btn" type="button" id="mItems">${I.box}صلاحية المواد للمستخدمين</button>`:""}
       ${isAdmin()?`<button class="btn" type="button" id="mRate">$ سعر الدولار${usdRate()?`: <span class="num">$100 = ${fmt(usdRate()*100)}</span>`:" (ما محدد)"}</button>`:""}
       <div class="seg" role="group" aria-label="المظهر">${[["system","تلقائي"],["light","فاتح"],["dark","ليلي"]].map(([k,l])=>`<button type="button" data-th="${k}" aria-pressed="${th===k}">${l}</button>`).join("")}</div>
       <button class="btn danger-text" type="button" id="mOut">${I.out}تسجيل الخروج</button>
@@ -3831,6 +3837,27 @@ function accountMenu(){
       m.querySelectorAll("[data-th]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)))});
     m.querySelector("#mOut").onclick=()=>{closeModal();signOut()};
     const mr=m.querySelector("#mRate");if(mr)mr.onclick=()=>rateForm();
+    const mi=m.querySelector("#mItems");if(mi)mi.onclick=()=>itemsPermForm();
+  });
+}
+/* «يدير المواد»: the owner picks which editors (accounts approved in the debt book) may manage the items and prices.
+   It is saved on the account (users/{uid}.items); the rules let only the owner set it, and only for an editor does it count. */
+function itemsPermForm(){
+  if(!isAdmin())return;
+  openModal(`<h3>صلاحية المواد</h3><p class="hint">المستخدم اللي تشغّله يشوف تبويب «المواد»: يضيف مواد ويعدل الأسعار والصور، ويسوي استلام المواد والجرد. إلغاء الفواتير والخصم والإعدادات تبقى إلك بس، وكل تغيير بالسعر ينسجل باسمه.</p>
+    <ul class="rows" id="ipList"><li class="empty"><div class="spinner" aria-hidden="true"></div></li></ul>
+    <div class="foot"><button class="btn" type="button" data-close autofocus>إغلاق</button></div>`,m=>{
+    const el=m.querySelector("#ipList");let users=[];
+    const draw=()=>{const list=users.filter(u=>u.status==="active").sort((a,b)=>(a.role==="editor"?0:1)-(b.role==="editor"?0:1)||(a.name||"").localeCompare(b.name||"","ar"));
+      el.innerHTML=list.length?list.map(u=>{const ed=u.role==="editor",on=ed&&u.items===true;
+        return `<li class="ip-row"><span class="avatar">${initial(u.name||u.username||"?")}</span><div class="m"><b>${esc(u.name||u.username||"")}</b><small>${ed?(on?"يدير المواد":"بيع بس"):"مشاهد: غيّره لمحرر من دفتر الديون أول"}</small></div>
+          ${ed?`<button class="btn sm${on?" primary":""}" type="button" data-ip="${esc(u.id)}" aria-pressed="${on}">${on?"شغّالة":"مطفية"}</button>`:""}</li>`}).join("")
+        :`<li class="empty"><b>ماكو مستخدمين بعد</b>الحسابات تنسجل وتنقبل من دفتر الديون.</li>`};
+    db.collection("users").get().then(s=>{users=s.docs.map(d=>({...d.data(),id:d.id}));draw()}).catch(e=>{console.warn(e);el.innerHTML=`<li class="empty">تعذّر قراءة المستخدمين. تحقق من الإنترنت.</li>`});
+    el.addEventListener("click",e=>{const b=e.target.closest("[data-ip]");if(!b)return;const u=users.find(x=>x.id===b.dataset.ip);if(!u)return;
+      const v=!(u.items===true);u.items=v;draw();
+      try{db.collection("users").doc(u.id).set({items:v},{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
+      log("edit","account",{detail:`${v?"شغّل":"طفّى"} صلاحية المواد لـ ${u.name||u.username}`});toast(v?`${u.name||""} يكدر هسه يدير المواد`:`انشالت صلاحية المواد من ${u.name||""}`)});
   });
 }
 
@@ -3984,7 +4011,7 @@ if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceW
       if(p.status==="pending"){stopData();S.me=null;showWaiting("حسابك بانتظار موافقة المدير.","warn");return}
       if(p.status==="disabled"){stopData();S.me=null;showWaiting("تم إيقاف هذا الحساب. راجع المدير.","bad");return}
       const first=!S.me;
-      S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:uname};
+      S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:uname,items:p.role==="editor"&&p.items===true};
       startData();if(first||$("#app").hidden)showApp();else render();
     },e=>{console.warn(e);showWaiting("تعذّر قراءة حسابك. تحقق من الإنترنت.","bad")});
   });
