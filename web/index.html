@@ -272,6 +272,8 @@ td.x{width:64px;white-space:nowrap}
 .field input.big{font-size:24px;font-family:var(--f-display);font-weight:600;text-align:left;direction:ltr}
 .field .help{font-size:12px;color:var(--muted)}
 .c-sug{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.linkish svg{width:16px;height:16px;flex:none;vertical-align:-3px}
+.c-sug .linkish{display:inline-flex;align-items:center;gap:6px;align-self:flex-start}
 .c-sug-i{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--paper-2);color:var(--ink);font:inherit;text-align:start;cursor:pointer}
 .c-sug-i .num{direction:ltr;color:var(--muted);font-size:13px}
 .c-sug-i em{margin-inline-start:auto;font-style:normal;font-weight:700;font-size:13px;color:var(--accent);white-space:nowrap}
@@ -591,6 +593,10 @@ function promiseForm(c){
   });
 }
 /* Pick a phone number from the phone's contacts: the Android app uses the Contacts plugin, Chrome on Android the Contact Picker API. */
+/* App name for the "allow contacts" hint (the debt book also opens inside the cashier app, whose name differs). */
+let APP_NAME="";if(NATIVE)plugin("App").getInfo().then(i=>{APP_NAME=i&&i.name||""}).catch(()=>{});
+const contactsOff=()=>`جهات الاتصال مقفولة على هذا التطبيق. افتح إعدادات الموبايل ← التطبيقات ← «${APP_NAME||"ديون الشهم"}» ← الأذونات ← جهات الاتصال ← سماح.`;
+const contactErr=e=>/permission/i.test(String(e&&e.message))?contactsOff():"تعذّر فتح جهات الاتصال.";
 const canPickContact=()=>NATIVE||("contacts" in navigator&&"select" in navigator.contacts);
 async function pickContact(){
   if(NATIVE){const r=await plugin("Contacts").pickContact({projection:{name:true,phones:true}});const c=r&&r.contact||{};
@@ -1405,12 +1411,12 @@ function customerForm(c,after){
       try{const r=await pickContact();if(!r)return;if(!r.phones.length){$("#cErr").textContent="هذا الاسم ما بيه رقم.";return}
         $("#cPhone").value=r.phones[0].replace(/[^\d+]/g,"");if(!$("#cName").value.trim()&&r.name)$("#cName").value=r.name;
         if(r.phones.length>1)toast("بيه أكثر من رقم، أخذت الأول. تكدر تعدّله.")}
-      catch(e){console.warn(e);if(!/cancel/i.test(String(e&&e.message)))$("#cErr").textContent=/permission/i.test(String(e&&e.message))?"لازم تسمح للبرنامج يوصل لجهات الاتصال.":"تعذّر فتح جهات الاتصال."}});
+      catch(e){console.warn(e);if(!/cancel/i.test(String(e&&e.message)))$("#cErr").textContent=contactErr(e)}});
     const sug=m.querySelector("#cSug");if(sug){let tm;
       const show=()=>{
         if(!phoneBook){sug.hidden=false;sug.innerHTML=`<button class="linkish" type="button" id="cSugOn">${I.users}اقترح من جهات الاتصال وأنا أكتب الاسم</button>`;
           sug.querySelector("#cSugOn").addEventListener("click",async()=>{try{await loadPhoneBook(true)}catch(e){console.warn(e)}
-            if(!phoneBook){sug.innerHTML=`<span class="help">لازم تسمح للتطبيق يوصل لجهات الاتصال من إعدادات الموبايل.</span>`;return}show()});return}
+            if(!phoneBook){sug.innerHTML=`<span class="help">${esc(contactsOff())}</span>`;return}show()});return}
         const list=contactMatches($("#cName").value);
         if(!list.length){sug.hidden=true;sug.innerHTML="";return}
         sug.hidden=false;sug.innerHTML=`<span class="help">موجود بجهات الاتصال:</span>`+list.map((x,i)=>`<button type="button" class="c-sug-i" data-ci="${i}"><b>${esc(x.name)}</b><span class="num">${esc(x.phones[0])}</span><em>إضافة مع الرقم</em></button>`).join("");
@@ -1454,7 +1460,7 @@ function phoneForm(c){
     const pk=m.querySelector("#pPick");if(pk)pk.addEventListener("click",async()=>{
       try{const r=await pickContact();if(!r)return;if(!r.phones.length){m.querySelector("#pErr").textContent="هذا الاسم ما بيه رقم.";return}
         inp.value=r.phones[0].replace(/[^\d+]/g,"");if(r.phones.length>1)toast("بيه أكثر من رقم، أخذت الأول. تكدر تعدّله.")}
-      catch(e){console.warn(e);if(!/cancel/i.test(String(e&&e.message)))m.querySelector("#pErr").textContent=/permission/i.test(String(e&&e.message))?"لازم تسمح للبرنامج يوصل لجهات الاتصال.":"تعذّر فتح جهات الاتصال."}});
+      catch(e){console.warn(e);if(!/cancel/i.test(String(e&&e.message)))m.querySelector("#pErr").textContent=contactErr(e)}});
     m.querySelector("#pf").addEventListener("submit",e=>{
       e.preventDefault();
       const phone=normDigits(inp.value).trim(),n=waNumber(phone);

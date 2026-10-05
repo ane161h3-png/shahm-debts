@@ -58,14 +58,14 @@ jobs:
       - name: Permissions
         run: |
           M=android/app/src/main/AndroidManifest.xml
+          # Contact picker for customer phone numbers (Android shows one "Contacts" permission prompt). The cashier needs it
+          # too: its «فتح دفتر الديون» opens the debt book inside the same app.
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.READ_CONTACTS" />\n    <uses-permission android:name="android.permission.WRITE_CONTACTS" />#' $M
+          grep -c CONTACTS $M
           if [ "${{ matrix.app }}" = pos ]; then
             # Camera for scanning barcodes.
             sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.CAMERA" />#' $M
             grep -c CAMERA $M
-          else
-            # Contact picker for customer phone numbers (Android shows one "Contacts" permission prompt).
-            sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.READ_CONTACTS" />\n    <uses-permission android:name="android.permission.WRITE_CONTACTS" />#' $M
-            grep -c CONTACTS $M
           fi
       - name: Set version
         run: |
