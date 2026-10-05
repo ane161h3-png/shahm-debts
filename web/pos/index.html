@@ -175,6 +175,7 @@ input:disabled{opacity:.55}
 @media (hover:hover) and (pointer:fine){.kbd{display:inline-block}.keys-only{display:flex}}
 @media not ((hover:hover) and (pointer:fine)){.keys-only{display:none!important}}
 .keys{width:100%;border-collapse:collapse;font-size:14px}.keys td{padding:7px 4px;border-bottom:1px solid var(--line)}.keys td:first-child{white-space:nowrap;width:1%}.keys .kbd{display:inline-block;margin:0 0 0 4px}
+.keys .kh td{font-weight:700;color:var(--muted);font-size:12.5px;padding-top:12px}.keys td.kset{width:1%;text-align:end}.keys .muted{color:var(--muted);font-size:12.5px}
 .chip{font-size:12.5px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
 .chip.debt{background:var(--debt-soft);color:var(--debt)}
 .chip.paid{background:var(--paid-soft);color:var(--paid)}
@@ -823,7 +824,7 @@ function sellView(){
     <section class="pane catalog" aria-label="المواد">
       <div class="cat-tools">
         <div class="tool-row">
-          <label class="search">${I.search}<input id="q" type="search" placeholder="ابحث باسم المادة أو الباركود${keyHint(" (F2)")}" autocomplete="off" value="${esc(S.q)}" aria-label="بحث عن مادة"></label>
+          <label class="search">${I.search}<input id="q" type="search" placeholder="ابحث باسم المادة أو الباركود${keyOf("search")?keyHint(` (${esc(keyName(keyOf("search")))})`):""}" autocomplete="off" value="${esc(S.q)}" aria-label="بحث عن مادة"></label>
           ${canScan()?`<button class="icon-btn" type="button" data-act="scan" aria-label="مسح باركود بالكاميرا" title="مسح باركود بالكاميرا">${I.scan}</button>`:""}
           ${canSell()&&canKick()?`<button class="icon-btn" type="button" data-act="drawer" aria-label="فتح الدرج" title="فتح الدرج">${I.drawer}</button>`:""}
         </div>
@@ -857,7 +858,7 @@ function renderTiles(){
   const el=$("#tiles");if(!el)return;
   const inCart=new Map();for(const l of S.cart)if(l.pid)inCart.set(l.pid,round3((inCart.get(l.pid)||0)+l.qty*(l.n||1)));
   const list=filteredProducts(S.q,S.cat);
-  const custom=canSell()?`<button class="tile custom" type="button" data-act="keypad">${I.keypad}<span>مادة بسعر${kbd("F3")}</span></button>`:"";
+  const custom=canSell()?`<button class="tile custom" type="button" data-act="keypad">${I.keypad}<span>مادة بسعر${kk("keypad")}</span></button>`:"";
   if(!S.ready.p){el.innerHTML=`<div class="spinner" style="grid-column:1/-1"></div>`;return}
   if(!list.length){el.innerHTML=custom+`<div class="empty" style="grid-column:1/-1">${S.products.size?`<b>ماكو مادة بهذا الاسم</b>جرّب كلمة ثانية${canSell()?"، أو بيعها بـ «مادة بسعر»":""}.`:`<b>ماكو مواد بعد</b>${isAdmin()?`أضف المواد من تبويب <a href="#" data-go="products">المواد</a>.`:"المدير يضيف المواد وأسعارها."}`}</div>`;return}
   // «مواد الوزن»: the items sold by the kilo, grouped under their category so they are quick to find.
@@ -868,7 +869,7 @@ function renderTiles(){
   el.innerHTML=custom+list.slice(0,300).map(p=>{const al=alertsOf(p),left=tracked(p)?round3(stockOf(p)-(inCart.get(p.id)||0)):null;
     const reg=priceFor(p,null,S.whole),of=S.whole?null:priceLine({},p,null,false),shown=of&&of.was?of.price:reg;
     const head=grouped&&(p.category||"")!==lastCat?`<div class="tile-head">${esc((lastCat=p.category||"")||"بدون صنف")}</div>`:"";
-    return `${head}<button class="tile${p.pic?" has-pic":""}" type="button" data-add="${esc(p.id)}"${canSell()?"":" disabled"}>
+    return `${head}<button class="tile${hasPic(p)?" has-pic":""}" type="button" data-add="${esc(p.id)}"${canSell()?"":" disabled"}>
     ${inCart.has(p.id)?`<span class="q num">${qtyText(inCart.get(p.id))}</span>`:""}${picImg(p,"pic")}
     <span class="nm">${esc(p.name)}</span><span class="ct">${esc(p.category||"")}</span>
     ${left!==null||al.some(a=>a.startsWith("exp"))?`<span class="st${al.length||(left!==null&&left<=0)?" warn":""}">${left!==null?`باقي <span class="num">${qtyText(left)}</span>`:""}${al.includes("expired")?" · منتهية":al.includes("expiring")?" · قرب انتهاؤها":""}</span>`:""}
@@ -893,8 +894,8 @@ function renderCart(){
       <div class="tot-row"><span>المجموع</span><b class="num">${fmt(t.sub)}</b></div>
       <div class="tot-row disc"><button type="button" data-act="discount"${S.cart.length&&canSell()?"":" disabled"}>${t.disc?"الخصم (تعديل)":"+ إضافة خصم"}</button>${t.disc?`<b class="num">-${fmt(t.disc)}</b>`:""}</div>
       <div class="grand"><span>المطلوب</span><b><span class="num">${fmt(t.total)}</span> <small style="font-size:14px">${CUR}</small></b></div>
-      <div class="pay-row"><button class="btn primary charge" type="button" data-act="quickcash"${S.cart.length&&canSell()?"":" disabled"}>${I.check}كاش <span class="num">${fmt(t.total)}</span>${kbd("Enter")}</button>
-        <button class="btn more" type="button" data-act="checkout"${S.cart.length&&canSell()?"":" disabled"}>دين / باقي${kbd("F7")}</button></div>
+      <div class="pay-row"><button class="btn primary charge" type="button" data-act="quickcash"${S.cart.length&&canSell()?"":" disabled"}>${I.check}كاش <span class="num">${fmt(t.total)}</span>${kk("cash")}</button>
+        <button class="btn more" type="button" data-act="checkout"${S.cart.length&&canSell()?"":" disabled"}>دين / باقي${kk("pay")}</button></div>
     </div>`;
   if(bar)bar.innerHTML=S.cart.length?`<button class="open" type="button" data-act="showcart"><span><span class="cnt num">${S.cart.length}</span>عرض الفاتورة</span><b class="num">${fmt(t.total)}</b></button>`:"";
   if(!S.cart.length)document.body.classList.remove("show-cart");
@@ -1163,32 +1164,75 @@ document.addEventListener("keydown",e=>{
 const kbd=k=>`<kbd class="kbd">${k}</kbd>`;
 const hasKeys=()=>matchMedia("(hover:hover) and (pointer:fine)").matches;
 const keyHint=t=>hasKeys()?t:"";
-const KEYS=[["Enter","بيع كاش مباشر بالمبلغ المطلوب، وبنافذة الدفع: تأكيد البيع"],["F7","نافذة الدفع (دين، باقي، دولار)"],["F2","البحث عن مادة أو كتابة باركود"],["F3","مادة بسعر"],["F4","خصم"],["F6 / F7 / F8","بنافذة الدفع: كاش / دين / كاش + دين"],
-  ["+ / -","زيادة أو نقصان كمية آخر مادة بالفاتورة"],["Delete","تفريغ الفاتورة"],["F9","أسعار الجملة (تشغيل وإطفاء)"],["Alt + 1 / 2 / 3","البيع / المبيعات / المواد"],["Esc","سد النافذة"],["F1","هاي القائمة"]];
+/* The owner can move any of these to another key from the shortcuts window (kept per device in HW.keys, only the changed ones).
+   "pay" ones act inside the payment window, the rest on the selling screen; F1, Esc, Alt + number and Enter in the payment
+   window stay fixed, and letters and digits are refused because the barcode scanner types those. */
+const KEYDEF=[["cash","Enter","بيع كاش مباشر بالمبلغ المطلوب"],["pay","F7","نافذة الدفع (دين، باقي، دولار)"],["search","F2","البحث عن مادة أو كتابة باركود"],
+  ["keypad","F3","مادة بسعر"],["disc","F4","خصم"],["whole","F9","أسعار الجملة (تشغيل وإطفاء)"],["plus","+","زيادة كمية آخر مادة بالفاتورة"],
+  ["minus","-","نقصان كمية آخر مادة بالفاتورة"],["clear","Delete","تفريغ الفاتورة"],
+  ["pcash","F6","كاش","pay"],["pdebt","F7","دين","pay"],["ppart","F8","كاش + دين","pay"]];
+const KEYFIX=[["Enter","بنافذة الدفع: تأكيد البيع"],["Alt + 1 / 2 / 3","البيع / المبيعات / المواد"],["Esc","سد النافذة"],["F1","هاي القائمة"]];
+const keyOf=id=>{const c=HW.keys&&HW.keys[id];return c!==undefined?c:(KEYDEF.find(d=>d[0]===id)||[])[1]||""};
+const keyName=k=>k===" "?"Space":k;
+const kk=id=>keyOf(id)?kbd(keyName(keyOf(id))):"";
+const keyAct=(k,ctx)=>(KEYDEF.find(d=>(d[3]||"sell")===ctx&&keyOf(d[0])===k)||[])[0];
+const KEY_OK=/^(F([2-9]|1[0-2])|Enter|Delete|Insert|Home|End|PageUp|PageDown|Backspace| |\+|-|\*|\/)$/;
 function keysHelp(){
-  openModal(`<h3>اختصارات الكيبورد</h3><p class="hint">للابتوب أو كيبورد موصول. قارئ الباركود يشتغل بنفس الوقت بدون ما يتأثر.</p>
-    <table class="keys"><tbody>${KEYS.map(([k,t])=>`<tr><td>${k.split(" / ").map(kbd).join(" ")}</td><td>${t}</td></tr>`).join("")}</tbody></table>
-    <div class="foot"><button class="btn" type="button" data-close autofocus>إغلاق</button></div>`);
+  let wait=null;
+  const row=d=>`<tr><td>${kk(d[0])||`<span class="muted">بدون</span>`}</td><td>${d[2]}</td><td class="kset"><button class="btn sm${wait===d[0]?" primary":""}" type="button" data-kset="${d[0]}">${wait===d[0]?"اضغط الزر…":"غيّر"}</button></td></tr>`;
+  const body=()=>`<tr class="kh"><td colspan="3">شاشة البيع</td></tr>${KEYDEF.filter(d=>!d[3]).map(row).join("")}
+    <tr class="kh"><td colspan="3">نافذة الدفع</td></tr>${KEYDEF.filter(d=>d[3]==="pay").map(row).join("")}
+    <tr class="kh"><td colspan="3">ثابتة</td></tr>${KEYFIX.map(([k,t])=>`<tr><td>${k.split(" / ").map(kbd).join(" ")}</td><td colspan="2">${t}</td></tr>`).join("")}`;
+  openModal(`<h3>اختصارات الكيبورد</h3><p class="hint">للابتوب أو كيبورد موصول. اضغط «غيّر» وبعدها الزر اللي تريده؛ التغيير لهذا الجهاز بس. قارئ الباركود يشتغل بنفس الوقت بدون ما يتأثر.</p>
+    <table class="keys"><tbody id="kRows">${body()}</tbody></table><p class="err" id="kErr" role="alert"></p>
+    <div class="foot"><button class="btn" type="button" data-close autofocus>إغلاق</button><button class="btn ghost" type="button" id="kReset"${HW.keys&&Object.keys(HW.keys).length?"":" hidden"}>رجّع الافتراضي</button></div>`,m=>{
+    const err=m.querySelector("#kErr");
+    const draw=()=>{m.querySelector("#kRows").innerHTML=body();m.querySelector("#kReset").hidden=!(HW.keys&&Object.keys(HW.keys).length)};
+    const put=(id,k)=>{const d=KEYDEF.find(x=>x[0]===id),keys={...(HW.keys||{})};
+      if(k===d[1])delete keys[id];else keys[id]=k;HW.keys=keys;saveHw()};
+    const done=()=>{draw();if(S.view==="sell")render()};
+    // While waiting for the new key, every key press is caught here first, so it neither closes the window nor sells.
+    const cap=e=>{if(!wait)return;e.preventDefault();e.stopImmediatePropagation();
+      if(e.repeat||["Shift","Control","Alt","Meta","CapsLock"].includes(e.key))return;
+      const id=wait,d=KEYDEF.find(x=>x[0]===id),ctx=d[3]||"sell",k=e.key;
+      if(k==="Escape"){wait=null;err.textContent="";draw();return}
+      if(e.ctrlKey||e.metaKey||e.altKey){err.textContent="اختار زر واحد بدون Ctrl أو Alt.";return}
+      if(k==="F1"){err.textContent="F1 محجوز لفتح هاي القائمة.";return}
+      // The payment window has boxes for the amount and the customer, so only F keys can act there.
+      if(ctx==="pay"&&!/^F\d+$/.test(k)){err.textContent="بنافذة الدفع تكدر تختار بس أزرار F (مثل F6 أو F10).";return}
+      if(!KEY_OK.test(k)){err.textContent="الحروف والأرقام يكتبها قارئ الباركود، فاختار زر F أو Enter أو Delete أو Home أو End أو + أو -.";return}
+      wait=null;err.textContent="";
+      const old=keyOf(id),other=KEYDEF.find(x=>x[0]!==id&&(x[3]||"sell")===ctx&&keyOf(x[0])===k);
+      put(id,k);if(other){put(other[0],old);toast(`«${other[2]}» صار على ${keyName(old)||"بدون"} بدال ${keyName(k)}.`,4000)}
+      done()};
+    window.addEventListener("keydown",cap,true);modalCleanup=()=>window.removeEventListener("keydown",cap,true);
+    m.addEventListener("click",e=>{const b=e.target.closest("[data-kset]");if(!b)return;
+      wait=wait===b.dataset.kset?null:b.dataset.kset;err.textContent="";draw();
+      const nb=m.querySelector(`[data-kset="${wait}"]`);if(nb)nb.focus()});
+    m.querySelector("#kReset").onclick=()=>{if(!confirm("ترجّع كل الاختصارات مثل ما كانت؟"))return;wait=null;HW.keys={};saveHw();done();toast("رجعت الاختصارات الأصلية")};
+  });
 }
 document.addEventListener("keydown",e=>{
   if(!S.me||$("#app").hidden||e.defaultPrevented||e.ctrlKey||e.metaKey)return;
   if(e.altKey){const d=/^Digit([1-9])$/.exec(e.code||""),v=d&&NAV()[Number(d[1])-1];if(v&&!modalOpen()){e.preventDefault();go(v[0])}return}
   if(e.key==="F1"){e.preventDefault();if(!modalOpen())keysHelp();return}
   if(modalOpen()||S.view!=="sell")return;
+  const a=keyAct(e.key,"sell");if(!a)return;
+  // In a box only the F keys act (typing a name or a price never triggers one); the search box lets all through while empty.
   const t=e.target,tag=(t&&t.tagName)||"",free=!/INPUT|TEXTAREA|SELECT/.test(tag)||(t.id==="q"&&!t.value);
-  const fk={F2:1,F3:1,F4:1,F7:1,F9:1}[e.key];if(!free&&!fk)return;
+  if(!free&&!/^F\d+$/.test(e.key))return;
   const last=S.cart[S.cart.length-1];
-  switch(e.key){
-    // Even with a tile or a cart button still focused from a mouse click, Enter pays instead of pressing that button again.
-    case "Enter":e.preventDefault();if(!e.repeat)quickCash();break;
-    case "F7":e.preventDefault();checkout();break;
-    case "F2":{e.preventDefault();const q=$("#q");if(q){q.focus();q.select()}break}
-    case "F3":e.preventDefault();if(canSell())keypadForm();break;
-    case "F4":e.preventDefault();if(S.cart.length&&canSell())discountForm();break;
-    case "F9":e.preventDefault();if(canSell())setWhole(!S.whole);break;
-    case "+":if(last&&!last.w){e.preventDefault();setQty(last.key,last.qty+1)}break;
-    case "-":if(last&&!last.w){e.preventDefault();setQty(last.key,last.qty>1?last.qty-1:0)}break;
-    case "Delete":if(S.cart.length){e.preventDefault();if(confirm("تفريغ الفاتورة؟"))clearCart()}break;
+  switch(a){
+    // Even with a tile or a cart button still focused from a mouse click, the cash key pays instead of pressing that button again.
+    case "cash":e.preventDefault();if(!e.repeat)quickCash();break;
+    case "pay":e.preventDefault();checkout();break;
+    case "search":{e.preventDefault();const q=$("#q");if(q){q.focus();q.select()}break}
+    case "keypad":e.preventDefault();if(canSell())keypadForm();break;
+    case "disc":e.preventDefault();if(S.cart.length&&canSell())discountForm();break;
+    case "whole":e.preventDefault();if(canSell())setWhole(!S.whole);break;
+    case "plus":if(last&&!last.w){e.preventDefault();setQty(last.key,last.qty+1)}break;
+    case "minus":if(last&&!last.w){e.preventDefault();setQty(last.key,last.qty>1?last.qty-1:0)}break;
+    case "clear":if(S.cart.length){e.preventDefault();if(confirm("تفريغ الفاتورة؟"))clearCart()}break;
   }
 });
 /* A scanner on a phone counts as a keyboard, and Android then hides its own keyboard. So the first scan on a touch screen turns
@@ -1232,7 +1276,7 @@ function checkout(resume){
   const st={mode:"cash",cust:null,cashPart:0,received:0,cur:"iqd",usd:0,q:"",...(resume||{})};
   openModal(`<h3>الدفع</h3>
     <div class="due"><span class="k">المطلوب</span><span class="v"><span class="num">${fmt(t.total)}</span> <small style="font-size:16px">${CUR}</small></span></div>
-    <div class="seg" role="group" aria-label="طريقة الدفع"><button type="button" data-pm="cash" aria-pressed="false">كاش${kbd("F6")}</button><button type="button" data-pm="debt" aria-pressed="false">دين${kbd("F7")}</button><button type="button" data-pm="part" aria-pressed="false">كاش + دين${kbd("F8")}</button></div>
+    <div class="seg" role="group" aria-label="طريقة الدفع"><button type="button" data-pm="cash" aria-pressed="false">كاش${kk("pcash")}</button><button type="button" data-pm="debt" aria-pressed="false">دين${kk("pdebt")}</button><button type="button" data-pm="part" aria-pressed="false">كاش + دين${kk("ppart")}</button></div>
     <div id="coBody"></div>
     <p class="err" id="coErr"></p>
     <div class="foot"><button class="btn primary" type="button" id="coGo" style="flex:1;padding:13px;font-size:17px">تأكيد البيع${kbd("Enter")}</button><button class="btn" type="button" data-close>رجوع</button></div>`,m=>{
@@ -1298,8 +1342,8 @@ function checkout(resume){
     m.querySelectorAll("[data-pm]").forEach(b=>b.onclick=()=>{st.mode=b.dataset.pm;draw()});
     draw();
     // Keyboard: Enter confirms the sale from anywhere in this window; in the customer search it picks the only match.
-    // F6 / F7 / F8 pick cash / debt / cash + debt.
-    const PM={F6:"cash",F7:"debt",F8:"part"};
+    // F6 / F7 / F8 (or the keys the owner chose) pick cash / debt / cash + debt.
+    const PM={};[["pcash","cash"],["pdebt","debt"],["ppart","part"]].forEach(([id,v])=>{if(keyOf(id))PM[keyOf(id)]=v});
     const onKey=e=>{if(e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey)return;
       if(PM[e.key]){e.preventDefault();if(st.mode!==PM[e.key]){st.mode=PM[e.key];draw()}return}
       if(e.key!=="Enter")return;
@@ -2219,7 +2263,7 @@ function renderProducts(){
       ${nDel?`<button class="btn block danger-text" type="button" data-act="delnocode">${I.trash}حذف كل المواد اللي بلا باركود (<span class="num">${nDel}</span>)</button>`:""}</li>`
     :tr&&S.pcat==="all"?`<li class="todo-head"><p class="banner info">حذفت <span class="num">${tr.items.length}</span> مادة بلا باركود. <button class="btn sm" type="button" data-act="undonocode">استرجاعها</button></p></li>`:"";
   el.innerHTML=todoHead+ncHead+(list.length?list.map(p=>{const al=alertsOf(p),of=offerOf(p);return `<li><div class="prow"><button class="r" type="button" data-prod="${esc(p.id)}">
-      ${p.pic?picImg(p,"avatar pic-av"):`<span class="avatar">${initial(p.name)}</span>`}<div class="m"><b>${esc(p.name)}${p.active===false?` <span class="chip zero">موقوفة</span>`:""}${p.est&&S.pcat!=="todo"?` <span class="chip zero">سعر تقديري</span>`:""}</b>
+      ${hasPic(p)?picImg(p,"avatar pic-av"):`<span class="avatar">${initial(p.name)}</span>`}<div class="m"><b>${esc(p.name)}${p.active===false?` <span class="chip zero">موقوفة</span>`:""}${p.est&&S.pcat!=="todo"?` <span class="chip zero">سعر تقديري</span>`:""}</b>
       <span>${S.pcat==="todo"?`<span class="chip warn">باقي ${[noCode(p)?"الباركود":"",p.est?"السعر":""].filter(Boolean).join(" و")}</span> `:""}${esc(p.category||"بدون صنف")}${tracked(p)?` · المخزن ${stockHtml(p)}`:""}${p.expiry?` · ينتهي <span class="num">${esc(p.expiry)}</span>`:""}${packsOf(p).length?` · ${packsOf(p).map(k=>esc(k.name)).join("، ")}`:""}</span>
       ${al.length||of?`<span class="al">${of?`<span class="of">عرض ${offerHtml(of)}${of.to?` لحد <span class="num">${esc(of.to)}</span>`:""}</span>`:""}${al.map(a=>`<span class="chip warn">${ALERT_TEXT[a]}</span>`).join(" ")}</span>`:""}</div>
       <div class="a"><span class="num">${fmt(p.price)}</span><small>${isWeighed(p)?"للكيلو":""}${p.cost>0?`${isWeighed(p)?" · ":""}شراء <span class="num">${fmt(p.cost)}</span>`:isWeighed(p)?"":CUR}</small></div></button>
@@ -2357,7 +2401,7 @@ function productForm(p){
       const o=r.obj,now=Date.now(),meta={updatedAt:now,updatedBy:S.me.name};
       if(isNew){
         const obj={id:uid(),createdAt:now,by:S.me.name,...o,...meta};
-        const pa=commitPic(obj.id,pic);if(pa)obj.pic=pa;
+        const pa=commitPic(obj.id,pic);if(pa)obj.pic=pa;if(pic.noStock)obj.noStock=true;
         S.products.set(obj.id,obj);try{db.collection("products").doc(obj.id).set(obj).catch(writeFail)}catch(x){writeFail(x)}
         log("add","product",{detail:`أضاف المادة ${o.name} بسعر ${fmt(o.price)}${o.track?`، الكمية ${qtyText(o.stock)}`:""}${o.offer?`، ${o.offer.type==="qty"?`عرض ${o.offer.n} بـ ${fmt(o.offer.price)}`:`سعر عرض ${fmt(o.offer.price)}`}`:""}`});
       }else{
@@ -2366,9 +2410,9 @@ function productForm(p){
         if(!o.track)patch.stock=firebase.firestore.FieldValue.delete();
         // Saving the item from its form means the owner checked its price (items from the ready-made list carry est until then).
         if(p.est)patch.est=firebase.firestore.FieldValue.delete();
-        const pa=commitPic(p.id,pic);if(pa)patch.pic=pa;else if(pa===null)patch.pic=firebase.firestore.FieldValue.delete();
+        const pa=commitPic(p.id,pic);if(pa)patch.pic=pa;else if(pa===null)patch.pic=firebase.firestore.FieldValue.delete();if(pic.noStock)patch.noStock=true;
         const {__new,__picSt,...base}=p;
-        S.products.set(p.id,{...base,...o,est:false,...(pa!==undefined?{pic:pa||0}:{})});try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
+        S.products.set(p.id,{...base,...o,est:false,...(pa!==undefined?{pic:pa||0}:{}),...(pic.noStock?{noStock:true}:{})});try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
         const ch=[];
         if(Number(p.price)!==o.price)ch.push(`سعر المفرد من ${fmt(p.price)} إلى ${fmt(o.price)}`);
         if((Number(p.wprice)||0)!==o.wprice)ch.push(`سعر الجملة إلى ${fmt(o.wprice)}`);
@@ -2400,7 +2444,31 @@ function loadPic(p){
     .then(d=>{const u=d.exists?d.data().data||"":"";PICS.set(k,u);return u}).finally(()=>picWait.delete(k));
   picWait.set(k,pr);return pr;
 }
-const picImg=(p,cls)=>p&&p.pic?`<img class="${cls}" data-pic="${esc(p.id)}" alt=""${picUrl(p)?` src="${picUrl(p)}"`:""}>`:"";
+const picImg=(p,cls)=>{if(p&&p.pic)return `<img class="${cls}" data-pic="${esc(p.id)}" alt=""${picUrl(p)?` src="${picUrl(p)}"`:""}>`;
+  const u=stockPic(p);return u?`<img class="${cls}" src="${u}" alt="" loading="lazy">`:""};
+/* Ready-made fruit photos (img/fruit, from the Fruits-360 photo set; credits in img/fruit/CREDITS.md). A fruit item with no
+   photo of its own shows the one that matches its name, so «تفاح أحمر» or «رمان» get a picture without the owner taking one.
+   Only items under a fruit or vegetable category (or sold by weight) are matched, so «عصير برتقال» never gets an orange.
+   The owner's own photo always wins, and removing the ready-made one in the item form keeps it off (noStock). */
+const FRUIT_PICS=[["apple-green","تفاح اخضر"],["apple-yellow","تفاح اصفر|تفاح ذهبي|تفاح كولدن|تفاح جولدن"],["apple-red","تفاح"],
+  ["grape-black","عنب اسود|عنب احمر|عنب ديس"],["grape-white","عنب"],["mandarin","لالنكي|يوسفي|مندرين|كلمنتين"],
+  ["grapefruit","سندي|كريب فروت|جريب فروت|ليمون هندي"],["sweet-lime","نومي حلو|نومي"],["orange","برتقال"],["banana","موز"],
+  ["pomegranate","رمان"],["peach","خوخ|دراق|نكتارين"],["apricot","مشمش"],["pear","عرموط|كمثري|اجاص"],["kiwi","كيوي"],
+  ["strawberry","فراوله|شليك"],["cherry","كرز"],["fig","تين"],["plum","الوجه|عنجاص|برقوق"],["guava","جوافه|كوافه"],
+  ["mango","منكا|منكه|مانجو|مانكو|منجا"],["avocado","افوكادو"],["dates","تمر"],["watermelon","رقي|بطيخ احمر|حبحب"],
+  ["melon","بطيخ|شمام"],["quince","سفرجل"],["persimmon","كاكا|كاكي|خرما"],["pineapple","اناناس"],["coconut","جوز هند|نارجيل"]]
+  .map(([s,ws])=>[s,new RegExp(`(^| )(ال|وال)?(${ws.split("|").map(w=>w.replace(/ /g," (ال)?")).join("|")})(ه|ات)?(?= |$)`)]);
+const stockMemo=new Map();
+function stockPic(p){
+  if(!p||p.pic||p.noStock)return "";
+  const k=p.name+"|"+(p.category||"")+"|"+isWeighed(p);if(stockMemo.has(k))return stockMemo.get(k);
+  let u="";
+  if(/فواك|خضر/.test(foldAr(p.category||""))||isWeighed(p)){
+    const n=foldAr(p.name||"").replace(/[^\u0621-\u064a0-9]+/g," ").trim();
+    const hit=FRUIT_PICS.find(([,re])=>re.test(n));if(hit)u="img/fruit/"+hit[0]+".webp"}
+  stockMemo.set(k,u);return u;
+}
+const hasPic=p=>!!(p&&(p.pic||stockPic(p)));
 let picIO=null;
 function fillPic(img){const p=S.products.get(img.dataset.pic);if(!p||!p.pic){img.remove();return}
   loadPic(p).then(u=>{if(u)img.src=u;else img.remove()}).catch(()=>img.remove())}
@@ -2413,8 +2481,8 @@ function hydratePics(root){
 // A scanned item's photo flashes at the top of the screen for a moment, so the cashier can check it against what is in hand.
 let flashT=0;
 function flashItem(p,pack){
-  if(!p||!p.pic)return;
-  loadPic(p).then(u=>{if(!u)return;let f=$("#flash");
+  const sp=stockPic(p);if(!p||!p.pic&&!sp)return;
+  (p.pic?loadPic(p):Promise.resolve(sp)).then(u=>{if(!u)return;let f=$("#flash");
     if(!f){f=document.createElement("div");f.id="flash";f.className="flash";f.setAttribute("aria-hidden","true");document.body.appendChild(f)}
     f.innerHTML=`<img src="${u}" alt=""><div><b>${esc(p.name)}${pack?` (${esc(pack.name)})`:""}</b><span class="num">${fmt(priceFor(p,pack||null,S.whole))}</span></div>`;
     f.hidden=false;clearTimeout(flashT);flashT=setTimeout(()=>{f.hidden=true},1800)}).catch(()=>{});
@@ -2426,11 +2494,13 @@ const picFieldHtml=x=>`<div class="pic-edit"><div class="pic-prev" id="${x}Prev"
   <button class="btn sm ghost danger-text" type="button" id="${x}Del">${I.trash}شيل الصورة</button></div></div>`;
 function picField(m,x,p,init){
   const st=init||{url:"",changed:false},prev=m.querySelector("#"+x+"Prev"),del=m.querySelector("#"+x+"Del");
-  const show=()=>{prev.innerHTML=st.url?`<img src="${st.url}" alt="صورة المادة">`:I.camera;prev.classList.toggle("empty",!st.url);del.hidden=!st.url};
-  const pick=async f=>{if(!f)return;try{const r=await shrinkImage(f,480,.8);st.url=r.url;st.changed=true;show()}catch(e){console.warn(e);toast("تعذّر فتح الصورة.")}};
+  if(!init&&p&&!p.pic&&stockPic(p)){st.url=stockPic(p);st.stock=true}
+  const show=()=>{prev.innerHTML=st.url?`<img src="${st.url}" alt="صورة المادة">`:I.camera;prev.classList.toggle("empty",!st.url);del.hidden=!st.url;
+    prev.title=st.stock?"صورة جاهزة، تكدر تصوّر المادة بدالها":""};
+  const pick=async f=>{if(!f)return;try{const r=await shrinkImage(f,480,.8);st.url=r.url;st.changed=true;st.stock=false;show()}catch(e){console.warn(e);toast("تعذّر فتح الصورة.")}};
   m.querySelector("#"+x+"Cam").addEventListener("change",e=>pick(e.target.files[0]));
   m.querySelector("#"+x+"Gal").addEventListener("change",e=>pick(e.target.files[0]));
-  del.onclick=()=>{st.url="";st.changed=true;show()};
+  del.onclick=()=>{if(st.stock){st.stock=false;st.noStock=true}st.url="";st.changed=true;show()};
   if(!init&&p&&p.pic)loadPic(p).then(u=>{if(!st.changed){st.url=u;show()}}).catch(()=>{});
   show();return st;
 }
@@ -2512,8 +2582,8 @@ function priceForm(p){
       const cur=S.products.get(p.id)||p,now=Date.now(),patch={price:v,barcode:c,cost,updatedAt:now,updatedBy:S.me.name},ch=[];
       if(Number(cur.price)!==v||cur.est)ch.push(`السعر ${fmt(v)}`);if((cur.barcode||"")!==c)ch.push(c?`الباركود ${c}`:"شال الباركود");if((Number(cur.cost)||0)!==cost)ch.push(`سعر الشراء ${fmt(cost)}`);
       if(cur.est)patch.est=firebase.firestore.FieldValue.delete();
-      const pa=commitPic(p.id,pic);if(pa)patch.pic=pa;else if(pa===null)patch.pic=firebase.firestore.FieldValue.delete();if(pa!==undefined)ch.push(pa?"الصورة":"شال الصورة");
-      S.products.set(p.id,{...cur,price:v,barcode:c,cost,updatedAt:now,updatedBy:S.me.name,est:false,...(pa!==undefined?{pic:pa||0}:{})});
+      const pa=commitPic(p.id,pic);if(pa)patch.pic=pa;else if(pa===null)patch.pic=firebase.firestore.FieldValue.delete();if(pa!==undefined)ch.push(pa?"الصورة":"شال الصورة");if(pic.noStock)patch.noStock=true;
+      S.products.set(p.id,{...cur,price:v,barcode:c,cost,updatedAt:now,updatedBy:S.me.name,est:false,...(pa!==undefined?{pic:pa||0}:{}),...(pic.noStock?{noStock:true}:{})});
       try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
       if(ch.length)log("edit","product",{detail:`عدّل ${cur.name}: ${ch.join("، ")}`});
       closeModal();renderProducts();toast(`انحفظت «${cur.name}»`,1500);
