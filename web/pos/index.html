@@ -325,6 +325,7 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 .prow .r{flex:1;min-width:0}
 .prow>.btn{flex:none}
 .al{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.me .badge{background:var(--warn);color:var(--paper);border-radius:99px;font-size:11.5px;padding:0 7px;line-height:18px}
 .tabs .badge{background:var(--warn);color:var(--paper);border-radius:99px;font-size:11.5px;padding:0 7px;line-height:18px;margin-inline-start:2px}
 
 /* ---------- stocktake ---------- */
@@ -353,6 +354,16 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 .rv-sug{border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--paper);max-height:300px;overflow:auto}
 .rv-pick{justify-content:flex-start;width:100%;border-style:dashed}
 .rv-photo{width:100%;justify-content:center}
+.pr-note{display:flex;gap:8px;align-items:center;width:calc(100% - 24px);margin:8px 12px 0;text-align:right;cursor:pointer;font:inherit;border:0}
+.pr-note svg{width:20px;height:20px;flex:none}
+.of.pn{color:var(--warn);background:var(--warn-soft)}
+.pr-row .m{padding:10px 14px}
+.pr-row .m>b{display:block;font-weight:600}
+.pr-row .m>span{display:block;font-size:13.5px;margin-top:2px}
+.pr-row .m>small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.pr-hist{margin:0 0 8px;font-size:13px;color:var(--muted)}
+.pr-hist summary{cursor:pointer;padding:6px 0}
+.pr-hist .rows{border:1px solid var(--line);border-radius:var(--r-ctl);max-height:240px;overflow:auto}
 .rv-unk{margin:12px;padding:10px 12px 4px;border:1px dashed var(--warn);border-radius:var(--r-ctl);background:var(--warn-soft)}
 .rv-unk>b{display:block;font-family:var(--f-display)}
 .rv-unk>.hint{display:block;font-size:12.5px;margin-bottom:6px}
@@ -547,6 +558,7 @@ const I={
   scale:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M12 4v15M7 19h10M5 8h14M5 8l-3 7a3 3 0 0 0 6 0zM19 8l-3 7a3 3 0 0 0 6 0z"/></svg>',
   camera:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>',
   truck:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M2 6h11v10H2zM13 9h4l4 4v3h-8"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></svg>',
   list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>'
 };
 function toast(msg,ms){
@@ -625,15 +637,16 @@ function readFail(e){console.warn(e);if(e&&e.code==="permission-denied"&&!denied
   toast(isAdmin()?"قاعدة البيانات رفضت القراءة. انشر قواعد firestore.rules الجديدة من Firebase console.":"ما عندك صلاحية لقراءة بيانات الكاشير. راجع المدير.",7000)}}
 function stopData(){
   unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];if(salesUnsub){salesUnsub();salesUnsub=null}dataOn=false;
-  S.products=new Map();S.customers=new Map();S.txns=new Map();S.sales=new Map();S.settings={};S.repCache=new Map();S.shift=null;S.shiftLog=null;S.approvals=new Map();S.ready={p:false,s:false,sh:false};S.pos={};S.takes=null;S.recvs=null;deniedShown=false;renderApprovals();
+  S.products=new Map();S.customers=new Map();S.txns=new Map();S.sales=new Map();S.settings={};S.repCache=new Map();S.shift=null;S.shiftLog=null;S.approvals=new Map();S.ready={p:false,s:false,sh:false};S.pos={};S.takes=null;S.recvs=null;S.prices=null;PW.clear();deniedShown=false;renderApprovals();
 }
 function startData(){
   if(dataOn)return;dataOn=true;
-  unsubs.push(db.collection("products").onSnapshot(s=>{S.products=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.p=true;refresh()},readFail));
+  unsubs.push(db.collection("products").onSnapshot(s=>{priceWatch(s);S.products=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.p=true;refresh()},readFail));
   unsubs.push(db.collection("customers").onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));refresh("cust")},readFail));
   unsubs.push(db.collection("txns").onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,d.data()]));refresh("cust")},readFail));
   unsubs.push(db.doc("settings/main").onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};if(S.me&&S.isOwner)S.me.name=S.settings.ownerName||"المدير";refresh()},readFail));
   // Cashier settings (the dollar rate) live next to the debt book's settings, in their own document.
+  watchPrices();
   unsubs.push(db.doc("settings/pos").onSnapshot(s=>{S.pos=s.exists?{...s.data()}:{};refresh()},readFail));
   // The open shift (if any), for everyone; pending discount requests, for the owner.
   unsubs.push(db.collection("shifts").where("status","==","open").onSnapshot(s=>{
@@ -783,12 +796,13 @@ function renderHeader(){
   const nAl=isAdmin()?alertCount():0;
   const cur=S.view==="count"||S.view==="recv"?"products":S.view;
   $("#tabs").innerHTML=NAV().map(([k,l,ic])=>`<button type="button" data-go="${k}" aria-current="${cur===k?"page":"false"}">${ic}${l}${k==="products"&&nAl?`<span class="badge num" title="تنبيهات المخزن">${nAl}</span>`:""}</button>`).join("");
-  $("#meBox").innerHTML=`<span class="avatar" aria-hidden="true">${initial(S.me.name)}</span><span class="nm">${esc(S.me.name)}</span><span class="role">${ROLE_LABEL[S.me.role]}</span>`;
+  $("#meBox").innerHTML=`<span class="avatar" aria-hidden="true">${initial(S.me.name)}</span><span class="nm">${esc(S.me.name)}</span><span class="role">${ROLE_LABEL[S.me.role]}</span>${prNew().length?`<span class="badge num" title="تغيّرت أسعار">${prNew().length}</span>`:""}`;
 }
 // Live data refresh: redraw only the parts that depend on it, so typing in a search box is never interrupted.
 function refresh(what){
   if(!S.me||$("#app").hidden)return;
   if(what==="cart"){renderTiles();renderCart();return}
+  if(what==="prices"){renderHeader();const n=$("#prNote");if(n)n.innerHTML=prNoteHtml();if(S.view==="sell")renderTiles();return}
   if(!what)renderHeader();
   if(S.view==="sell"){if(what!=="cust"&&what!=="sales"){renderChips();renderTiles()}renderCart();if(what==="cust")refreshPicker&&refreshPicker()}
   else if(S.view==="sales")renderSales();
@@ -816,6 +830,7 @@ function sellView(){
         <div class="chips" id="chips"></div>
       </div>
       ${canSell()?"":`<div class="banner warn ro-note">حسابك «مشاهد»، تكدر تشوف المواد والمبيعات بس ما تكدر تبيع.</div>`}
+      <div id="prNote">${prNoteHtml()}</div>
       <div class="tiles" id="tiles"></div>
     </section>
     <aside class="pane cart" id="cart" aria-label="السلة"></aside>
@@ -857,7 +872,7 @@ function renderTiles(){
     ${inCart.has(p.id)?`<span class="q num">${qtyText(inCart.get(p.id))}</span>`:""}${picImg(p,"pic")}
     <span class="nm">${esc(p.name)}</span><span class="ct">${esc(p.category||"")}</span>
     ${left!==null||al.some(a=>a.startsWith("exp"))?`<span class="st${al.length||(left!==null&&left<=0)?" warn":""}">${left!==null?`باقي <span class="num">${qtyText(left)}</span>`:""}${al.includes("expired")?" · منتهية":al.includes("expiring")?" · قرب انتهاؤها":""}</span>`:""}
-    ${of&&(of.was||of.deal)?`<span class="of">عرض${of.deal?" "+offerHtml(of.deal):""}</span>`:""}
+    ${prRecent(p.id)?`<span class="of pn">سعر جديد</span>`:""}${of&&(of.was||of.deal)?`<span class="of">عرض${of.deal?" "+offerHtml(of.deal):""}</span>`:""}
     <span class="pr"><span class="num">${fmt(shown)}</span>${isWeighed(p)?`<small class="kg">/كغم</small>`:""}${shown<reg?` <s class="was num">${fmt(reg)}</s>`:""}${S.whole&&p.wprice>0?` <small>جملة</small>`:""}</span></button>`}).join("");
   hydratePics(el);
 }
@@ -2268,7 +2283,7 @@ function productForm(p){
   const isNew=!p||!!p.__new;p=p||{name:"",price:"",category:!["all","alerts","offers","nocode","est"].includes(S.pcat)?S.pcat:cats()[0],barcode:"",active:true,unit:"حبة",packs:[]};
   const cl=cats().includes(p.category)||!p.category?cats():[p.category,...cats()];
   const origStock=tracked(p)?stockOf(p):null;
-  openModal(`<h3>${isNew?"مادة جديدة":"تعديل مادة"}</h3>
+  openModal(`<h3>${isNew?"مادة جديدة":"تعديل مادة"}</h3>${isNew?"":`<div id="pHist"></div>`}
     ${isNew&&!p.barcode?`<button class="btn sm" type="button" id="pPhoto">${I.camera}عندك فاتورة أو قائمة مواد؟ صوّرها وأضفها كلها</button>`:""}
     <form id="pf" class="field" style="gap:12px" novalidate>
       <div class="field"><label for="pName">اسم المادة</label><input id="pName" maxlength="80" value="${esc(p.name)}" placeholder="مثال: بيبسي علبة"></div>
@@ -2304,6 +2319,7 @@ function productForm(p){
       <p class="err" id="pErr"></p>
       <div class="foot"><button class="btn primary" type="submit">${isNew?"إضافة":"حفظ"}</button>${isNew?"":`<button class="btn ghost danger-text" type="button" id="pDel">${I.trash}حذف</button>`}<button class="btn" type="button" data-close>رجوع</button></div>
     </form>`,m=>{
+    if(!isNew)priceHist(p.id,m.querySelector("#pHist"));
     const ph=m.querySelector("#pPhoto");if(ph)ph.onclick=plOpen;
     const pic=picField(m,"pPic",p,p.__picSt);
     const pc=m.querySelector("#pCat"),pcn=m.querySelector("#pCatNew");
@@ -2704,6 +2720,78 @@ async function takePdf(x){
       items.map(i=>({cells:[i.name+(i.unit?` (${i.unit})`:""),i.sys===null?"—":qtyText(i.sys),qtyText(i.counted),i.diff===null?"جديدة":i.diff>0?"+"+qtyText(i.diff):qtyText(i.diff),i.diff&&i.cost?fmt(Math.abs(i.diff)*i.cost):"—"],
         colors:[null,null,null,i.diff<0?PDFC.debt:i.diff>0?PDFC.paid:PDFC.muted,i.diff<0?PDFC.debt:null]})));
   },`جرد-${x.date}.pdf`);
+}
+
+/* ---------- price changes ----------
+   Every change of an item's sale or wholesale price is kept in prices/{id}: the item, the old and new price, who changed it
+   and when. The device that made the change writes the record: it sees its own unsaved write in the items listener, so every
+   way of changing a price (the item form, the quick price form, Excel, a photo list) is caught in one place.
+   Everyone else gets told: a toast when it happens, a note on the selling screen and a dot on the account button until they
+   open the list, and «سعر جديد» on the item's tile for a day. */
+const PRSEEN_KEY="shahm-pos-prseen",DEV_KEY="shahm-pos-dev";
+const PW=new Map();let prSince=0;
+function devId(){try{let d=localStorage.getItem(DEV_KEY);if(!d){d=uid();localStorage.setItem(DEV_KEY,d)}return d}catch(e){return "-"}}
+function prSeen(){try{const v=Number(localStorage.getItem(PRSEEN_KEY));if(v>0)return v;const now=Date.now();localStorage.setItem(PRSEEN_KEY,String(now));return now}catch(e){return 0}}
+const prOf=d=>({price:Math.round(Number(d.price)||0),wprice:Math.round(Number(d.wprice)||0),est:!!d.est});
+function priceWatch(s){
+  for(const ch of s.docChanges()){
+    const id=ch.doc.id;if(ch.type==="removed"){PW.delete(id);continue}
+    const d=ch.doc.data(),o=PW.get(id),n=prOf(d);
+    // A ready-made item's estimated price getting its real price is setting it up, not a change.
+    if(ch.type==="modified"&&o&&!o.est&&ch.doc.metadata.hasPendingWrites&&(n.price!==o.price||n.wprice!==o.wprice))logPrice(id,d,o,n);
+    PW.set(id,n);
+  }
+}
+function logPrice(pid,d,o,n){
+  if(!S.me)return;
+  const x={id:uid(),pid,name:String(d.name||"").slice(0,80),from:o.price,to:n.price,...(n.wprice!==o.wprice?{wfrom:o.wprice,wto:n.wprice}:{}),
+    by:S.me.name,byId:S.me.id,byRole:S.me.role,dev:devId(),at:Date.now()};
+  if(S.prices&&!S.prices.some(y=>y.id===x.id))S.prices.unshift(x);
+  try{db.collection("prices").doc(x.id).set(x).catch(e=>{console.warn(e);if(e&&e.code==="permission-denied"&&!S.prDenied){S.prDenied=true;toast("سجل الأسعار ما انحفظ: لازم تنشر قواعد Firestore الجديدة.",6000)}})}catch(e){console.warn(e)}
+}
+function watchPrices(){
+  prSince=Date.now();prSeen();  // a device's first start counts from now, not from old changes
+  unsubs.push(db.collection("prices").orderBy("at","desc").limit(60).onSnapshot(s=>{
+    const fresh=[];
+    for(const ch of s.docChanges())if(ch.type==="added"){const x=ch.doc.data();if(x.at>=prSince-5000&&x.dev!==devId())fresh.push(x)}
+    S.prices=s.docs.map(d=>d.data());
+    if(fresh.length){const x=fresh[0];if(navigator.vibrate)navigator.vibrate([60,60,60]);
+      toast(fresh.length>1?`تغيّر سعر ${fresh.length} مواد. شوفها من التنبيه بشاشة البيع.`:`تغيّر سعر «${x.name}»: ${priceMove(x)} (${x.by})`,6000)}
+    refresh("prices");
+  },e=>console.warn(e)));
+}
+const priceMove=x=>`من ${fmt(x.from)} إلى ${fmt(x.to)}`;
+// Changes made on other devices since this device last opened the list.
+const prNew=()=>(S.prices||[]).filter(x=>x.at>prSeen()&&x.dev!==devId());
+const prRecent=pid=>(S.prices||[]).some(x=>x.pid===pid&&x.to!==x.from&&Date.now()-x.at<864e5);
+function whenText(ms){const d=new Date(ms),iso=isoOf(d);return (iso===todayISO()?"اليوم":dayName(iso))+" "+hm12(ms)}
+function prNoteHtml(){
+  const n=prNew();if(!n.length)return "";
+  const names=[...new Set(n.map(x=>x.name))];
+  return `<button class="banner warn pr-note" type="button" data-act="prices">${I.bell}<span>تغيّر سعر ${names.length>1?`<b class="num">${names.length}</b> مواد`:`«${esc(names[0])}»`}${names.length===1?` ${priceMove(n[0])}`:""} · <b>اضغط حتى تشوف منو غيّره</b></span></button>`;
+}
+function prRow(x,isNew){
+  const w=x.wto!==undefined?` · الجملة من ${fmt(x.wfrom)} إلى ${fmt(x.wto)}`:"";
+  const up=x.to>x.from;
+  return `<li class="pr-row"><div class="m"><b>${esc(x.name)}${isNew?` <span class="chip warn">جديد</span>`:""}</b>
+    <span>${x.to!==x.from?`<span class="chip ${up?"debt":"paid"}">${up?"زاد":"نزل"}</span> ${priceMove(x)}`:""}${w}</span>
+    <small>${esc(x.by||"")}${x.byRole?` (${esc(ROLE_LABEL[x.byRole]||"")})`:""} · ${esc(whenText(x.at))}</small></div></li>`;
+}
+function pricesModal(){
+  const seen=prSeen(),me=devId(),list=S.prices||[];
+  openModal(`<h3>تغييرات الأسعار</h3><p class="hint">آخر تغييرات أسعار البيع، ومنو غيّرها ووكت.</p>
+    ${list.length?`<ul class="rows">${list.map(x=>prRow(x,x.at>seen&&x.dev!==me)).join("")}</ul>`:`<div class="empty">ما تغيّر أي سعر بعد.</div>`}
+    <div class="foot"><button class="btn primary" type="button" data-close>تمام</button></div>`,null,"wide");
+  try{localStorage.setItem(PRSEEN_KEY,String(Date.now()))}catch(e){}
+  refresh("prices");
+}
+// The item form shows its own price history.
+function priceHist(pid,el){
+  if(!el)return;
+  db.collection("prices").where("pid","==",pid).limit(30).get().then(s=>{
+    const list=s.docs.map(d=>d.data()).sort((a,b)=>b.at-a.at).slice(0,8);
+    el.innerHTML=list.length?`<details class="pr-hist"><summary>آخر تغيير للسعر: ${priceMove(list[0])} · ${esc(list[0].by||"")} · ${esc(whenText(list[0].at))}</summary><ul class="rows">${list.map(x=>prRow(x,false)).join("")}</ul></details>`:"";
+  }).catch(e=>console.warn(e));
 }
 
 /* ---------- receiving (استلام المواد), owner only ----------
@@ -3662,6 +3750,7 @@ function accountMenu(){
     <div class="menu">
       <a class="btn" href="${DEBTS_URL}">${I.book}فتح دفتر الديون</a>
       ${canSell()?`<button class="btn" type="button" data-act="hw">${I.print}الطابعة والدرج والميزان</button>`:""}
+      <button class="btn" type="button" data-act="prices">${I.bell}تغييرات الأسعار${prNew().length?` <span class="chip warn">جديد <span class="num">${prNew().length}</span></span>`:""}</button>
       <button class="btn keys-only" type="button" data-act="keys">${I.keypad}اختصارات الكيبورد${kbd("F1")}</button>
       ${isAdmin()?`<button class="btn" type="button" id="mRate">$ سعر الدولار${usdRate()?`: <span class="num">$100 = ${fmt(usdRate()*100)}</span>`:" (ما محدد)"}</button>`:""}
       <div class="seg" role="group" aria-label="المظهر">${[["system","تلقائي"],["light","فاتح"],["dark","ليلي"]].map(([k,l])=>`<button type="button" data-th="${k}" aria-pressed="${th===k}">${l}</button>`).join("")}</div>
@@ -3732,6 +3821,7 @@ document.addEventListener("click",e=>{
     case "rvsup":supPicker();break;
     case "rvsupadd":{const g=S.rv&&S.rv.guess;if(g)supForm({name:g.name,phone:g.phone});break}
     case "rvphoto":rvPhoto();break;
+    case "prices":pricesModal();break;
     case "excel":excelForm();break;
     case "catalog":catalogForm();break;
     case "weighlist":weighListForm();break;

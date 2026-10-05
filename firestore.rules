@@ -72,6 +72,12 @@ service cloud.firestore {
       allow read: if active();
       allow write: if isOwner();
     }
+    // Price changes: whoever changes a price records it under their own account; the record is never edited.
+    match /prices/{id} {
+      allow read: if active();
+      allow create: if writer() && request.resource.data.byId == request.auth.uid;
+      allow delete: if isOwner();
+    }
     match /users/{uid} {
       allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
       allow create: if isOwner() || (signedIn() && request.auth.uid == uid
