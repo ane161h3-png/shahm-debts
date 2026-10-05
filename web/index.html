@@ -971,7 +971,7 @@ function remindersView(){
       ${list.length?list.map(({c,b,li})=>{const l=c.phone?waLink(c.phone,fillTpl(PR?"promise":"remind",c)):"";const lr=last.get(c.id);const pl=promiseLeft(c);
         return `<div class="rem-row"><span class="avatar">${initial(c.name)}</span><div class="meta"><b>${esc(c.name)}</b>${c.promise?`<span class="${pl<=0?"late":""}">وعد: ${esc(dayName(c.promise.date))}${c.promise.amount?" · "+fmt(c.promise.amount):""} (${promiseText(pl)})</span>`:""}${li&&!PR?`<span class="${li.late?"late":""}">${lateText(li)}</span>`:""}<span>${lr?"آخر تذكير: "+esc(timeAgo(lr)):"لم يُرسل له تذكير"}</span></div>
         <span class="chip debt"><span class="num">${fmt(b)}</span></span>
-        ${l?`<a class="btn wa sm" href="${esc(l)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}">${I.wa}إرسال</a>`:(canWrite()?`<button class="btn sm" type="button" data-open="${esc(c.id)}">أضف رقمه</button>`:`<span class="ro-note">بدون رقم</span>`)}</div>`}).join("")
+        ${l?`<a class="btn wa sm" href="${esc(l)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}">${I.wa}إرسال</a>`:(canWrite()?`<button class="btn sm" type="button" data-addphone="${esc(c.id)}">أضف رقمه</button>`:`<span class="ro-note">بدون رقم</span>`)}</div>`}).join("")
       :`<div class="empty"><b>${PR?"لا توجد وعود دفع":"لا توجد ديون"}</b>${PR?"سجّل موعد الدفع من صفحة الزبون.":"كل الزبائن مسددين."}</div>`}`
     :(logs.length?`<ul class="act-list">${logs.map(a=>`<li class="act"><span class="ic add">${I.bell}</span><div class="body"><div class="t">${ACT_TEXT(a)}</div><div class="s"><span>بواسطة: ${esc(a.by||"")}</span><span>${esc(timeAgo(a.at))}</span></div></div></li>`).join("")}</ul>`
       :`<div class="empty"><b>لا توجد تذكيرات بعد</b>كل تذكير ترسله يُحفظ هنا.</div>`)}
@@ -1442,6 +1442,30 @@ function customerForm(c,after){
     });
   });
 }
+// Small box for just the phone number (reminders list, customer page), so a number can be added without the full edit form.
+function phoneForm(c){
+  openModal(`<h3>رقم ${esc(c.name)}</h3>
+    <form id="pf" class="field" style="gap:10px" novalidate>
+      <div class="field"><label for="pPhone">رقم الهاتف (لرسائل واتساب)</label><div class="note-row"><input id="pPhone" inputmode="tel" maxlength="20" value="${esc(c.phone)}" placeholder="07xx xxx xxxx" autocomplete="tel" style="direction:ltr;text-align:right">${canPickContact()?`<button class="btn" type="button" id="pPick" style="flex:none">${I.users}جهات الاتصال</button>`:""}</div></div>
+      <p class="err" id="pErr"></p>
+      <div class="foot"><button class="btn primary" type="submit">حفظ الرقم</button><button class="btn" type="button" data-close>إلغاء</button></div>
+    </form>`,m=>{
+    const inp=m.querySelector("#pPhone");setTimeout(()=>inp.focus(),50);
+    const pk=m.querySelector("#pPick");if(pk)pk.addEventListener("click",async()=>{
+      try{const r=await pickContact();if(!r)return;if(!r.phones.length){m.querySelector("#pErr").textContent="هذا الاسم ما بيه رقم.";return}
+        inp.value=r.phones[0].replace(/[^\d+]/g,"");if(r.phones.length>1)toast("بيه أكثر من رقم، أخذت الأول. تكدر تعدّله.")}
+      catch(e){console.warn(e);if(!/cancel/i.test(String(e&&e.message)))m.querySelector("#pErr").textContent=/permission/i.test(String(e&&e.message))?"لازم تسمح للبرنامج يوصل لجهات الاتصال.":"تعذّر فتح جهات الاتصال."}});
+    m.querySelector("#pf").addEventListener("submit",e=>{
+      e.preventDefault();
+      const phone=normDigits(inp.value).trim(),n=waNumber(phone);
+      if(!phone){m.querySelector("#pErr").textContent="اكتب الرقم.";return}
+      if(n.length<12||n.length>15){m.querySelector("#pErr").textContent="الرقم ناقص أو غلط. اكتبه مثل 07701234567.";return}
+      const cur=S.customers.get(c.id)||c;
+      closeModal();put("customers",{...cur,phone});log("edit","customer",{customerName:cur.name,detail:"أضاف رقم الهاتف"});
+      toast("انحفظ رقم "+cur.name);
+    });
+  });
+}
 function txnForm(type,existing){
   const c=S.customers.get(existing?existing.customerId:S.selected);if(!c)return;
   const isDebt=(existing?existing.type:type)==="debt";const bal=balanceOf(c.id);
@@ -1857,6 +1881,7 @@ document.addEventListener("click",e=>{
   if(!S.me)return;
   const t=e.target;
   const g=t.closest("[data-go]");if(g){if(g.dataset.remf){S.remTab="send";S.remFilter=g.dataset.remf}go(g.dataset.go);return}
+  const ap=t.closest("[data-addphone]");if(ap){const ac=S.customers.get(ap.dataset.addphone);if(ac&&canWrite())phoneForm(ac);return}
   const o=t.closest("[data-open]");if(o){openCustomer(o.dataset.open);return}
   const kd=t.closest("[data-kind]");if(kd){S.kind=kd.dataset.kind;S.selected=null;render();return}
   const qd=t.closest("[data-qdebt]");if(qd&&canWrite()){S.selected=qd.dataset.qdebt;render();txnForm("debt");return}
@@ -1898,7 +1923,7 @@ document.addEventListener("click",e=>{
     case "listpdf":listPdf();break;
     case "pastebackup":if(isAdmin())pasteBackup();break;
     case "gobackup":S.view="settings";S.setPage="backup";render();window.scrollTo(0,0);break;
-    case "addphone":if(canWrite())customerForm(c);break;
+    case "addphone":if(canWrite()&&c)phoneForm(c);break;
     case "logout":signOut("تم تسجيل الخروج.","ok");break;
     case "pwainstall":if(installEvt){installEvt.prompt();installEvt.userChoice.finally(()=>{installEvt=null;render()})}break;
     case "copylinks":copyText(b.dataset.txt,document.createElement("textarea"));break;
