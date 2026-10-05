@@ -4,5 +4,9 @@
   "webDir": "web",
   "android": {
     "adjustMarginsForEdgeToEdge": "force"
+  },
+  "server": {
+    "url": "https://ane161h3-png.github.io/shahm-debts/",
+    "errorPath": "index.html"
   }
 }

@@ -39,11 +39,14 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
+      # Both apps open the live website (server.url), so every update to main reaches the phones without a new APK,
+      # exactly like the laptop. The site's service worker keeps the last copy for working offline; if the site cannot
+      # be reached and nothing is cached yet, the copy of web/ inside the APK opens instead (server.errorPath).
       # The cashier is its own app: another package id (so both install side by side), name and start page.
       - name: Cashier app settings
         if: matrix.app == 'pos'
         run: |
-          echo '{"appId":"com.shahm.pos","appName":"كاشير الشهم","webDir":"web","server":{"appStartPath":"/pos/index.html"},"android":{"adjustMarginsForEdgeToEdge":"force"}}' > capacitor.config.json
+          echo '{"appId":"com.shahm.pos","appName":"كاشير الشهم","webDir":"web","server":{"url":"https://ane161h3-png.github.io/shahm-debts/pos/","errorPath":"pos/index.html"},"android":{"adjustMarginsForEdgeToEdge":"force"}}' > capacitor.config.json
           cat capacitor.config.json
       - name: Create Android project
         run: |

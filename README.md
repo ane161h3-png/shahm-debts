@@ -13,7 +13,7 @@
 - Firebase: تسجيل الدخول (Email/Password) وقاعدة البيانات Firestore مع حفظ محلي. القواعد في `firestore.rules`.
   المدير هو اسم المستخدم `admin`؛ باقي الحسابات تنتظر تفعيله من الإعدادات > المستخدمين.
 - `web/config.js` مفاتيح مشروع Firebase (عامة بطبيعتها؛ الحماية من القواعد وتسجيل الدخول).
-- Android عبر Capacitor: `.github/workflows/android.yml` يبني APK للديون وAPK منفصل للكاشير (com.shahm.pos، أيقونته في `assets-pos/`) مع كل تحديث وينشرهم في Releases.
+- Android عبر Capacitor: `.github/workflows/android.yml` يبني APK للديون وAPK منفصل للكاشير (com.shahm.pos، أيقونته في `assets-pos/`) مع كل تحديث وينشرهم في Releases. التطبيقين يفتحون الموقع نفسه (`server.url` بـ Capacitor)، فأي تحديث على main يوصل للموبايلات بدون APK جديد؛ بدون إنترنت يشتغلون من نسخة الـservice worker، وإذا ماكو نسخة محفوظة تنفتح النسخة اللي داخل الـAPK (`server.errorPath`). نزّل APK جديد بس إذا تغيرت أذونات أو إعدادات أندرويد.
 - `.github/workflows/pages.yml` ينشر `web/` على GitHub Pages.
 
 ## كاشير الشهم (`web/pos/`)
