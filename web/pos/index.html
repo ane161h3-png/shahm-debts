@@ -217,6 +217,14 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 .tile.custom svg{width:26px;height:26px}
 
 .cart{display:flex;flex-direction:column;position:sticky;top:12px;height:calc(100vh - 96px);min-height:420px}
+.inv-tabs{display:flex;gap:6px;overflow-x:auto;padding:8px 12px 0;scrollbar-width:none}
+.inv-tabs button{flex:none;display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line);background:var(--paper-2);border-radius:var(--r-ctl);padding:5px 12px;cursor:pointer;color:var(--muted);font:inherit;font-size:13px;line-height:1.25}
+.inv-tabs button b{font-weight:700;color:var(--ink)}
+.inv-tabs button small{font-size:11.5px}
+.inv-tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.inv-tabs button[aria-selected="true"] b{color:var(--accent-ink)}
+.inv-tabs .inv-new{flex-direction:row;align-items:center;gap:5px;color:var(--accent);border-style:dashed;font-weight:700}
+.inv-tabs .inv-new svg{width:16px;height:16px}
 .cart-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
 .cart .cart-head h2{margin:0;padding:0;border:0;font-family:var(--f-display);font-size:17px;display:flex;align-items:center;gap:6px}
 .cart-lines{list-style:none;margin:0;padding:0;overflow:auto;flex:1;min-height:120px}
@@ -495,7 +503,7 @@ const SLOGAN="كل احتياجات بيتك بشهامة";
 // Same default item categories as the debt book (settings/main.categories overrides them).
 const DEFAULT_CATS=["مشكل","مواد غذائية","خضروات","فواكه","أجبان وألبان","لحوم ودجاج","معلبات","حلويات","مشروبات","منظفات","خبز ومعجنات","سكائر","كارت رصيد","غاز"];
 const S={products:new Map(),customers:new Map(),txns:new Map(),sales:new Map(),settings:{},me:null,isOwner:false,
-  view:"sell",cat:"all",q:"",cart:[],discount:0,whole:false,day:"",repDay:"",repMode:"day",repMonth:"",repCache:new Map(),pq:"",pcat:"all",shift:null,shiftLog:null,approvals:new Map(),approval:null,ready:{p:false,s:false,sh:false},
+  view:"sell",cat:"all",q:"",cart:[],slots:[null],cur:0,discount:0,whole:false,day:"",repDay:"",repMode:"day",repMonth:"",repCache:new Map(),pq:"",pcat:"all",shift:null,shiftLog:null,approvals:new Map(),approval:null,ready:{p:false,s:false,sh:false},
   pos:{},count:null,cq:"",ccat:"all",cshow:"all",cany:false,takes:null,rv:null,rq:"",rvPend:null,rvNewName:null,recvs:null};
 let db=null,auth=null,unsubs=[],salesUnsub=null,dataOn=false,modalCleanup=null,deniedShown=false;
 
@@ -758,9 +766,39 @@ function saveCart(){
   // An approved discount belongs to the invoice it was asked for; any change to the invoice drops it.
   if(S.approval&&(S.cart.reduce((a,l)=>a+lineTotal(l),0)!==S.approval.subtotal||S.discount>S.approval.amount||!S.discount)){
     if(S.discount&&S.cart.length)toast("انشال الخصم لأن الفاتورة تغيّرت. اطلب موافقة جديدة.",3500);S.approval=null;S.discount=0}
-  try{localStorage.setItem(CART_KEY,JSON.stringify({cart:S.cart,discount:S.discount,whole:S.whole,approval:S.approval}))}catch(e){}
+  try{localStorage.setItem(CART_KEY,JSON.stringify({cart:S.cart,discount:S.discount,whole:S.whole,approval:S.approval,cur:S.cur,slots:S.slots.map(x=>x&&{cart:x.cart,discount:x.discount,whole:x.whole,approval:x.approval})}))}catch(e){}
 }
-function loadCart(){try{const d=JSON.parse(localStorage.getItem(CART_KEY)||"null");if(d&&Array.isArray(d.cart)){S.cart=d.cart.filter(l=>l&&l.name&&l.price>=0&&l.qty>0).map(l=>({n:1,...l,key:l.pid&&!String(l.key).includes("|")?l.pid+"|":l.key}));S.discount=Number(d.discount)||0;S.whole=!!d.whole;S.approval=d.approval&&d.approval.id?d.approval:null}}catch(e){}}
+const cleanLines=a=>(Array.isArray(a)?a:[]).filter(l=>l&&l.name&&l.price>=0&&l.qty>0).map(l=>({n:1,...l,key:l.pid&&!String(l.key).includes("|")?l.pid+"|":l.key}));
+function loadCart(){try{const d=JSON.parse(localStorage.getItem(CART_KEY)||"null");if(d&&Array.isArray(d.cart)){S.cart=cleanLines(d.cart);S.discount=Number(d.discount)||0;S.whole=!!d.whole;S.approval=d.approval&&d.approval.id?d.approval:null;
+  if(Array.isArray(d.slots)&&d.slots.length>1&&d.slots.length<=MAX_INV&&Number.isInteger(d.cur)&&d.cur>=0&&d.cur<d.slots.length){
+    S.slots=d.slots.map((x,k)=>k===d.cur?null:{cart:cleanLines(x&&x.cart),discount:Number(x&&x.discount)||0,whole:!!(x&&x.whole),approval:x&&x.approval&&x.approval.id?x.approval:null});S.cur=d.cur}}}catch(e){}}
+/* ---------- several open invoices: the customer in front is the active one (S.cart…); the others wait with their own lines,
+   discount and wholesale flag, and a tap on their tab swaps them in. ---------- */
+const MAX_INV=6;
+const snapInv=()=>({cart:S.cart,discount:S.discount,whole:S.whole,approval:S.approval});
+function loadInv(x){S.cart=x.cart||[];S.discount=x.discount||0;S.whole=!!x.whole;S.approval=x.approval||null;S.lastSale=null}
+function invTotal(x){const sub=x.cart.reduce((a,l)=>a+lineTotal(l),0);return sub-Math.max(0,Math.min(Math.round(x.discount)||0,sub))}
+function switchInvoice(i){
+  if(i===S.cur||!S.slots[i])return;
+  if(S.slots.length>1&&!S.cart.length){S.slots.splice(S.cur,1);if(i>S.cur)i--}else S.slots[S.cur]=snapInv();
+  loadInv(S.slots[i]);S.slots[i]=null;S.cur=i;
+  saveCart();refresh("cart");splitView(true);
+}
+function newInvoice(){
+  if(!canSell())return;
+  if(!S.cart.length){S.lastSale=null;refresh("cart");toast("الفاتورة الحالية فاضية، ضيف عليها.");return}
+  if(S.slots.length>=MAX_INV){toast(`وصلت أقصى عدد فواتير مفتوحة (${MAX_INV}). كمّل وحدة منهم.`,3500);return}
+  S.slots[S.cur]=snapInv();S.slots.push(null);S.cur=S.slots.length-1;loadInv({});
+  saveCart();refresh("cart");sound("add");toast("فاتورة جديدة. الفواتير الباقية محفوظة.");
+}
+// After a sale is acknowledged, go on to the next waiting customer.
+function nextInvoice(){
+  S.lastSale=null;
+  if(S.slots.length>1&&!S.cart.length){const j=S.slots.findIndex((x,k)=>k!==S.cur&&x);if(j>=0){switchInvoice(j);return}}
+  refresh("cart");
+}
+const invTabs=()=>`<div class="inv-tabs" role="tablist" aria-label="الفواتير المفتوحة">${S.slots.map((x,i)=>{const cur=i===S.cur,c=cur?S.cart:x.cart,n=c.length;
+  return `<button type="button" role="tab" data-inv="${i}" aria-selected="${cur}"><b>فاتورة ${i+1}</b>${n?`<small class="num">${n} · ${fmt(cur?totals().total:invTotal(x))}</small>`:`<small>فاضية</small>`}</button>`}).join("")}${S.slots.length<MAX_INV?`<button type="button" class="inv-new" data-act="newinv" aria-label="فاتورة زبون جديد">${I.plus}<span>زبون جديد</span></button>`:""}</div>`;
 function totals(){
   const sub=S.cart.reduce((a,l)=>a+lineTotal(l),0);
   const disc=Math.max(0,Math.min(Math.round(S.discount)||0,sub));
@@ -895,7 +933,7 @@ function renderTiles(){
 function renderCart(){
   const el=$("#cart"),bar=$("#cartBar");if(!el)return;
   const t=totals();
-  el.innerHTML=`<div class="cart-head"><h2>الفاتورة ${S.cart.length?`<span class="chip zero num">${S.cart.length}</span>`:""}</h2>
+  el.innerHTML=`${canSell()&&(S.cart.length||S.slots.length>1)?invTabs():""}<div class="cart-head"><h2>الفاتورة ${S.cart.length?`<span class="chip zero num">${S.cart.length}</span>`:""}</h2>
       <div style="display:flex;gap:4px;align-items:center"><span class="chips"><button type="button" data-act="whole" aria-pressed="${!!S.whole}" title="أسعار الجملة">جملة</button></span>${S.cart.length?`<button class="btn sm ghost danger-text" type="button" data-act="clear">${I.trash}تفريغ</button>`:""}<button class="btn sm ghost close-cart" type="button" data-act="hidecart" aria-label="إغلاق السلة">${I.close}</button></div></div>
     ${S.cart.length?`<ul class="cart-lines">${S.cart.map(l=>`<li>${l.pid?picImg(S.products.get(l.pid),"cpic"):""}
       <button class="info" type="button" data-line="${esc(l.key)}"><b>${esc(l.name)}</b><span><span class="num">${fmt(l.price)}</span>${l.w?" للكيلو":` × <span class="num">${qtyText(l.qty)}</span> ${esc(l.unit||"")}`}${l.was?` <s class="was num">${fmt(l.was)}</s>`:""}${l.deal||l.was?` <span class="of">عرض${l.deal?" "+offerHtml(l.deal):""}</span>`:""}</span></button>
@@ -912,8 +950,10 @@ function renderCart(){
       <div class="pay-row"><button class="btn primary charge" type="button" data-act="quickcash"${S.cart.length&&canSell()?"":" disabled"}>${I.check}كاش <span class="num">${fmt(t.total)}</span>${kk("cash")}</button>
         <button class="btn more" type="button" data-act="checkout"${S.cart.length&&canSell()?"":" disabled"}>دين / باقي${kk("pay")}</button></div>
     </div>`;
-  if(bar)bar.innerHTML=S.cart.length?`<button class="open" type="button" data-act="showcart"><span><span class="cnt num">${S.cart.length}</span>عرض الفاتورة</span><b class="num">${fmt(t.total)}</b></button>`:"";
-  if(!S.cart.length)document.body.classList.remove("show-cart");
+  const waiting=S.slots.length-1;
+  if(bar)bar.innerHTML=S.cart.length?`<button class="open" type="button" data-act="showcart"><span><span class="cnt num">${S.cart.length}</span>عرض الفاتورة${waiting?` · ${waiting} بالانتظار`:""}</span><b class="num">${fmt(t.total)}</b></button>`
+    :waiting?`<button class="open" type="button" data-act="showcart"><span><span class="cnt num">${waiting}</span>فواتير بالانتظار</span></button>`:"";
+  if(!S.cart.length&&!waiting)document.body.classList.remove("show-cart");
   if(!S.cart.length&&!S.lastSale)document.body.classList.remove("splitv");
   hydratePics(el);
 }
@@ -3941,6 +3981,7 @@ document.addEventListener("click",e=>{
   const inc=t.closest("[data-inc]");if(inc){const l=S.cart.find(x=>x.key===inc.dataset.inc);if(l)setQty(l.key,l.qty+1);return}
   const dec=t.closest("[data-dec]");if(dec){const l=S.cart.find(x=>x.key===dec.dataset.dec);if(l)setQty(l.key,l.qty>1?l.qty-1:0);return}
   const ln=t.closest("[data-line]");if(ln){editLine(ln.dataset.line);return}
+  const iv=t.closest("[data-inv]");if(iv){switchInvoice(+iv.dataset.inv);return}
   const c=t.closest("[data-cat]");if(c){S.cat=c.dataset.cat;renderChips();renderTiles();return}
   const pc=t.closest("[data-pcat]");if(pc){S.pcat=pc.dataset.pcat;renderProducts();return}
   const pr=t.closest("[data-prod]");if(pr){const p=S.products.get(pr.dataset.prod);if(p)(S.pcat==="todo"&&listTodo(p)?priceForm:productForm)(p);return}
@@ -3971,7 +4012,7 @@ document.addEventListener("click",e=>{
     case "discount":discountForm();break;
     case "checkout":checkout();break;
     case "quickcash":quickCash();break;
-    case "soldok":S.lastSale=null;refresh("cart");break;
+    case "soldok":nextInvoice();break;
     case "rprint":if(S.lastSale)printReceipt(S.lastSale,{ask:true});break;
     case "rpdf":if(S.lastSale)receiptPdf(S.lastSale);break;
     case "rwa":if(S.lastSale)shareWhatsApp(S.lastSale);break;
@@ -3980,6 +4021,7 @@ document.addEventListener("click",e=>{
     case "newprod":productForm();break;
     case "reppdf":reportPdf();break;
     case "closeshift":closeShiftForm();break;
+    case "newinv":newInvoice();break;
     case "whole":if(canSell())setWhole(!S.whole);break;
     case "countstart":S.count={startedAt:Date.now(),by:S.me.name,items:{}};saveCount();S.cshow="all";S.cq="";renderCount();setTimeout(()=>{const q=$("#cq");if(q)q.focus()},30);break;
     case "countsave":countSaveForm();break;

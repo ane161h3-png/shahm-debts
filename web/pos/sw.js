@@ -1,6 +1,6 @@
 // Offline shell for the cashier (scope: pos/). Same approach as the debt book's sw.js: the page is fetched from the
 // network first so updates arrive, everything else comes from cache and refreshes in the background.
-const CACHE = "shahm-pos-v25";
+const CACHE = "shahm-pos-v26";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png",
   "../config.js", "../vendor/firebase-app-compat.js", "../vendor/firebase-auth-compat.js", "../vendor/firebase-firestore-compat.js",
