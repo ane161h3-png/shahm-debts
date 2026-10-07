@@ -1926,51 +1926,33 @@ function monthSalesSync(ym){
 }
 const repList=()=>S.repMode==="month"?monthSalesSync(S.repMonth||monthOf(todayISO())):daySalesSync(S.repDay||todayISO());
 /* ---------- home (الرئيسية) ----------
-   The shop at a glance: everything sold since the cashier started (count and total of all completed invoices, counted by
-   Firestore itself with an aggregation query, so no invoice is downloaded for it), today live, this month and last month,
-   and the last 14 days one row each (tap a day to open it in «المبيعات»). The all-time figures are kept on this device
-   (ALL_KEY) so they show at once and offline, then refresh. Profit shows to the owner only, like in the reports. */
-const ALL_KEY="shahm-pos-all";
-let allBusy=false,allErr=false;
-function allStats(){try{return JSON.parse(localStorage.getItem(ALL_KEY)||"null")}catch(e){return null}}
-async function fetchAllStats(force){
-  const c=allStats();if(allBusy||!auth||!auth.currentUser||(!force&&c&&Date.now()-c.at<60000))return;
-  allBusy=true;
-  try{
-    const tok=await auth.currentUser.getIdToken(),pid=firebase.app().options.projectId;
-    const host=window.FIREBASE_EMULATOR?"http://127.0.0.1:8080":"https://firestore.googleapis.com",base=`${host}/v1/projects/${pid}/databases/(default)/documents`;
-    const post=(path,body)=>fetch(base+path,{method:"POST",headers:{"content-type":"application/json",Authorization:"Bearer "+tok},body:JSON.stringify(body)}).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()});
-    const num=v=>v?Number(v.integerValue??v.doubleValue??0):0;
-    const done={fieldFilter:{field:{fieldPath:"status"},op:"EQUAL",value:{stringValue:"done"}}};
-    const agg=await post(":runAggregationQuery",{structuredAggregationQuery:{structuredQuery:{from:[{collectionId:"sales"}],where:done},
-      aggregations:[{alias:"n",count:{}},{alias:"t",sum:{field:{fieldPath:"total"}}},{alias:"c",sum:{field:{fieldPath:"cash"}}},{alias:"d",sum:{field:{fieldPath:"debt"}}}]}});
-    const f=(agg[0]&&agg[0].result&&agg[0].result.aggregateFields)||{};
-    let first=c&&c.first||"";
-    if(!first){const q=await db.collection("sales").orderBy("at").limit(1).get();if(!q.empty)first=q.docs[0].data().date||""}
-    const v={n:num(f.n),total:num(f.t),cash:num(f.c),debt:num(f.d),first,at:Date.now()};
-    try{localStorage.setItem(ALL_KEY,JSON.stringify(v))}catch(e){}
-    allErr=false;if(S.view==="home")renderHome();
-  }catch(e){console.warn("all-time stats",e);if(!allErr){allErr=true;if(S.view==="home")renderHome()}}finally{allBusy=false}
+   The shop at a glance: the last 30 days (total, invoices, average, debt), today live, this month and last month,
+   and the last 14 days one row each (tap a day to open it in «المبيعات»). Profit shows to the owner only, like in the reports. */
+const HOME_DAYS=30;
+function last30Sync(){
+  const today=todayISO(),d=new Date(today+"T12:00:00");d.setDate(d.getDate()-(HOME_DAYS-1));const from=isoOf(d);
+  const list=fetchSales("r30:"+from,db.collection("sales").where("date",">=",from).where("date","<=",today));
+  if(!list||!S.ready.s)return null;
+  return {from,list:[...list.filter(x=>x.date!==S.day),...S.sales.values()]};
 }
 const sumOk=list=>{const ok=(list||[]).filter(s=>s.status!=="void");return {n:ok.length,total:ok.reduce((a,s)=>a+(Number(s.total)||0),0)}};
 function homeStat(k,v,sub,cls){return `<div class="stat${cls?" "+cls:""}"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="sub">${sub}</div>`:""}</div>`}
 const money=v=>`<span class="num">${fmt(v)}</span><small>د.ع</small>`;
 function renderHome(){
   const v=$("#view");if(!v)return;
-  fetchAllStats(false);
   const admin=isAdmin(),today=todayISO(),ym=monthOf(today),prev=shiftMonth(ym,-1);
   const tl=S.ready.s?[...S.sales.values()]:null,t=tl?summarize(tl):null;
   const cur=monthSalesSync(ym),old=monthSalesSync(prev),mc=cur&&sumOk(cur),mp=old&&sumOk(old);
-  const all=allStats();
+  const r=last30Sync(),all=r&&summarize(r.list);
   // The last 14 days: from this month and last month's lists (today from the live listener).
   const byDay=new Map();for(const s of [...(cur||[]),...(old||[])])if(s.status!=="void"){const x=byDay.get(s.date)||{n:0,total:0};x.n++;x.total+=Number(s.total)||0;byDay.set(s.date,x)}
   const days=[];for(let i=0;i<14;i++){const d=new Date(today+"T12:00:00");d.setDate(d.getDate()-i);const iso=isoOf(d);days.push([iso,byDay.get(iso)||{n:0,total:0}])}
   const max=Math.max(1,...days.map(([,x])=>x.total));
   const wait=`<span class="muted">…</span>`;
   v.innerHTML=`<section class="pane home">
-    <div class="home-head"><h2>من بداية البرنامج</h2><span class="hint">${all?`${all.first?`من ${esc(dayName(all.first))} · `:""}تحدّث ${esc(whenText(all.at))}`:allErr?"ما انحسبت، تحقق من الإنترنت واضغط تحديث":"جارِ الحساب…"}</span>
+    <div class="home-head"><h2>آخر ${HOME_DAYS} يوم</h2><span class="hint">${r?`من ${esc(dayName(r.from))} لليوم`:"جارِ الحساب…"}</span>
       <button class="btn sm ghost" type="button" data-act="homeRefresh" >تحديث</button></div>
-    <div class="stats">${homeStat("مجموع المبيعات",all?money(all.total):wait,"","main")}${homeStat("عدد الفواتير",all?`<span class="num">${fmt(all.n)}</span>`:wait)}
+    <div class="stats">${homeStat("مجموع المبيعات",all?money(all.total):wait,"","main")}${homeStat("عدد الفواتير",all?`<span class="num">${fmt(all.n)}</span>`:wait,all&&all.voids?`ملغية <span class="num">${all.voids}</span>`:"")}
       ${homeStat("معدل الفاتورة",all&&all.n?money(Math.round(all.total/all.n)):wait)}${homeStat("منها دين",all?money(all.debt):wait)}</div>
   </section>
   <section class="pane home"><div class="home-head"><h2>اليوم</h2><span class="hint">${esc(dayName(today))}</span></div>
@@ -2438,9 +2420,12 @@ function readProductForm(m,p){
   const act=m.querySelector("#pActive");
   return {obj:{name,price,category,barcode,unit:weighed?"كغم":unit,weighed,plu,wprice,cost,packs,track,min,expiry:expiry||"",offer,active:act?act.checked:true,...(track?{stock}:{})}};
 }
+// The category of the last item added, so a row of items from one category needs it picked once.
+const LASTCAT_KEY="shahm-pos-lastcat";
+const lastCat=()=>{let c="";try{c=localStorage.getItem(LASTCAT_KEY)||""}catch(e){}return c&&cats().includes(c)?c:cats()[0]};
 function productForm(p){
   // A draft coming back from the camera scan carries __new, so a new item stays new.
-  const isNew=!p||!!p.__new;p=p||{name:"",price:"",category:!["all","alerts","offers","nocode","est"].includes(S.pcat)?S.pcat:cats()[0],barcode:"",active:true,unit:"حبة",packs:[]};
+  const isNew=!p||!!p.__new;p=p||{name:"",price:"",category:!["all","alerts","offers","nocode","est"].includes(S.pcat)?S.pcat:lastCat(),barcode:"",active:true,unit:"حبة",packs:[]};
   const cl=cats().includes(p.category)||!p.category?cats():[p.category,...cats()];
   const origStock=tracked(p)?stockOf(p):null;
   openModal(`<h3>${isNew?"مادة جديدة":"تعديل مادة"}</h3>${isNew?"":`<div id="pHist"></div>`}
@@ -2540,6 +2525,7 @@ function productForm(p){
         if(ofs(p.offer)!==ofs(o.offer))ch.push(o.offer?ofs(o.offer):"شال العرض");
         if(ch.length)log("edit","product",{detail:`عدّل ${o.name}: ${ch.join("، ")}`});
       }
+      if(isNew&&o.category)try{localStorage.setItem(LASTCAT_KEY,o.category)}catch(e){}
       closeModal();renderProducts();renderHeader();toast(isNew?"انضافت المادة":"انحفظ التعديل");
       // Adding items one after another, except on the receiving list, where the new item goes back to its invoice line.
       if(isNew&&S.view!=="recv")setTimeout(()=>productForm(),50);
@@ -2649,7 +2635,7 @@ function linkCodeForm(code,after){
     m.querySelector("#lkL").addEventListener("click",e=>{const b=e.target.closest("[data-lk]");if(!b)return;const p=S.products.get(b.dataset.lk);if(!p)return;
       if(p.barcode&&!confirm(`«${p.name}» عليها باركود ${p.barcode}. تبدله بـ ${code}؟`))return;
       setCode(p,code);closeModal();toast(`انحفظ الباركود على «${p.name}»`,2200);if(after)after(S.products.get(p.id))});
-    m.querySelector("#lkNew").onclick=()=>productForm({name:q.trim(),price:"",category:cats()[0],barcode:code,active:true,unit:"حبة",packs:[],__new:true});
+    m.querySelector("#lkNew").onclick=()=>productForm({name:q.trim(),price:"",category:lastCat(),barcode:code,active:true,unit:"حبة",packs:[],__new:true});
   },"wide");
 }
 function setCode(p,code){
@@ -3990,7 +3976,7 @@ document.addEventListener("click",e=>{
   const rm=t.closest("[data-rmode]");if(rm){S.repMode=rm.dataset.rmode;renderSales();return}
   const mo=t.closest("[data-month]");if(mo&&!mo.disabled){S.repMonth=mo.dataset.month;renderSales();return}
   const hd=t.closest("[data-hday]");if(hd){S.repMode="day";S.repDay=hd.dataset.hday;go("sales");return}
-  if(t.closest('[data-act="homeRefresh"]')){fetchAllStats(true);toast("جارِ تحديث الأرقام…",1500);return}
+  if(t.closest('[data-act="homeRefresh"]')){for(const k of [...S.repCache.keys()])if(/^(r30|m):/.test(k))S.repCache.delete(k);renderHome();toast("جارِ تحديث الأرقام…",1500);return}
   const od=t.closest("[data-openday]");if(od){S.repMode="day";S.repDay=od.dataset.openday;renderSales();window.scrollTo(0,0);return}
   const ap=t.closest("[data-apv]");if(ap){decideApproval(ap.dataset.apv,ap.dataset.ok==="1");return}
   const shl=t.closest("[data-shift]");if(shl){const x=(S.shiftLog||[]).find(z=>z.id===shl.dataset.shift);if(x)zModal(x);return}
