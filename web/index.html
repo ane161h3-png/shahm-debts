@@ -991,9 +991,9 @@ const PDF_BRAND="'Lalezar','Tajawal',sans-serif";
 async function pdfFonts(){try{await Promise.all(["400 40px Lalezar","700 28px Tajawal","400 22px 'IBM Plex Sans Arabic'","700 22px 'IBM Plex Sans Arabic'"].map(f=>document.fonts.load(f)));await document.fonts.ready}catch(e){}}
 const pdfBar=ctx=>{ctx.fillStyle=PDFC.green;ctx.fillRect(0,0,1240,14);ctx.fillStyle=PDFC.orange;ctx.fillRect(0,14,1240,5)};
 function loadScript(src){return new Promise((res,rej)=>{if(document.querySelector(`script[src="${src}"]`)){res();return}const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
-async function buildPdf(spec,filename){
-  toast("جارِ تجهيز التقرير…");
-  try{await loadScript("vendor/jspdf.umd.min.js")}catch(e){toast("تعذّر تحميل أداة PDF. تحقق من الإنترنت.");return}
+async function buildPdf(spec,filename,opt){
+  if(!(opt&&opt.blob))toast("جارِ تجهيز التقرير…");
+  try{await loadScript("vendor/jspdf.umd.min.js")}catch(e){toast("تعذّر تحميل أداة PDF. تحقق من الإنترنت.");return null}
   await pdfFonts();
   const W=1240,H=1754,M=80,F="'IBM Plex Sans Arabic',Tahoma,sans-serif";
   const pages=[];let ctx,y;
@@ -1023,6 +1023,7 @@ async function buildPdf(spec,filename){
   y+=24;if(y>H-M-60*spec.totals.length){newPage()}
   for(const [k,v,col] of spec.totals){ctx.textAlign="right";ctx.font=`600 26px ${F}`;ctx.fillStyle=PDFC.ink;ctx.fillText(k,W-M,y+28);ctx.direction="ltr";ctx.textAlign="left";ctx.fillStyle=col||PDFC.ink;ctx.font=`700 28px ${F}`;ctx.fillText(v,M,y+28);ctx.direction="rtl";y+=46}
   pages.forEach((cv,i)=>{const cx=cv.getContext("2d");cx.direction="ltr";cx.textAlign="center";cx.fillStyle=PDFC.green;cx.font=`400 18px ${F}`;cx.fillText(`${i+1} / ${pages.length}`,W/2,H-40)});
+  if(opt&&opt.blob)return {blob:pagesBlob(pages),fname:filename};
   return savePages(pages,filename);
 }
 function pagesBlob(pages){
@@ -1183,16 +1184,17 @@ function monthReport(ym){
         "تقرير-شهري-"+ym+".pdf")};
   });
 }
-function listPdf(){
-  const per=stats();const sup=S.kind==="supplier";
-  const arr=[...S.customers.values()].filter(c=>kindOf(c)===S.kind).map(c=>({c,p:per.get(c.id)})).sort((a,b)=>b.p.bal-a.p.bal);
+function listPdf(kind,opt){
+  kind=kind||S.kind;
+  const per=stats();const sup=kind==="supplier";
+  const arr=[...S.customers.values()].filter(c=>kindOf(c)===kind).map(c=>({c,p:per.get(c.id)})).sort((a,b)=>b.p.bal-a.p.bal);
   let total=0;for(const x of arr)if(x.p.bal>0)total+=x.p.bal;
-  buildPdf({shop:shopName(),title:sup?"تقرير الموردين":"تقرير ديون الزبائن",
+  return buildPdf({shop:shopName(),title:sup?"تقرير الموردين":"تقرير ديون الزبائن",
     info:[["عدد الحسابات",{text:String(arr.length)}],[sup?"مجموع ما علينا":"مجموع الديون",{text:fmt(total)+" "+CUR,color:PDFC.debt}]],
     columns:[{label:"الاسم",w:.36},{label:"الهاتف",w:.22,num:true},{label:"آخر حركة",w:.2},{label:"الرصيد",w:.22,num:true}],
     rows:arr.map(({c,p},i)=>({cells:[c.name,c.phone||"",p.count?shortDate(new Date(p.last).toISOString().slice(0,10)):"—",fmt(p.bal)],colors:[null,null,null,p.bal>0?PDFC.debt:PDFC.paid],shade:i%2===1})),
     totals:[[sup?"المجموع علينا":"مجموع الديون",fmt(total)+" "+CUR,PDFC.debt]]},
-    (sup?"تقرير-الموردين-":"تقرير-الزبائن-")+todayISO()+".pdf");
+    (sup?"تقرير-الموردين-":"تقرير-الزبائن-")+todayISO()+".pdf",opt);
 }
 
 /* ---------- business card: drawn on a canvas so it can be shared as an image ---------- */
@@ -1343,10 +1345,14 @@ function setPage(k){
   if(k==="backup"){const lb=st.lastBackupAt;const sups=[...S.customers.values()].filter(isSup).length;
     return `<h2>النسخ الاحتياطي والاستعادة</h2>
     <div class="banner info">بياناتك محفوظة على السحابة (Firebase)، فإذا حذفت البرنامج أو بدّلت الموبايل ثبّته من جديد وسجّل دخول وكل شي يرجع. ملف النسخة الاحتياطية للأمان الإضافي: إذا انحذف شي بالغلط تقدر ترجّعه منه.</div>
+    <div class="tpl"><h3>${I.save}نسخة اليوم (النسخة + ملف الديون PDF)</h3>
+      <span class="ro-note">دوسة وحدة تحفظ ملفين سوا: النسخة الاحتياطية وتقرير ديون الزبائن (كل زبون وشكد عليه).</span>
+      ${FOLDER_OK?`<span class="ro-note">${(()=>{let n="";try{n=localStorage.getItem("shahm-backup-dir")||""}catch(e){}return n?`تنحفظ بمجلد اليوم داخل <b><bdi dir="ltr">${esc(n)}\\${todayISO().slice(0,7)}\\${todayISO()}</bdi></b>. ركّب الفلاش قبل ما تدوس.`:"أول مرة يسألك عن المكان: اختار مجلد النسخ بالفلاش (Shahm-Backups)، وبعدها كل يوم دوسة وحدة بدون أسئلة."})()}</span>`:""}
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button>${FOLDER_OK?`<button class="btn ghost" type="button" data-act="daybackupdir">تغيير المجلد</button>`:""}</div></div>
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
       <span class="ro-note">${lb?"آخر نسخة: "+esc(timeAgo(lb)):"لم تحفظ أي نسخة بعد"}</span>
       <p class="ro-note" style="margin:0">الملف يحتوي: <span class="num">${S.customers.size-sups}</span> زبون، <span class="num">${sups}</span> مورد، <span class="num">${S.txns.size}</span> حركة، مع معلومات المتجر وقوالب الرسائل وسجل النشاط.</p>
-      <div><button class="btn primary" id="exportBtn" type="button">${I.save}حفظ النسخة على الجهاز</button></div>
+      <div><button class="btn" id="exportBtn" type="button">${I.save}حفظ النسخة فقط</button></div>
       <span class="ro-note">احفظ الملف في مكان آمن: Google Drive أو iCloud أو أرسله لنفسك على واتساب.</span></div>
     <div class="tpl"><h3>${I.back}استعادة نسخة احتياطية</h3>
       <span class="ro-note">اختر ملف النسخة (ينتهي بـ .json). قبل الاستعادة يظهر لك ما بداخله وتختار الطريقة.</span>
@@ -1822,11 +1828,67 @@ async function changePassword(){
 }
 
 /* ---------- backup ---------- */
-async function exportData(){
+async function backupJson(){
   let activity=S.activity;try{const all=await db.collection("activity").get();activity=all.docs.map(d=>d.data())}catch(e){}
   const data=JSON.stringify({app:"shahm-debts",version:3,exportedAt:new Date().toISOString(),settings:S.settings,customers:[...S.customers.values()],txns:[...S.txns.values()],accounts:[],activity},null,1);
-  const name="نسخة-ديون-"+shopName().replace(/\s+/g,"-")+"-"+todayISO()+".json";
-  const done=()=>{saveSettings({lastBackupAt:Date.now()});log("add","import",{detail:"حفظ نسخة احتياطية"})};
+  return {name:"نسخة-ديون-"+shopName().replace(/\s+/g,"-")+"-"+todayISO()+".json",data};
+}
+const backupDone=detail=>{saveSettings({lastBackupAt:Date.now()});log("add","import",{detail})};
+// Small key/value store in this browser's IndexedDB: keeps the chosen backup folder (a folder handle can't go in localStorage).
+const kv=(()=>{let p;const open=()=>p||(p=new Promise((res,rej)=>{const r=indexedDB.open("shahm-local",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
+  const run=(mode,fn)=>open().then(d=>new Promise((res,rej)=>{const t=d.transaction("kv",mode),q=fn(t.objectStore("kv"));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error)}));
+  return {get:k=>run("readonly",s=>s.get(k)).catch(()=>null),set:(k,v)=>run("readwrite",s=>s.put(v,k)).catch(()=>{})}})();
+const FOLDER_OK=!NATIVE&&typeof window.showDirectoryPicker==="function";
+/* Daily backup in one tap: the backup file and the customers' debt PDF together. On a laptop (Chrome/Edge) the owner picks the
+   flash drive's backup folder once; after that every tap writes both files to <folder>/YYYY-MM/YYYY-MM-DD/ with no dialog.
+   Elsewhere both files are saved/shared together. The folder is asked for first, while the tap still counts as a user action. */
+async function dailyBackup(choose){
+  const day=todayISO(),mon=day.slice(0,7);let dir=null;
+  if(FOLDER_OK){
+    try{
+      dir=choose?null:await kv.get("backupDir");
+      if(!dir){dir=await window.showDirectoryPicker({id:"shahm-backup",mode:"readwrite",startIn:"desktop"});await kv.set("backupDir",dir)}
+      if(await dir.queryPermission({mode:"readwrite"})!=="granted"&&await dir.requestPermission({mode:"readwrite"})!=="granted"){toast("لازم توافق حتى البرنامج يحفظ بالمجلد.");return}
+    }catch(e){if(e&&e.name==="AbortError")return;console.warn(e);dir=null}
+  }
+  toast("جارِ تجهيز النسخة وملف الديون…");
+  const bk=await backupJson();
+  const pdf=await listPdf("customer",{blob:true});
+  if(!pdf)return;
+  if(dir){
+    try{
+      const dd=await (await dir.getDirectoryHandle(mon,{create:true})).getDirectoryHandle(day,{create:true});
+      // Some file systems refuse Arabic file names; then the same file is written under a plain English name.
+      const put1=async(names,blob)=>{for(const n of names){try{const w=await (await dd.getFileHandle(n,{create:true})).createWritable();await w.write(blob);await w.close();return}catch(e){if(n===names[names.length-1])throw e}}};
+      await put1([bk.name,`backup-${day}.json`],new Blob([bk.data],{type:"application/json"}));await put1([pdf.fname,`debts-${day}.pdf`],pdf.blob);
+      backupDone("حفظ نسخة اليوم بالمجلد");try{localStorage.setItem("shahm-backup-dir",dir.name)}catch(e){}
+      toast(`✓ انحفظ الملفين بـ \u2066${dir.name}\\${mon}\\${day}\u2069`,{label:"تغيير المجلد",onClick:()=>dailyBackup(true),ms:9000});render();return;
+    }catch(e){console.warn(e);
+      toast(e&&e.name==="NotFoundError"?"ما لكيت المجلد. ركّب الفلاش وحاول مرة ثانية، أو اختار المجلد من جديد.":"تعذّر الحفظ بالمجلد.",{label:"اختيار المجلد",onClick:()=>dailyBackup(true),ms:12000});return}
+  }
+  openModal(`<h3>نسخة اليوم جاهزة</h3><p class="hint">الملفين جاهزين: النسخة الاحتياطية وتقرير ديون الزبائن. اضغط حفظ حتى ينزلون سوا.</p>
+    <div class="foot"><button class="btn primary" type="button" id="bkBoth">${I.save}حفظ الملفين</button><button class="btn" type="button" data-close>إلغاء</button></div>`,
+    m=>m.querySelector("#bkBoth").addEventListener("click",async()=>{
+      try{if(await saveFiles([{name:bk.name,blob:new Blob([bk.data],{type:"application/json"})},{name:pdf.fname,blob:pdf.blob}])){backupDone("حفظ نسخة اليوم");closeModal();toast("تم حفظ الملفين")}}
+      catch(e){console.warn(e);toast("تعذّر حفظ الملفات.")}}));
+}
+// Several files in one go: the Android app and phones share them together; a laptop downloads them one after the other.
+async function saveFiles(list){
+  if(NATIVE){
+    const uris=[];for(const f of list)uris.push((await plugin("Filesystem").writeFile({path:f.name,data:await blobToB64(f.blob),directory:"CACHE"})).uri);
+    try{await plugin("Share").share({title:list[0].name,files:uris})}catch(e){if(/cancel/i.test(String(e&&e.message)))return false;throw e}
+    return true;
+  }
+  const files=list.map(f=>new File([f.blob],f.name,{type:f.blob.type}));
+  if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)&&navigator.canShare&&navigator.canShare({files})){
+    try{await navigator.share({files,title:list[0].name});return true}catch(e){if(e&&e.name==="AbortError")return false}
+  }
+  for(const f of list){const a=document.createElement("a");a.href=URL.createObjectURL(f.blob);a.download=f.name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},5000);await new Promise(r=>setTimeout(r,400))}
+  return true;
+}
+async function exportData(){
+  const {name,data}=await backupJson();
+  const done=()=>backupDone("حفظ نسخة احتياطية");
   try{if(await saveFile(name,data,"application/json")){done();toast("تم حفظ النسخة")}return}catch(e){console.warn(e)}
   openModal(`<h3>نسخة احتياطية</h3><p class="hint">حفظ الملفات غير متاح هنا. انسخ النص واحفظه في ملاحظة أو أرسله لنفسك على واتساب. تقدر تستعيده لاحقاً بزر «لصق نص النسخة».</p>
     <textarea class="statement" id="bk" readonly style="direction:ltr;font-size:12px">${esc(data)}</textarea>
@@ -1927,6 +1989,8 @@ document.addEventListener("click",e=>{
     case "setlimit":if(canWrite())customerForm(c);break;
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
+    case "daybackup":if(isAdmin())dailyBackup(false);break;
+    case "daybackupdir":if(isAdmin())dailyBackup(true);break;
     case "pastebackup":if(isAdmin())pasteBackup();break;
     case "gobackup":S.view="settings";S.setPage="backup";render();window.scrollTo(0,0);break;
     case "addphone":if(canWrite()&&c)phoneForm(c);break;
