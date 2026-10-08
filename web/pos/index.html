@@ -126,6 +126,10 @@ fieldset.sec legend{padding:0 6px;font-family:var(--f-display);font-weight:700;f
 .scan-wait{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0;color:var(--muted);text-align:center}
 .tile .pic{width:100%;aspect-ratio:4/3;object-fit:contain;background:var(--paper);border-radius:8px;display:block}
 .cart-lines .cpic{width:40px;height:40px;border-radius:8px;object-fit:contain;background:var(--paper);border:1px solid var(--line);flex:none}
+.cat-ic{display:grid;place-items:center;color:var(--accent);background:var(--paper-2)}
+.cat-ic svg{width:62%;height:62%;max-height:100%}
+.tile .pic.cat-ic{background:var(--paper-2)}
+.cart-lines .cpic.cat-ic{border:1px solid var(--line)}
 img.avatar.pic-av{object-fit:cover;padding:0;background:var(--paper)}
 .pic-edit{display:flex;gap:12px;align-items:center}
 .pic-prev{width:92px;height:92px;flex:none;border-radius:12px;border:1px solid var(--line);background:var(--paper-2);display:grid;place-items:center;overflow:hidden;color:var(--muted)}
@@ -2549,7 +2553,8 @@ function loadPic(p){
   picWait.set(k,pr);return pr;
 }
 const picImg=(p,cls)=>{if(p&&p.pic)return `<img class="${cls}" data-pic="${esc(p.id)}" alt=""${picUrl(p)?` src="${picUrl(p)}"`:""}>`;
-  const u=stockPic(p);return u?`<img class="${cls}" src="${u}" alt="" loading="lazy">`:""};
+  const u=stockPic(p);if(u)return `<img class="${cls}" src="${u}" alt="" loading="lazy">`;
+  const k=catIcon(p);return k?`<span class="${cls} cat-ic">${iconSvg(k)}</span>`:""};
 /* Ready-made fruit photos (img/fruit, from the Fruits-360 photo set; credits in img/fruit/CREDITS.md). A fruit item with no
    photo of its own shows the one that matches its name, so «تفاح أحمر» or «رمان» get a picture without the owner taking one.
    Only items under a fruit or vegetable category (or sold by weight) are matched, so «عصير برتقال» never gets an orange.
@@ -2572,7 +2577,23 @@ function stockPic(p){
     const hit=FRUIT_PICS.find(([,re])=>re.test(n));if(hit)u="img/fruit/"+hit[0]+".webp"}
   stockMemo.set(k,u);return u;
 }
-const hasPic=p=>!!(p&&(p.pic||stockPic(p)));
+/* Category drawings: an item with no photo (and no ready-made fruit photo) under a known category shows a simple line drawing of
+   that kind of item instead of its first letter. Drawn inline in the app colour, so it follows light and dark. A real photo wins. */
+const CAT_ICONS={milk:"<path d=\"M8 3h8l2 4v14H6V7z\"/><path d=\"M6 7h12\"/><path d=\"M10 12h4v4h-4z\"/>",egg:"<path d=\"M12 3c3.5 0 6 6 6 10a6 6 0 0 1-12 0c0-4 2.5-10 6-10z\"/>",sack:"<path d=\"M8 4h8l1 3c2 2 2 5 2 8 0 3-2 5-7 5s-7-2-7-5c0-3 0-6 2-8z\"/><path d=\"M8 4c1 1.5 7 1.5 8 0\"/>",oil:"<path d=\"M10 3h4v3l2 3v11H8V9l2-3z\"/><path d=\"M8 13h8\"/>",cup:"<path d=\"M4 9h13v4a5 5 0 0 1-5 5h-3a5 5 0 0 1-5-5z\"/><path d=\"M17 10h2a2 2 0 0 1 0 4h-2\"/><path d=\"M8 4v2M12 4v2\"/>",can:"<ellipse cx=\"12\" cy=\"6\" rx=\"6\" ry=\"2\"/><path d=\"M6 6v12c0 1.1 2.7 2 6 2s6-.9 6-2V6\"/><path d=\"M6 12c0 1.1 2.7 2 6 2s6-.9 6-2\"/>",drink:"<path d=\"M10 2h4v3l2 3v13a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8l2-3z\"/><path d=\"M8 12h8M8 16h8\"/>",drop:"<path d=\"M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z\"/>",bread:"<path d=\"M5 10c0-3 3-5 7-5s7 2 7 5c0 1-.5 1.7-1 2v6H6v-6c-.5-.3-1-1-1-2z\"/>",choc:"<rect x=\"4\" y=\"7\" width=\"16\" height=\"10\" rx=\"2\"/><path d=\"M9 7v10M15 7v10M4 12h16\"/>",biscuit:"<circle cx=\"12\" cy=\"12\" r=\"8\"/><circle cx=\"9\" cy=\"10\" r=\".8\"/><circle cx=\"14\" cy=\"9\" r=\".8\"/><circle cx=\"12\" cy=\"14\" r=\".8\"/><circle cx=\"15\" cy=\"14\" r=\".8\"/>",chips:"<path d=\"M6 4h12l-1 16H7z\"/><path d=\"M6 8c2 1 4-1 6 0s4 1 6 0\"/><circle cx=\"12\" cy=\"14\" r=\"2\"/>",spray:"<path d=\"M9 10h5v10H9z\"/><path d=\"M10 10V7h3l2-2\"/><path d=\"M17 5h2M17 8h2\"/>",tissue:"<rect x=\"4\" y=\"9\" width=\"16\" height=\"9\" rx=\"2\"/><path d=\"M8 9c0-3 3-4 4-4s4 1 4 4\"/>",bottle:"<path d=\"M10 3h4v3h-4z\"/><path d=\"M8 8h8v13H8z\"/><path d=\"M8 13h8\"/>",baby:"<path d=\"M4 8h16v4c0 4-3 7-8 7s-8-3-8-7z\"/><path d=\"M4 8c0 2 2 3 4 3M20 8c0 2-2 3-4 3\"/>",pasta:"<path d=\"M5 7h14M5 11h14M5 15h14M5 19h14\"/>",jar:"<rect x=\"7\" y=\"8\" width=\"10\" height=\"12\" rx=\"2\"/><path d=\"M8 4h8v4H8z\"/><path d=\"M10 13h4\"/>",meat:"<path d=\"M5 14c0-4 4-8 9-8 3 0 5 2 5 5 0 4-4 8-9 8-3 0-5-2-5-5z\"/><circle cx=\"14\" cy=\"11\" r=\"1.5\"/>",fish:"<path d=\"M3 12c3-5 9-6 13-3l5-3v12l-5-3c-4 3-10 2-13-3z\"/><circle cx=\"8\" cy=\"11\" r=\".8\"/>",snow:"<path d=\"M12 3v18M4 7.5l16 9M4 16.5l16-9\"/>",cone:"<path d=\"M8 11a4 4 0 0 1 8 0z\"/><path d=\"M8 11l4 10 4-10\"/>",nuts:"<path d=\"M12 4c4 0 7 4 7 8 0 5-3 8-7 8s-7-3-7-8c0-4 3-8 7-8z\"/><path d=\"M12 4v16\"/>",home:"<path d=\"M5 20V10l7-5 7 5v10z\"/><path d=\"M10 20v-6h4v6\"/>",battery:"<rect x=\"4\" y=\"8\" width=\"14\" height=\"8\" rx=\"1.5\"/><path d=\"M20 11v2M8 12h4M10 10v4\"/>",pencil:"<path d=\"M5 19l1-4 10-10 3 3-10 10z\"/><path d=\"M14 7l3 3\"/>",bag:"<path d=\"M6 8h12l1 12H5z\"/><path d=\"M9 8V6a3 3 0 0 1 6 0v2\"/>",paw:"<circle cx=\"7\" cy=\"10\" r=\"1.6\"/><circle cx=\"11\" cy=\"7\" r=\"1.6\"/><circle cx=\"15\" cy=\"7\" r=\"1.6\"/><circle cx=\"18\" cy=\"10\" r=\"1.6\"/><path d=\"M12 12c-3 0-5 3-5 5 0 2 2 2 5 1 3 1 5 1 5-1 0-2-2-5-5-5z\"/>"};
+const CAT_ICON_BY=[["milk","جبن|البان|لبن|حليب|اجبان"],["egg","بيض"],["sack","رز|طحين|سكر|بقول|حبوب"],["oil","زيوت|سمن|زيت"],["cup","شاي|قهوه"],
+  ["pasta","معكرون|شعير"],["can","معلبات"],["jar","بهارات|توابل|صلصات|مربيات"],["meat","لحوم|دجاج"],["fish","اسماك"],["snow","مجمدات"],["cone","ايس كريم|ايس"],
+  ["bread","خبز|معجنات|كيك|كرواسون"],["choc","حلويات|شوكولات"],["biscuit","بسكويت"],["nuts","مكسرات|كرزات"],["chips","شيبس|سناك"],
+  ["drop","مياه"],["drink","مشروبات|عصائر|عصير"],["spray","منظفات"],["tissue","مناديل|ورقيات"],["bottle","صابون|شامبو|عنايه"],["baby","حفاضات|اطفال"],
+  ["home","منزليه"],["bag","نايلون|بلاستيك"],["pencil","قرطاسيه"],["battery","بطاريات|كهربائيات"],["paw","حيوانات"]]
+  .map(([k,w])=>[k,new RegExp(w)]);
+const iconMemo=new Map();
+function catIcon(p){
+  if(!p||p.pic||p.noStock)return "";
+  const c=foldAr(p.category||"");if(iconMemo.has(c))return iconMemo.get(c);
+  const h=CAT_ICON_BY.find(([,re])=>re.test(c));const k=h?h[0]:"";iconMemo.set(c,k);return k;
+}
+const iconSvg=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CAT_ICONS[k]}</svg>`;
+const hasPic=p=>!!(p&&(p.pic||stockPic(p)||catIcon(p)));
 let picIO=null;
 function fillPic(img){const p=S.products.get(img.dataset.pic);if(!p||!p.pic){img.remove();return}
   loadPic(p).then(u=>{if(u)img.src=u;else img.remove()}).catch(()=>img.remove())}
