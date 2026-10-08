@@ -18,21 +18,29 @@ How the ledger is written:
 - Lines that are completely crossed out were cancelled: skip them. Skip headings, dates, page totals and sums.
 - Amounts are Iraqi dinars. Shopkeepers usually write them in thousands: the smallest banknote is 250, so any amount below 250 is in thousands (5 → 5000, 2.5 or 2,5 → 2500, 7½ → 7500, 0.5 → 500). Amounts like 250, 750, 1500 or 25000 are literal. Digits may be Arabic-Indic (٠١٢٣٤٥٦٧٨٩).
 
-The shop may also use its printed form "ماركت الشهم · ورقة اليوميات" (tag "SHAHM DAILY SHEET"). On that form:
+The shop may also use its printed form "ماركت الشهم · ورقة اليوميات" (small tag "SHAHM DAILY SHEET v4" in the bottom corner). On that form:
 - The page has two tables side by side. Read the right-hand table first (printed rows ت 1–30, top to bottom), then the left-hand table (rows 31–60). Never join a name from one table with an amount from the other.
-- Each numbered row is one entry. Columns in each table from right to left: ت (printed row number, ignore it), اسم الزبون (name), المواد (goods taken), المبلغ (amount). Put whatever is written in المواد into note, never into written_name or amount. Goods written after the name in the name cell also go in note.
+- Each numbered row is one entry. The current form (v4) has three columns, right to left: ت (printed row number), اسم الزبون (name), المبلغ (amount). Follow each row straight across its printed lines: the name and amount of one entry sit between the same two horizontal lines, next to the same row number. Every fifth line is printed thicker to help you keep count.
+- Anything written after the name in the name cell (goods, a remark) goes in note, never into written_name.
 - A row is "debt" unless it says the customer paid: a payment word (واصل، وصل، دفع، سدد) or a minus sign written anywhere in the row, usually next to the amount, means "pay".
-- Older printouts of the form have 26 rows per table, no المواد column, and a small واصل box after the amount: there a tick, cross, dot or scribble inside the box also means "pay".
-- Skip empty rows, the printed headings and instructions, the date and sheet number at the top, and the مجموع الديون / مجموع الواصل totals at the bottom.
-- A row with a line through it was cancelled: skip it.
+- Older printouts may have a fourth column المواد (goods) between the name and the amount: put what is written there into note. The oldest have 26 rows per table and a small واصل box after the amount: a tick, cross, dot or scribble inside that box also means "pay".
+- Skip empty rows, the printed headings and instructions, the date and sheet number at the top, and any totals.
+- A row with a line through it was cancelled: skip it. A single crossed-out amount with a new amount written beside it is a correction: use the new amount.
+
+Reading handwritten digits:
+- Arabic-Indic digits: ٠ is written as a small dot or diamond, ٥ as a small circle or loop. Do not read ٥ as zero: a circle is 5, a dot is 0 (so "٥٠٠" = 500, "٢٥٠" = 250).
+- ٢ and ٣ differ by the teeth on top (٢ one, ٣ two). ٦ looks like a 7 with a short tail; ٧ is a V; ٨ is an upside-down V.
+- A comma, dot or slash between digits can be a thousands separator ("2,500", "2.500") or a decimal half ("2,5" = 2500 by the thousands rule). Decide from the other amounts on the page.
 
 For every entry, in the order it appears on the page:
+- row: the printed row number ت of the row on the printed form, or 0 when the photo is not the printed form.
 - written_name: the name exactly as written.
 - customer_id: the id of the same person from the customer list. Allow for spelling variants (ة/ه، ى/ي، أ/إ/ا، with or without ال، shortened names, a nickname that clearly matches a listed name). Use "" when nobody in the list is the same person.
 - A customer line may end with other ways the shop has written that person's name on earlier pages. A written name that matches one of those is that customer, with match "sure".
 - match: "sure" when the match is clear, "unsure" when it is a plausible guess, "none" when customer_id is "".
 - type: "debt" or "pay".
-- amount: whole dinars after applying the thousands rule.
+- amount_written: the amount exactly as written, digits and marks included (e.g. "5", "٢٥٠٠", "7½", "2,5").
+- amount: whole dinars after applying the thousands rule to amount_written.
 - amount_unsure: true when the digits are hard to read.
 - note: the goods or remark written with the entry (e.g. رز، سكر، كارت), otherwise "".
 
@@ -48,12 +56,14 @@ const SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["written_name", "customer_id", "match", "type", "amount", "amount_unsure", "note"],
+        required: ["row", "written_name", "customer_id", "match", "type", "amount_written", "amount", "amount_unsure", "note"],
         properties: {
+          row: { type: "integer" },
           written_name: { type: "string" },
           customer_id: { type: "string" },
           match: { type: "string", enum: ["sure", "unsure", "none"] },
           type: { type: "string", enum: ["debt", "pay"] },
+          amount_written: { type: "string" },
           amount: { type: "integer" },
           amount_unsure: { type: "boolean" },
           note: { type: "string" },
@@ -330,18 +340,25 @@ export default {
 
       // Never trust an id the model returned unless it is one of ours.
       const ids = new Set(input.customers.map(c => c.id));
+      const seen = new Set();
       rows = (Array.isArray(rows) ? rows : []).map(r => {
         const known = ids.has(r.customer_id);
+        let amount = Math.max(0, Math.round(Number(r.amount) || 0)), unsure = !!r.amount_unsure;
+        // No banknote is below 250 dinars, so a smaller amount is one the model forgot to read in thousands.
+        if (amount > 0 && amount < 250) { amount *= 1000; unsure = true; }
         return {
+          row: Math.max(0, Math.min(999, Math.round(Number(r.row) || 0))),
           written_name: String(r.written_name || "").slice(0, 80),
           customer_id: known ? r.customer_id : "",
           match: known ? (r.match === "sure" ? "sure" : "unsure") : "none",
           type: r.type === "pay" ? "pay" : "debt",
-          amount: Math.max(0, Math.round(Number(r.amount) || 0)),
-          amount_unsure: !!r.amount_unsure,
+          amount_written: String(r.amount_written || "").slice(0, 20),
+          amount,
+          amount_unsure: unsure,
           note: String(r.note || "").slice(0, 140),
         };
-      });
+      // Overlapping photos of the same printed sheet return the same row twice: keep it once.
+      }).filter(r => { if (!r.row) return true; const k = `${r.row}|${r.written_name}|${r.amount}`; if (seen.has(k)) return false; seen.add(k); return true; });
       console.log(`read ${rows.length} rows for ${auth.user.email} via ${useClaude ? "claude" : "gemini"}`);
       return json({ rows }, 200, cors);
     } catch (e) {

@@ -1616,7 +1616,7 @@ function sendStatementPdf(c,textLink){
   });
 }
 /* ---------- ledger photo: read the paper notebook with AI, review, save ---------- */
-async function shrinkImage(file,max=1568,q=.85){
+async function shrinkImage(file,max=1568,q=.85,cap=900000){
   let src;
   try{src=await createImageBitmap(file,{imageOrientation:"from-image"})}
   catch(e){src=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error("bad image"));i.src=URL.createObjectURL(file)})}
@@ -1624,8 +1624,8 @@ async function shrinkImage(file,max=1568,q=.85){
   const cv=document.createElement("canvas");cv.width=Math.round(w*k);cv.height=Math.round(h*k);
   cv.getContext("2d").drawImage(src,0,0,cv.width,cv.height);
   let url=cv.toDataURL("image/jpeg",q);
-  // Invoice photos live in Firestore documents (1 MB cap), so step the quality down until it fits comfortably.
-  for(let qq=q-.1;url.length>900000&&qq>.3;qq-=.1)url=cv.toDataURL("image/jpeg",qq);
+  // Invoice photos live in Firestore documents (1 MB cap), so step the quality down until it fits comfortably. The sheet reader passes a bigger cap: handwriting needs the detail.
+  for(let qq=q-.1;url.length>cap&&qq>.3;qq-=.1)url=cv.toDataURL("image/jpeg",qq);
   return {url,data:url.slice(url.indexOf(",")+1),media_type:"image/jpeg"};
 }
 /* ---------- invoice photos: stored one per document in "photos", linked from the transaction's photos list ---------- */
@@ -1666,7 +1666,7 @@ function scanStart(){
       const err=m.querySelector("#scErr");err.textContent="";
       m.querySelector("#scBody").innerHTML=`<div class="scan-wait"><div class="spinner"></div><b>جاري قراءة الورقة…</b><span>ممكن تاخذ لحد دقيقة، لا تسد البرنامج.</span></div>`;
       try{
-        const imgs=[];for(const f of files)imgs.push(await shrinkImage(f));
+        const imgs=[];for(const f of files)imgs.push(await shrinkImage(f,2400,.85,4500000));
         const customers=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({id:c.id,name:c.name,aliases:c.aliases||[]}));
         const token=await auth.currentUser.getIdToken();
         const ctl=new AbortController();const tm=setTimeout(()=>ctl.abort(),150000);
@@ -1709,10 +1709,10 @@ function scanReview(rows,pics){
     return `${r.written_name.trim()?`<li><button type="button" class="new" data-pk="new">+ زبون جديد: ${esc(r.written_name.trim())}</button></li>`:""}${arr.map(c=>`<li><button type="button" data-pk="${esc(c.id)}"><span>${esc(c.name)}</span>${c.id===r.cust?"✓":""}</button></li>`).join("")||`<li class="empty">لا يوجد زبون بهذا الاسم</li>`}`};
   const card=(r,i)=>{const warn=r.match!=="sure"||r.amount_unsure||!r.amount;
     return `<div class="sr ${warn?"warn":""}" data-i="${i}">
-      <div class="sr-top"><span>مكتوب بالورقة: <b>${esc(r.written_name)||"؟"}</b>${r.remembered?" · من الذاكرة":r.match==="unsure"?" · تأكد من الاسم":r.match==="none"?" · ما لكيته بالزبائن":""}${r.amount_unsure?" · تأكد من المبلغ":""}</span><button class="icon-btn del" type="button" aria-label="حذف السطر" data-srdel>${I.trash}</button></div>
+      <div class="sr-top"><span>${r.row?`سطر <b class="num">${r.row}</b> · `:""}مكتوب: <b>${esc(r.written_name)||"؟"}</b>${r.amount_written?` <bdi class="num">${esc(r.amount_written)}</bdi>`:""}${r.remembered?" · من الذاكرة":r.match==="unsure"?" · تأكد من الاسم":r.match==="none"?" · ما لكيته بالزبائن":""}${r.amount_unsure?" · تأكد من المبلغ":""}</span><button class="icon-btn del" type="button" aria-label="حذف السطر" data-srdel>${I.trash}</button></div>
       ${custBtn(r)}
       <div class="sr-row"><div class="seg" role="group" aria-label="نوع الحركة"><button type="button" data-t="debt" aria-pressed="${r.type==="debt"}">دين</button><button type="button" data-t="pay" aria-pressed="${r.type==="pay"}">تسديد</button></div><input data-f="amt" inputmode="numeric" aria-label="المبلغ" value="${r.amount?fmt(r.amount):""}" placeholder="المبلغ"></div>
-      <input data-f="note" maxlength="140" aria-label="المواد" value="${esc(r.note)}" placeholder="المواد (اختياري)">
+      <input data-f="note" maxlength="140" aria-label="ملاحظة" value="${esc(r.note)}" placeholder="ملاحظة (اختياري)">
       <div class="sr-dup" hidden>⚠️ هذي الحركة مسجّلة قبل لنفس الزبون بنفس التاريخ والمبلغ</div>
     </div>`};
   // Same customer, type, amount and date already in the book: most likely the same sheet photographed twice.
