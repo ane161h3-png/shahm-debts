@@ -482,7 +482,7 @@ function fillTpl(kind,c,extra){
   const tpl=(S.settings.templates&&S.settings.templates[kind])||DEFAULT_TPL[kind];
   const bal=balanceOf(c.id);
   const pr=c.promise||{};
-  const map={"الموعد":pr.date?dayName(pr.date):"","مبلغ الوعد":pr.amount?` بمبلغ ${fmt(pr.amount)} د.ع`:"","الاسم":c.name,"المبلغ":fmt(extra&&extra.amount),"الرصيد":fmt(bal),"التاريخ":(extra&&extra.date)||todayISO(),"البيان":(extra&&extra.note)||(kind==="debt"?"مشتريات":"دفعة"),"المتجر":shopName()};
+  const map={"الموعد":pr.date?dayName(pr.date):"","مبلغ الوعد":pr.amount?` بمبلغ ${fmt(pr.amount)} د.ع`:"","الاسم":c.name,"المبلغ":fmt(extra&&extra.amount),"الرصيد":fmt(bal),"التاريخ":((extra&&extra.date)||todayISO())+(extra&&extra.time?" الساعة "+extra.time:""),"الوقت":(extra&&extra.time)||hm12(Date.now()),"البيان":(extra&&extra.note)||(kind==="debt"?"مشتريات":"دفعة"),"المتجر":shopName()};
   return tpl.replace(/\{([^}]+)\}/g,(m,k)=>k in map?map[k]:m);
 }
 const I={
@@ -940,7 +940,7 @@ function renderDetail(){
       <div class="period"><h3>الحركات</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><select id="period" aria-label="المدة">${PERIODS.map(([k,l])=>`<option value="${k}" ${S.period===k?"selected":""}>${l}</option>`).join("")}</select><button class="btn sm primary" type="button" data-act="custpdf">${I.pdf}تقرير PDF</button></div></div>
       ${L.list.length||L.from?`<div class="ledger-scroll"><table><thead><tr><th>التاريخ والبيان</th><th>${sup?"فاتورة":"دين"}</th><th>دفعة</th><th>الرصيد</th>${w?"<th></th>":""}</tr></thead><tbody>
       ${L.from?`<tr class="edge"><td colspan="3">رصيد نهاية المدة · ${esc(shortDate(todayISO()))}</td><td class="run"><span class="num">${fmt(L.close)}</span></td>${w?"<td></td>":""}</tr>`:""}
-      ${L.list.slice().reverse().map(({t,run})=>`<tr><td class="desc">${t.inv?`<b class="num">#${esc(t.inv)}</b> `:""}${esc(t.note||(t.type==="debt"?(sup?"بضاعة بالآجل":"مشتريات"):"دفعة"))}${t.photos&&t.photos.length?` <button class="pic-btn" type="button" data-act="viewpics" data-id="${esc(t.id)}" aria-label="عرض صورة القائمة">${I.camera}${t.photos.length>1?t.photos.length:""}</button>`:""}<span class="d">${esc(shortDate(t.date))}${t.by?" · "+esc(t.by):""}</span></td>
+      ${L.list.slice().reverse().map(({t,run})=>`<tr><td class="desc">${t.inv?`<b class="num">#${esc(t.inv)}</b> `:""}${esc(t.note||(t.type==="debt"?(sup?"بضاعة بالآجل":"مشتريات"):"دفعة"))}${t.photos&&t.photos.length?` <button class="pic-btn" type="button" data-act="viewpics" data-id="${esc(t.id)}" aria-label="عرض صورة القائمة">${I.camera}${t.photos.length>1?t.photos.length:""}</button>`:""}<span class="d">${esc(shortDate(t.date))}${txnTime(t)?" · "+esc(txnTime(t)):""}${t.by?" · "+esc(t.by):""}</span></td>
         <td class="amt-d">${t.type==="debt"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="amt-p">${t.type==="pay"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="run"><span class="num">${fmt(run)}</span></td>
@@ -1056,6 +1056,10 @@ const AR_DAYS=["الأحد","الإثنين","الثلاثاء","الأربعا�
 const dmy=iso=>{const [y,m,d]=iso.split("-");return `${d}/${m}/${y}`};
 const wday=iso=>AR_DAYS[new Date(iso+"T12:00:00").getDay()];
 const hm12=ms=>{const d=new Date(ms);let hr=d.getHours();const ap=hr<12?"ص":"م";hr=hr%12||12;return String(hr).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+" "+ap};
+const msISO=ms=>{const d=new Date(ms);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const stamp=ms=>(msISO(ms)===todayISO()?"اليوم ":shortDate(msISO(ms))+" ")+hm12(ms);
+// وقت الحركة: الساعة إذا انسجلت بنفس يومها، وإلا متى انسجلت فعلاً، ووقت آخر تعديل
+const txnTime=t=>(t.createdAt?(msISO(t.createdAt)===t.date?hm12(t.createdAt):"سُجّلت "+stamp(t.createdAt)):"")+(t.updatedAt?(t.createdAt?" · ":"")+"عُدّلت "+stamp(t.updatedAt)+(t.updatedBy&&t.updatedBy!==t.by?" ("+t.updatedBy+")":""):"");
 const iqd=n=>"IQD "+fmt(n);
 async function custPdf(c,opt){
   if(!opt)toast("جارِ تجهيز كشف الحساب…");
@@ -1347,7 +1351,7 @@ function setPage(k){
     <div class="banner info">بياناتك محفوظة على السحابة (Firebase)، فإذا حذفت البرنامج أو بدّلت الموبايل ثبّته من جديد وسجّل دخول وكل شي يرجع. ملف النسخة الاحتياطية للأمان الإضافي: إذا انحذف شي بالغلط تقدر ترجّعه منه.</div>
     <div class="tpl"><h3>${I.save}نسخة اليوم (النسخة + ملف الديون PDF)</h3>
       <span class="ro-note">دوسة وحدة تحفظ ملفين سوا: النسخة الاحتياطية وتقرير ديون الزبائن (كل زبون وشكد عليه).</span>
-      ${FOLDER_OK?`<span class="ro-note">${(()=>{let n="";try{n=localStorage.getItem("shahm-backup-dir")||""}catch(e){}return n?`تنحفظ بمجلد اليوم داخل <b><bdi dir="ltr">${esc(n)}\\${todayISO().slice(0,7)}\\${todayISO()}</bdi></b>. ركّب الفلاش قبل ما تدوس.`:"أول مرة يسألك عن المكان: اختار مجلد النسخ بالفلاش (Shahm-Backups)، وبعدها كل يوم دوسة وحدة بدون أسئلة."})()}</span>`:""}
+      ${FOLDER_OK?`<span class="ro-note">${(()=>{let n="";try{n=localStorage.getItem("shahm-backup-dir")||""}catch(e){}return n?`تنحفظ بـ <b><bdi dir="ltr">${esc(backupPath(n,todayISO()))}</bdi></b>. ركّب الفلاش قبل ما تدوس.`:"أول مرة يسألك عن المكان: اختار مجلد النسخ بالفلاش (Shahm-Backups)، أو مجلد اليوم مباشرة. وبعدها دوسة وحدة."})()}</span>`:""}
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button>${FOLDER_OK?`<button class="btn ghost" type="button" data-act="daybackupdir">تغيير المجلد</button>`:""}</div></div>
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
       <span class="ro-note">${lb?"آخر نسخة: "+esc(timeAgo(lb)):"لم تحفظ أي نسخة بعد"}</span>
@@ -1496,7 +1500,7 @@ function txnForm(type,existing){
         <div class="field"><label>صور القائمة (اختياري، لحد ${PHOTO_MAX})</label><div class="pics" id="tPics"></div>
           <label class="btn sm" id="tPicAdd" style="align-self:flex-start;cursor:pointer">${I.camera}إضافة صورة<input type="file" accept="image/*" multiple hidden id="tPicIn"></label></div>`:""}
       <div class="field"><label for="tNote">${isDebt?(sup?"البضاعة / البيان":"المواد / البيان"):"ملاحظة"} (اختياري)</label><div class="note-row">${isDebt?`<select id="tCat" aria-label="اختر صنف"><option value="">الأصناف</option>${cats().map(x=>`<option>${esc(x)}</option>`).join("")}</select>`:""}<input id="tNote" maxlength="140" value="${esc(existing&&existing.note)}" placeholder="${isDebt?"اختر صنف أو اكتب":"مثال: دفعة نقداً"}"></div></div>
-      <div class="field"><label for="tDate">التاريخ</label><input id="tDate" type="date" value="${existing?esc(existing.date):todayISO()}"></div>
+      <div class="field"><label for="tDate">التاريخ</label><input id="tDate" type="date" value="${existing?esc(existing.date):todayISO()}">${existing&&existing.createdAt?`<span class="ro-note">سُجّلت ${esc(stamp(existing.createdAt))}${existing.by?" بواسطة "+esc(existing.by):""}${existing.updatedAt?` · آخر تعديل ${esc(stamp(existing.updatedAt))}${existing.updatedBy?" بواسطة "+esc(existing.updatedBy):""}`:""}</span>`:""}</div>
       ${!existing&&!isDebt&&!isSup(c)?`<label class="wa-auto"><input type="checkbox" id="tPdf" ${(()=>{try{return localStorage.getItem(PDF_AUTO_KEY)==="0"?"":"checked"}catch(e){return "checked"}})()}>تجهيز كشف حساب PDF بعد الحفظ حتى ترسله</label>`:""}
       ${existing||isSup(c)?"":c.phone?`<label class="wa-auto"><input type="checkbox" id="tWa" ${(()=>{try{return localStorage.getItem(WA_AUTO_KEY)==="0"?"":"checked"}catch(e){return "checked"}})()}>فتح واتساب بعد الحفظ والرسالة جاهزة</label>`:`<span class="wa-auto off">الزبون بدون رقم، أضف رقمه حتى ترسل له واتساب.</span>`}
       <p class="err" id="tErr"></p>
@@ -1586,7 +1590,7 @@ function txnForm(type,existing){
       if(pdfBox)try{localStorage.setItem(PDF_AUTO_KEY,autoPdf?"1":"0")}catch(e){}
       closeModal();await put("txns",obj);log("add",what,{customerName:c.name,amount:amt,...(sup?{sup:true}:{})});lastAdd={id:obj.id,at:Date.now()};
       {const cur=S.customers.get(c.id)||c;if(!isDebt&&cur.promise){const left=cur.promise.amount?cur.promise.amount-amt:0;put("customers",{...cur,promise:left>0?{...cur.promise,amount:left}:null})}}
-      const link=c.phone&&!isSup(c)?waLink(c.phone,fillTpl(what,c,{amount:amt,date,note})):"";
+      const link=c.phone&&!isSup(c)?waLink(c.phone,fillTpl(what,c,{amount:amt,date,note,time:date===todayISO()?hm12(Date.now()):""})):"";
       if(autoPdf){sendStatementPdf(c,link);return}
       if(link&&autoWa)openExternal(link);
       toast((sup?(isDebt?"سُجّلت فاتورة ":"سُجّلت دفعة للمورد "):isDebt?"سُجّل دين ":"سُجّل تسديد ")+fmt(amt)+" "+CUR,link?{href:link,label:"إرسال واتساب"}:null);
@@ -1784,7 +1788,7 @@ function pickCustomer(type){
 }
 function statementText(c){
   const L=ledgerFor(c);
-  const lines=L.list.map(({t,run})=>`${t.date}  ${t.type==="debt"?"دين":"دفعة"} ${fmt(t.amount)}${t.note?" ("+t.note+")":""}  ← الرصيد ${fmt(run)}`);
+  const lines=L.list.map(({t,run})=>`${t.date}${t.createdAt&&msISO(t.createdAt)===t.date?" "+hm12(t.createdAt):""}  ${t.type==="debt"?"دين":"دفعة"} ${fmt(t.amount)}${t.note?" ("+t.note+")":""}  ← الرصيد ${fmt(run)}`);
   return `${shopName()} - كشف حساب\n${isSup(c)?"المورد":"الزبون"}: ${c.name}\n${L.from?"رصيد بداية المدة ("+L.from+"): "+fmt(L.open)+"\n":""}\n${lines.join("\n")||"لا توجد حركات"}\n\nالمبلغ المتبقي: ${fmt(L.close)} ${CUR}\nبتاريخ ${todayISO()}`;
 }
 function showStatement(){
@@ -1842,12 +1846,23 @@ const FOLDER_OK=!NATIVE&&typeof window.showDirectoryPicker==="function";
 /* Daily backup in one tap: the backup file and the customers' debt PDF together. On a laptop (Chrome/Edge) the owner picks the
    flash drive's backup folder once; after that every tap writes both files to <folder>/YYYY-MM/YYYY-MM-DD/ with no dialog.
    Elsewhere both files are saved/shared together. The folder is asked for first, while the tap still counts as a user action. */
+// The chosen folder can be the backup root (Shahm-Backups), a month folder (2026-10) or the day's own folder (2026-10-08);
+// the files go into the day's folder under it, and an existing month/day folder is reused, never made twice.
+const DAY_RE=/^\d{4}-\d{2}-\d{2}$/,MON_RE=/^\d{4}-\d{2}$/;
+const backupPath=(name,day)=>DAY_RE.test(name)?name:MON_RE.test(name)?name+"\\"+day:name+"\\"+day.slice(0,7)+"\\"+day;
 async function dailyBackup(choose){
   const day=todayISO(),mon=day.slice(0,7);let dir=null;
+  // A day or month folder only fits that day or month; picking another one would put today's files in the wrong place.
+  const wrong=h=>(DAY_RE.test(h.name)&&h.name!==day)||(MON_RE.test(h.name)&&h.name!==mon);
   if(FOLDER_OK){
     try{
-      dir=choose?null:await kv.get("backupDir");
-      if(!dir){dir=await window.showDirectoryPicker({id:"shahm-backup",mode:"readwrite",startIn:"desktop"});await kv.set("backupDir",dir)}
+      const prev=await kv.get("backupDir");
+      dir=choose||(prev&&wrong(prev))?null:prev;
+      if(!dir){
+        dir=await window.showDirectoryPicker({id:"shahm-backup",mode:"readwrite",startIn:prev||"desktop"});
+        if(wrong(dir)){toast(`هذا مجلد ${DAY_RE.test(dir.name)?"يوم":"شهر"} ثاني (${dir.name}). اختار مجلد اليوم ${day} أو مجلد Shahm-Backups.`,{label:"اختيار المجلد",onClick:()=>dailyBackup(true),ms:14000});return}
+        await kv.set("backupDir",dir);
+      }
       if(await dir.queryPermission({mode:"readwrite"})!=="granted"&&await dir.requestPermission({mode:"readwrite"})!=="granted"){toast("لازم توافق حتى البرنامج يحفظ بالمجلد.");return}
     }catch(e){if(e&&e.name==="AbortError")return;console.warn(e);dir=null}
   }
@@ -1857,12 +1872,12 @@ async function dailyBackup(choose){
   if(!pdf)return;
   if(dir){
     try{
-      const dd=await (await dir.getDirectoryHandle(mon,{create:true})).getDirectoryHandle(day,{create:true});
+      const dd=DAY_RE.test(dir.name)?dir:MON_RE.test(dir.name)?await dir.getDirectoryHandle(day,{create:true}):await (await dir.getDirectoryHandle(mon,{create:true})).getDirectoryHandle(day,{create:true});
       // Some file systems refuse Arabic file names; then the same file is written under a plain English name.
       const put1=async(names,blob)=>{for(const n of names){try{const w=await (await dd.getFileHandle(n,{create:true})).createWritable();await w.write(blob);await w.close();return}catch(e){if(n===names[names.length-1])throw e}}};
       await put1([bk.name,`backup-${day}.json`],new Blob([bk.data],{type:"application/json"}));await put1([pdf.fname,`debts-${day}.pdf`],pdf.blob);
       backupDone("حفظ نسخة اليوم بالمجلد");try{localStorage.setItem("shahm-backup-dir",dir.name)}catch(e){}
-      toast(`✓ انحفظ الملفين بـ \u2066${dir.name}\\${mon}\\${day}\u2069`,{label:"تغيير المجلد",onClick:()=>dailyBackup(true),ms:9000});render();return;
+      toast(`✓ انحفظ الملفين بـ \u2066${backupPath(dir.name,day)}\u2069`,{label:"تغيير المجلد",onClick:()=>dailyBackup(true),ms:9000});render();return;
     }catch(e){console.warn(e);
       toast(e&&e.name==="NotFoundError"?"ما لكيت المجلد. ركّب الفلاش وحاول مرة ثانية، أو اختار المجلد من جديد.":"تعذّر الحفظ بالمجلد.",{label:"اختيار المجلد",onClick:()=>dailyBackup(true),ms:12000});return}
   }
