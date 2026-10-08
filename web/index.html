@@ -1351,7 +1351,7 @@ function setPage(k){
     <div class="banner info">بياناتك محفوظة على السحابة (Firebase)، فإذا حذفت البرنامج أو بدّلت الموبايل ثبّته من جديد وسجّل دخول وكل شي يرجع. ملف النسخة الاحتياطية للأمان الإضافي: إذا انحذف شي بالغلط تقدر ترجّعه منه.</div>
     <div class="tpl"><h3>${I.save}نسخة اليوم (النسخة + ملف الديون PDF)</h3>
       <span class="ro-note">دوسة وحدة تحفظ ملفين سوا: النسخة الاحتياطية وتقرير ديون الزبائن (كل زبون وشكد عليه).</span>
-      ${FOLDER_OK?`<span class="ro-note">${(()=>{let n="";try{n=localStorage.getItem("shahm-backup-dir")||""}catch(e){}return n?`تنحفظ بمجلد اليوم داخل <b><bdi dir="ltr">${esc(n)}\\${todayISO().slice(0,7)}\\${todayISO()}</bdi></b>. ركّب الفلاش قبل ما تدوس.`:"أول مرة يسألك عن المكان: اختار مجلد النسخ بالفلاش (Shahm-Backups)، وبعدها كل يوم دوسة وحدة بدون أسئلة."})()}</span>`:""}
+      ${FOLDER_OK?`<span class="ro-note">${(()=>{let n="";try{n=localStorage.getItem("shahm-backup-dir")||""}catch(e){}return n?`تنحفظ بـ <b><bdi dir="ltr">${esc(backupPath(n,todayISO()))}</bdi></b>. ركّب الفلاش قبل ما تدوس.`:"أول مرة يسألك عن المكان: اختار مجلد النسخ بالفلاش (Shahm-Backups)، أو مجلد اليوم مباشرة. وبعدها دوسة وحدة."})()}</span>`:""}
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button>${FOLDER_OK?`<button class="btn ghost" type="button" data-act="daybackupdir">تغيير المجلد</button>`:""}</div></div>
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
       <span class="ro-note">${lb?"آخر نسخة: "+esc(timeAgo(lb)):"لم تحفظ أي نسخة بعد"}</span>
@@ -1846,12 +1846,23 @@ const FOLDER_OK=!NATIVE&&typeof window.showDirectoryPicker==="function";
 /* Daily backup in one tap: the backup file and the customers' debt PDF together. On a laptop (Chrome/Edge) the owner picks the
    flash drive's backup folder once; after that every tap writes both files to <folder>/YYYY-MM/YYYY-MM-DD/ with no dialog.
    Elsewhere both files are saved/shared together. The folder is asked for first, while the tap still counts as a user action. */
+// The chosen folder can be the backup root (Shahm-Backups), a month folder (2026-10) or the day's own folder (2026-10-08);
+// the files go into the day's folder under it, and an existing month/day folder is reused, never made twice.
+const DAY_RE=/^\d{4}-\d{2}-\d{2}$/,MON_RE=/^\d{4}-\d{2}$/;
+const backupPath=(name,day)=>DAY_RE.test(name)?name:MON_RE.test(name)?name+"\\"+day:name+"\\"+day.slice(0,7)+"\\"+day;
 async function dailyBackup(choose){
   const day=todayISO(),mon=day.slice(0,7);let dir=null;
+  // A day or month folder only fits that day or month; picking another one would put today's files in the wrong place.
+  const wrong=h=>(DAY_RE.test(h.name)&&h.name!==day)||(MON_RE.test(h.name)&&h.name!==mon);
   if(FOLDER_OK){
     try{
-      dir=choose?null:await kv.get("backupDir");
-      if(!dir){dir=await window.showDirectoryPicker({id:"shahm-backup",mode:"readwrite",startIn:"desktop"});await kv.set("backupDir",dir)}
+      const prev=await kv.get("backupDir");
+      dir=choose||(prev&&wrong(prev))?null:prev;
+      if(!dir){
+        dir=await window.showDirectoryPicker({id:"shahm-backup",mode:"readwrite",startIn:prev||"desktop"});
+        if(wrong(dir)){toast(`هذا مجلد ${DAY_RE.test(dir.name)?"يوم":"شهر"} ثاني (${dir.name}). اختار مجلد اليوم ${day} أو مجلد Shahm-Backups.`,{label:"اختيار المجلد",onClick:()=>dailyBackup(true),ms:14000});return}
+        await kv.set("backupDir",dir);
+      }
       if(await dir.queryPermission({mode:"readwrite"})!=="granted"&&await dir.requestPermission({mode:"readwrite"})!=="granted"){toast("لازم توافق حتى البرنامج يحفظ بالمجلد.");return}
     }catch(e){if(e&&e.name==="AbortError")return;console.warn(e);dir=null}
   }
@@ -1861,12 +1872,12 @@ async function dailyBackup(choose){
   if(!pdf)return;
   if(dir){
     try{
-      const dd=await (await dir.getDirectoryHandle(mon,{create:true})).getDirectoryHandle(day,{create:true});
+      const dd=DAY_RE.test(dir.name)?dir:MON_RE.test(dir.name)?await dir.getDirectoryHandle(day,{create:true}):await (await dir.getDirectoryHandle(mon,{create:true})).getDirectoryHandle(day,{create:true});
       // Some file systems refuse Arabic file names; then the same file is written under a plain English name.
       const put1=async(names,blob)=>{for(const n of names){try{const w=await (await dd.getFileHandle(n,{create:true})).createWritable();await w.write(blob);await w.close();return}catch(e){if(n===names[names.length-1])throw e}}};
       await put1([bk.name,`backup-${day}.json`],new Blob([bk.data],{type:"application/json"}));await put1([pdf.fname,`debts-${day}.pdf`],pdf.blob);
       backupDone("حفظ نسخة اليوم بالمجلد");try{localStorage.setItem("shahm-backup-dir",dir.name)}catch(e){}
-      toast(`✓ انحفظ الملفين بـ \u2066${dir.name}\\${mon}\\${day}\u2069`,{label:"تغيير المجلد",onClick:()=>dailyBackup(true),ms:9000});render();return;
+      toast(`✓ انحفظ الملفين بـ \u2066${backupPath(dir.name,day)}\u2069`,{label:"تغيير المجلد",onClick:()=>dailyBackup(true),ms:9000});render();return;
     }catch(e){console.warn(e);
       toast(e&&e.name==="NotFoundError"?"ما لكيت المجلد. ركّب الفلاش وحاول مرة ثانية، أو اختار المجلد من جديد.":"تعذّر الحفظ بالمجلد.",{label:"اختيار المجلد",onClick:()=>dailyBackup(true),ms:12000});return}
   }
