@@ -1007,10 +1007,15 @@ async function buildPdf(spec,filename,opt){
   ctx.textAlign="right";
   for(const [k,v] of spec.info){ctx.font=`500 24px ${F}`;ctx.fillStyle=PDFC.muted;ctx.fillText(k,W-M,y+24);ctx.font=`700 26px ${F}`;ctx.fillStyle=v.color||PDFC.ink;ctx.fillText(v.text,W-M-260,y+24);y+=42}
   y+=16;
-  const cols=spec.columns;const tw=W-2*M;let x0;
+  const tw=W-2*M;let x0,cols;
   const header=()=>{ctx.fillStyle=PDFC.head;ctx.fillRect(M,y,tw,48);ctx.fillStyle=PDFC.muted;ctx.font=`600 22px ${F}`;x0=W-M;for(const c of cols){const cw=c.w*tw;ctx.textAlign="right";ctx.fillText(c.label,x0-14,y+32);x0-=cw}y+=48};
+  // A report can hold several tables (sections), each with its own heading; older callers pass one table.
+  for(const sec of spec.sections||[{columns:spec.columns,rows:spec.rows}]){
+  cols=sec.columns;
+  if(sec.title){if(y>H-M-220)newPage();y+=10;ctx.textAlign="right";ctx.font=`700 28px ${F}`;ctx.fillStyle=PDFC.green;ctx.fillText(sec.title,W-M,y+30);y+=50}
   header();
-  for(const r of spec.rows){
+  if(!sec.rows.length){ctx.textAlign="right";ctx.font=`400 22px ${F}`;ctx.fillStyle=PDFC.muted;ctx.fillText(sec.empty||"لا يوجد",W-M-14,y+31);y+=46}
+  for(const r of sec.rows){
     if(y>H-M-120){newPage();header()}
     x0=W-M;ctx.font=`${r.bold?"700":"400"} 22px ${F}`;
     if(r.shade){ctx.fillStyle=PDFC.shade;ctx.fillRect(M,y,tw,46)}
@@ -1020,6 +1025,7 @@ async function buildPdf(spec,filename,opt){
       x0-=cw});
     y+=46;ctx.strokeStyle=PDFC.rule;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(M,y);ctx.lineTo(W-M,y);ctx.stroke();
   }
+  y+=24}
   y+=24;if(y>H-M-60*spec.totals.length){newPage()}
   for(const [k,v,col] of spec.totals){ctx.textAlign="right";ctx.font=`600 26px ${F}`;ctx.fillStyle=PDFC.ink;ctx.fillText(k,W-M,y+28);ctx.direction="ltr";ctx.textAlign="left";ctx.fillStyle=col||PDFC.ink;ctx.font=`700 28px ${F}`;ctx.fillText(v,M,y+28);ctx.direction="rtl";y+=46}
   pages.forEach((cv,i)=>{const cx=cv.getContext("2d");cx.direction="ltr";cx.textAlign="center";cx.fillStyle=PDFC.green;cx.font=`400 18px ${F}`;cx.fillText(`${i+1} / ${pages.length}`,W/2,H-40)});
@@ -1201,6 +1207,35 @@ function listPdf(kind,opt){
     (sup?"تقرير-الموردين-":"تقرير-الزبائن-")+todayISO()+".pdf",opt);
 }
 
+// Full report of one day for the daily backup: the day's numbers, every movement with its time, and every balance still open.
+function dayPdf(day,opt){
+  const per=stats(),nm=id=>{const c=S.customers.get(id);return c?c.name:"؟"};
+  const all=[...S.txns.values()].filter(t=>t.date===day&&S.customers.get(t.customerId)).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+  const cust=all.filter(t=>!isSup(S.customers.get(t.customerId))),sup=all.filter(t=>isSup(S.customers.get(t.customerId)));
+  const sum=(arr,type)=>arr.filter(t=>t.type===type).reduce((a,t)=>a+t.amount,0);
+  const dAdd=sum(cust,"debt"),dPay=sum(cust,"pay");
+  // Balance right after each movement, from the customer's own ledger order.
+  const after=new Map();for(const id of new Set(all.map(t=>t.customerId))){let run=0;for(const t of txnsOf(id)){run+=t.type==="debt"?t.amount:-t.amount;after.set(t.id,run)}}
+  const newCust=[...S.customers.values()].filter(c=>!isSup(c)&&c.createdAt&&msISO(c.createdAt)===day).length;
+  const open=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,p:per.get(c.id)})).filter(x=>x.p&&x.p.bal!==0).sort((a,b)=>b.p.bal-a.p.bal);
+  let owed=0;for(const x of open)if(x.p.bal>0)owed+=x.p.bal;
+  const opRow=(t,i,s)=>({cells:[t.createdAt?hm12(t.createdAt):"",nm(t.customerId),s?(t.type==="debt"?"فاتورة":"دفعة للمورد"):(t.type==="debt"?"دين":"تسديد"),fmt(t.amount),fmt(after.get(t.id)||0),t.by||""],
+    colors:[null,null,t.type==="debt"?PDFC.debt:PDFC.paid,t.type==="debt"?PDFC.debt:PDFC.paid,null,null],shade:i%2===1});
+  const opCols=[{label:"الوقت",w:.14,num:true},{label:"الاسم",w:.28},{label:"الحركة",w:.13},{label:"المبلغ",w:.15,num:true},{label:"الرصيد بعدها",w:.16,num:true},{label:"بواسطة",w:.14}];
+  return buildPdf({shop:shopName(),title:"التقرير اليومي: "+dayName(day),
+    info:[["ديون اليوم",{text:`${fmt(dAdd)} ${CUR} (${cust.filter(t=>t.type==="debt").length} حركة)`,color:PDFC.debt}],["تسديد اليوم",{text:`${fmt(dPay)} ${CUR} (${cust.filter(t=>t.type==="pay").length} حركة)`,color:PDFC.paid}],
+      ["صافي اليوم",{text:(dAdd-dPay>0?"+":"")+fmt(dAdd-dPay)+" "+CUR}],...(newCust?[["زبائن جدد",{text:String(newCust)}]]:[]),
+      ...(sup.length?[["الموردين اليوم",{text:`فواتير ${fmt(sum(sup,"debt"))} · دفعات ${fmt(sum(sup,"pay"))} ${CUR}`}]]:[]),
+      ["مجموع الديون الكلي",{text:fmt(owed)+" "+CUR,color:PDFC.debt}],["عدد المدينين",{text:String(open.filter(x=>x.p.bal>0).length)}]],
+    sections:[
+      {title:"حركات الزبائن اليوم",columns:opCols,rows:cust.map((t,i)=>opRow(t,i,false)),empty:"ما اكو حركات اليوم"},
+      ...(sup.length?[{title:"حركات الموردين اليوم",columns:opCols,rows:sup.map((t,i)=>opRow(t,i,true))}]:[]),
+      {title:"أرصدة الزبائن (كل زبون وشكد عليه)",columns:[{label:"الاسم",w:.36},{label:"الهاتف",w:.22,num:true},{label:"آخر حركة",w:.2},{label:"الرصيد",w:.22,num:true}],
+        rows:open.map(({c,p},i)=>({cells:[c.name,c.phone||"",p.count?shortDate(msISO(p.last)):"—",fmt(p.bal)],colors:[null,null,null,p.bal>0?PDFC.debt:PDFC.paid],shade:i%2===1})),empty:"ما اكو ديون"}],
+    totals:[["مجموع الديون الكلي",fmt(owed)+" "+CUR,PDFC.debt]]},
+    "تقرير-يومي-"+day+".pdf",opt);
+}
+
 /* ---------- business card: drawn on a canvas so it can be shared as an image ---------- */
 const BIZ_STYLES={shahm:{l:"الشهم",bg:"#0e5a3a",bg2:"#0c5034",acc:"#f39a1e",tx:"#fff7e8",mu:"#dceee3",ic:"#dceee3",ln:"#2b7152",ft:"#2b7152"},
   gold:{l:"أسود وذهبي",bg:"#0b0b0c",bg2:"#151517",acc:"#c9a45c",tx:"#ffffff",mu:"#a9a9ad",ic:"#c4c4c8",ln:"#2b2b2e",ft:"#3a2f1c"},
@@ -1349,10 +1384,10 @@ function setPage(k){
   if(k==="backup"){const lb=st.lastBackupAt;const sups=[...S.customers.values()].filter(isSup).length;
     return `<h2>النسخ الاحتياطي والاستعادة</h2>
     <div class="banner info">بياناتك محفوظة على السحابة (Firebase)، فإذا حذفت البرنامج أو بدّلت الموبايل ثبّته من جديد وسجّل دخول وكل شي يرجع. ملف النسخة الاحتياطية للأمان الإضافي: إذا انحذف شي بالغلط تقدر ترجّعه منه.</div>
-    <div class="tpl"><h3>${I.save}نسخة اليوم (النسخة + ملف الديون PDF)</h3>
-      <span class="ro-note">دوسة وحدة تحفظ ملفين سوا: النسخة الاحتياطية وتقرير ديون الزبائن (كل زبون وشكد عليه).</span>
-      ${FOLDER_OK?`<span class="ro-note">${(()=>{let n="";try{n=localStorage.getItem("shahm-backup-dir")||""}catch(e){}return n?`تنحفظ بـ <b><bdi dir="ltr">${esc(backupPath(n,todayISO()))}</bdi></b>. ركّب الفلاش قبل ما تدوس.`:"أول مرة يسألك عن المكان: اختار مجلد النسخ بالفلاش (Shahm-Backups)، أو مجلد اليوم مباشرة. وبعدها دوسة وحدة."})()}</span>`:""}
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button>${FOLDER_OK?`<button class="btn ghost" type="button" data-act="daybackupdir">تغيير المجلد</button>`:""}</div></div>
+    <div class="tpl"><h3>${I.save}نسخة اليوم (النسخة + تقرير اليوم PDF)</h3>
+      <span class="ro-note">تحفظ ملفين سوا: النسخة الاحتياطية، وتقرير شامل لليوم (حركات اليوم بأوقاتها، والمجاميع، وكل زبون وشكد عليه).</span>
+      ${FOLDER_OK?`<span class="ro-note">يسألك وين تحفظ: اختار مجلد اليوم بالفلاش، والملفين ينحفظون بيه مباشرة بدون ما يسوي أي مجلد.</span>`:""}
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button></div></div>
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
       <span class="ro-note">${lb?"آخر نسخة: "+esc(timeAgo(lb)):"لم تحفظ أي نسخة بعد"}</span>
       <p class="ro-note" style="margin:0">الملف يحتوي: <span class="num">${S.customers.size-sups}</span> زبون، <span class="num">${sups}</span> مورد، <span class="num">${S.txns.size}</span> حركة، مع معلومات المتجر وقوالب الرسائل وسجل النشاط.</p>
@@ -1848,40 +1883,33 @@ const FOLDER_OK=!NATIVE&&typeof window.showDirectoryPicker==="function";
    Elsewhere both files are saved/shared together. The folder is asked for first, while the tap still counts as a user action. */
 // The chosen folder can be the backup root (Shahm-Backups), a month folder (2026-10) or the day's own folder (2026-10-08);
 // the files go into the day's folder under it, and an existing month/day folder is reused, never made twice.
-const DAY_RE=/^\d{4}-\d{2}-\d{2}$/,MON_RE=/^\d{4}-\d{2}$/;
-const backupPath=(name,day)=>DAY_RE.test(name)?name:MON_RE.test(name)?name+"\\"+day:name+"\\"+day.slice(0,7)+"\\"+day;
-async function dailyBackup(choose){
-  const day=todayISO(),mon=day.slice(0,7);let dir=null;
-  // A day or month folder only fits that day or month; picking another one would put today's files in the wrong place.
-  const wrong=h=>(DAY_RE.test(h.name)&&h.name!==day)||(MON_RE.test(h.name)&&h.name!==mon);
+// The shop keeps its own year/month/day folders on the flash drive, so the app never makes folders:
+// it asks which folder (opening where it saved last time) and writes the two files straight into it.
+async function dailyBackup(){
+  const day=todayISO();let dir=null;
   if(FOLDER_OK){
     try{
       const prev=await kv.get("backupDir");
-      dir=choose||(prev&&wrong(prev))?null:prev;
-      if(!dir){
-        dir=await window.showDirectoryPicker({id:"shahm-backup",mode:"readwrite",startIn:prev||"desktop"});
-        if(wrong(dir)){toast(`هذا مجلد ${DAY_RE.test(dir.name)?"يوم":"شهر"} ثاني (${dir.name}). اختار مجلد اليوم ${day} أو مجلد Shahm-Backups.`,{label:"اختيار المجلد",onClick:()=>dailyBackup(true),ms:14000});return}
-        await kv.set("backupDir",dir);
-      }
+      dir=await window.showDirectoryPicker({id:"shahm-backup",mode:"readwrite",startIn:prev||"desktop"});
+      await kv.set("backupDir",dir);
       if(await dir.queryPermission({mode:"readwrite"})!=="granted"&&await dir.requestPermission({mode:"readwrite"})!=="granted"){toast("لازم توافق حتى البرنامج يحفظ بالمجلد.");return}
     }catch(e){if(e&&e.name==="AbortError")return;console.warn(e);dir=null}
   }
-  toast("جارِ تجهيز النسخة وملف الديون…");
+  toast("جارِ تجهيز النسخة والتقرير اليومي…");
   const bk=await backupJson();
-  const pdf=await listPdf("customer",{blob:true});
+  const pdf=await dayPdf(day,{blob:true});
   if(!pdf)return;
   if(dir){
     try{
-      const dd=DAY_RE.test(dir.name)?dir:MON_RE.test(dir.name)?await dir.getDirectoryHandle(day,{create:true}):await (await dir.getDirectoryHandle(mon,{create:true})).getDirectoryHandle(day,{create:true});
       // Some file systems refuse Arabic file names; then the same file is written under a plain English name.
-      const put1=async(names,blob)=>{for(const n of names){try{const w=await (await dd.getFileHandle(n,{create:true})).createWritable();await w.write(blob);await w.close();return}catch(e){if(n===names[names.length-1])throw e}}};
-      await put1([bk.name,`backup-${day}.json`],new Blob([bk.data],{type:"application/json"}));await put1([pdf.fname,`debts-${day}.pdf`],pdf.blob);
-      backupDone("حفظ نسخة اليوم بالمجلد");try{localStorage.setItem("shahm-backup-dir",dir.name)}catch(e){}
-      toast(`✓ انحفظ الملفين بـ \u2066${backupPath(dir.name,day)}\u2069`,{label:"تغيير المجلد",onClick:()=>dailyBackup(true),ms:9000});render();return;
+      const put1=async(names,blob)=>{for(const n of names){try{const w=await (await dir.getFileHandle(n,{create:true})).createWritable();await w.write(blob);await w.close();return}catch(e){if(n===names[names.length-1])throw e}}};
+      await put1([bk.name,`backup-${day}.json`],new Blob([bk.data],{type:"application/json"}));await put1([pdf.fname,`report-${day}.pdf`],pdf.blob);
+      backupDone("حفظ نسخة اليوم بالمجلد");
+      toast(`✓ انحفظ الملفين بمجلد \u2066${dir.name}\u2069`,{ms:7000});render();return;
     }catch(e){console.warn(e);
-      toast(e&&e.name==="NotFoundError"?"ما لكيت المجلد. ركّب الفلاش وحاول مرة ثانية، أو اختار المجلد من جديد.":"تعذّر الحفظ بالمجلد.",{label:"اختيار المجلد",onClick:()=>dailyBackup(true),ms:12000});return}
+      toast(e&&e.name==="NotFoundError"?"ما لكيت المجلد. ركّب الفلاش وحاول مرة ثانية.":"تعذّر الحفظ بالمجلد.",{label:"حاول مرة ثانية",onClick:()=>dailyBackup(),ms:12000});return}
   }
-  openModal(`<h3>نسخة اليوم جاهزة</h3><p class="hint">الملفين جاهزين: النسخة الاحتياطية وتقرير ديون الزبائن. اضغط حفظ حتى ينزلون سوا.</p>
+  openModal(`<h3>نسخة اليوم جاهزة</h3><p class="hint">الملفين جاهزين: النسخة الاحتياطية والتقرير اليومي الشامل. اضغط حفظ حتى ينزلون سوا.</p>
     <div class="foot"><button class="btn primary" type="button" id="bkBoth">${I.save}حفظ الملفين</button><button class="btn" type="button" data-close>إلغاء</button></div>`,
     m=>m.querySelector("#bkBoth").addEventListener("click",async()=>{
       try{if(await saveFiles([{name:bk.name,blob:new Blob([bk.data],{type:"application/json"})},{name:pdf.fname,blob:pdf.blob}])){backupDone("حفظ نسخة اليوم");closeModal();toast("تم حفظ الملفين")}}
@@ -2004,8 +2032,7 @@ document.addEventListener("click",e=>{
     case "setlimit":if(canWrite())customerForm(c);break;
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
-    case "daybackup":if(isAdmin())dailyBackup(false);break;
-    case "daybackupdir":if(isAdmin())dailyBackup(true);break;
+    case "daybackup":if(isAdmin())dailyBackup();break;
     case "pastebackup":if(isAdmin())pasteBackup();break;
     case "gobackup":S.view="settings";S.setPage="backup";render();window.scrollTo(0,0);break;
     case "addphone":if(canWrite()&&c)phoneForm(c);break;
