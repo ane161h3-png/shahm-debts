@@ -167,6 +167,8 @@ input:disabled{opacity:.55}
 .search svg{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted)}
 .chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
 .chips::-webkit-scrollbar{display:none}
+/* The items page has many categories and a mouse cannot swipe: let the row wrap so all of them show. */
+#pchips{flex-wrap:wrap;overflow:visible}
 .chips button{border:1px solid var(--line);background:var(--paper-2);border-radius:99px;padding:5px 13px;font-size:13px;cursor:pointer;color:var(--muted);font-weight:600;white-space:nowrap;flex:none}
 .chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 /* Keyboard shortcut hints: shown only where there is a real keyboard and mouse (a laptop), never on a phone. */
@@ -3959,6 +3961,8 @@ function itemsPermForm(){
 }
 
 /* ---------- events ---------- */
+// A mouse wheel over a scrolling chip row scrolls it sideways (the scrollbar is hidden).
+document.addEventListener("wheel",e=>{const c=e.target.closest&&e.target.closest(".chips");if(!c||c.scrollWidth<=c.clientWidth||Math.abs(e.deltaY)<Math.abs(e.deltaX))return;c.scrollLeft+=e.deltaY;e.preventDefault()},{passive:false});
 document.addEventListener("click",e=>{
   const t=e.target;
   const g=t.closest("[data-go]");if(g){e.preventDefault();go(g.dataset.go);return}
