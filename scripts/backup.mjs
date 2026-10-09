@@ -210,6 +210,7 @@ function actText(a) {
       : (k === "add" ? `تسديد${amt} من ${c}` : k === "edit" ? `عدّل تسديد ${c}${a.detail ? " (" + a.detail + ")" : ""}` : `حذف تسديد${amt} من ${c}`);
     case "customer": return k === "add" ? `حساب جديد: ${c}` : k === "edit" ? `عدّل حساب ${c}${a.detail ? " (" + a.detail + ")" : ""}` : `حذف حساب ${c}`;
     case "remind": return `تذكير واتساب إلى ${c}`;
+    case "list": return k === "delete" ? `حذف صورة قائمة من المورد ${c}` : `صورة قائمة للمورد ${c}`;
     default: return a.detail || "";
   }
 }

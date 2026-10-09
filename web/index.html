@@ -332,6 +332,8 @@ td.x{width:64px;white-space:nowrap}
 .pic-btn{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);background:var(--paper-2);color:var(--accent);border-radius:7px;padding:1px 6px;font-size:12px;cursor:pointer;vertical-align:middle}
 .pic-btn svg{width:14px;height:14px}
 .pics-view{display:flex;flex-direction:column;gap:10px}.pics-view img{width:100%;border-radius:10px;border:1px solid var(--line)}
+.lists-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}.lists-head h3{margin:0;display:flex;align-items:center;gap:6px}.lists-head h3 svg{width:18px;height:18px;color:var(--accent)}
+.lists-box .muted{color:var(--muted);font-size:12.5px}.list-pic{margin:0}.list-pic figcaption{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding-top:4px}
 .home-search{padding:12px}
 .home-search .search input{font-size:16px;padding:12px 40px 12px 12px}
 .hs-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:2px;max-height:420px;overflow:auto}
@@ -811,6 +813,7 @@ const ACT_TEXT=a=>{
       return a.kind==="add"?`سجّل تسديد${amt} من ${c}`:a.kind==="edit"?`عدّل تسديد ${c}${amt?" إلى"+amt:""}`:`حذف تسديد${amt} من حساب ${c}`;
     case "customer":return a.kind==="add"?`أضاف الزبون ${c}`:a.kind==="edit"?`عدّل بيانات ${c}`:`حذف الزبون ${c}`;
     case "remind":return `أرسل تذكير واتساب إلى ${c}${amt?" (الرصيد"+amt+")":""}`;
+    case "list":return a.kind==="delete"?`حذف صورة قائمة من المورد ${c}`:`أضاف ${a.detail?esc(a.detail):"صورة"} لقائمة المورد ${c}`;
     case "account":return esc(a.detail||"");
     case "import":return esc(a.detail||"استورد نسخة احتياطية");
     default:return esc(a.detail||"");
@@ -968,6 +971,7 @@ function renderDetail(){
     ${per.bal>0&&!sup?(remind?`<a class="btn wa block" href="${esc(remind)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}">${I.bell}إرسال تذكير بالدين على واتساب</a>`:(w?`<button class="btn wa block" type="button" data-act="addphone">${I.bell}إرسال تذكير (أضف رقم واتساب أولاً)</button>`:"")):""}
     ${sup?(()=>{const oi=openInvoices(c),t0=todayISO();return oi.length?`<div class="inv-box"><h3>فواتير غير مسددة (${oi.length})</h3><ul>${oi.slice().reverse().map(({t,rem})=>{const left=t.due?daysBetween(t0,t.due):null;
       return `<li><span>${t.inv?`فاتورة <b class="num">#${esc(t.inv)}</b>`:"فاتورة"} · ${esc(shortDate(t.date))}${t.note?" · "+esc(t.note):""}${t.photos&&t.photos.length?` <button class="pic-btn" type="button" data-act="viewpics" data-id="${esc(t.id)}" aria-label="عرض صورة القائمة">${I.camera}${t.photos.length>1?t.photos.length:""}</button>`:""}</span><span class="inv-r">${left!==null?`<span class="chip ${left<0?"debt":left<=2?"warn":"zero"}">${left<=2?dueText(left):"تستحق "+esc(shortDate(t.due))}</span>`:""}<b class="num">${fmt(rem)}</b>${rem<t.amount?`<small> من ${fmt(t.amount)}</small>`:""}</span></li>`}).join("")}</ul></div>`:""})():""}
+    ${sup?listsBox(c,w):""}
     <div class="ledger">
       <div class="period"><h3>الحركات</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><select id="period" aria-label="المدة">${PERIODS.map(([k,l])=>`<option value="${k}" ${S.period===k?"selected":""}>${l}</option>`).join("")}</select><button class="btn sm primary" type="button" data-act="custpdf">${I.pdf}تقرير PDF</button></div></div>
       ${L.list.length||L.from?`<div class="ledger-scroll"><table><thead><tr><th>التاريخ والبيان</th><th>${sup?"فاتورة":"دين"}</th><th>دفعة</th><th>الرصيد</th>${w?"<th></th>":""}</tr></thead><tbody>
@@ -1728,6 +1732,50 @@ function viewPhotos(t){
     catch(e){console.warn(e);box.innerHTML=`<p class="err">${e&&e.code==="permission-denied"?"لازم تحديث قواعد Firebase حتى تنعرض الصور.":"تعذّر تحميل الصورة. تحقق من الإنترنت."}</p>`}
   });
 }
+/* ---------- supplier daily lists: one or more photos per day, kept on the supplier's page ----------
+   Each image is its own document in "photos" (kind "list"); the supplier keeps {id,date,at,by} for each in c.lists,
+   so the page can list the days without downloading any image (images load only when a day is opened). */
+function listsBox(c,w){
+  const L=(c.lists||[]).slice().sort((a,b)=>b.at-a.at),by=new Map(),t0=todayISO();
+  for(const x of L){if(!by.has(x.date))by.set(x.date,[]);by.get(x.date).push(x)}
+  const days=[...by],all=S.listsAll===c.id,yr=d=>d.slice(0,4)===t0.slice(0,4)?"":" "+d.slice(0,4);
+  return `<div class="inv-box lists-box"><div class="lists-head"><h3>${I.camera}قوائم المورد${days.length?` (${days.length} يوم)`:""}</h3>
+      ${w?`<label class="btn sm primary" style="cursor:pointer">${I.camera}${by.has(t0)?"صورة ثانية لليوم":"إضافة قائمة اليوم"}<input type="file" accept="image/*" multiple hidden data-listadd="${esc(c.id)}"></label>`:""}</div>
+    ${days.length?`<ul>${days.slice(0,all?days.length:10).map(([d,arr])=>`<li><span>${d===t0?"<b>اليوم</b> · ":""}${esc(dayName(d))}${yr(d)}</span><span class="inv-r"><span class="muted">${arr.length} ${arr.length>1?"صور":"صورة"}</span><button class="btn sm" type="button" data-act="viewlist" data-date="${esc(d)}">عرض</button></span></li>`).join("")}</ul>
+      ${days.length>10&&!all?`<button class="linkish" type="button" data-act="listsall">عرض كل الأيام (${days.length})</button>`:""}`
+    :`<p class="hint" style="margin:0">صوّر قائمة المورد كل يوم، وتنحفظ هنا حسب التاريخ.</p>`}</div>`;
+}
+async function addListPhotos(cid,files){
+  files=[...files].slice(0,6);if(!files.length||!canWrite())return;
+  toast("جارِ حفظ صورة القائمة…");
+  const day=todayISO(),added=[];
+  for(const f of files){
+    let ph;try{ph=await shrinkImage(f)}catch(e){toast("هذا الملف مو صورة.");continue}
+    const id=uid(),at=Date.now();photoCache.set(id,ph.url);
+    try{db.collection("photos").doc(id).set({id,data:ph.url,customerId:cid,kind:"list",date:day,at,by:S.me.name}).catch(photoFail)}catch(e){photoFail(e);continue}
+    added.push({id,date:day,at,by:S.me.name});
+  }
+  const c=S.customers.get(cid);if(!added.length||!c)return;
+  put("customers",{...c,lists:[...(c.lists||[]),...added]});
+  log("add","list",{customerName:c.name,sup:true,detail:added.length>1?added.length+" صور":""});
+  toast(added.length>1?`انحفظت ${added.length} صور لقائمة اليوم`:"انحفظت صورة قائمة اليوم");
+}
+function viewListPhotos(c,date){
+  const arr=(c.lists||[]).filter(x=>x.date===date).sort((a,b)=>a.at-b.at),w=canWrite();
+  openModal(`<h3>قائمة ${esc(c.name)} · ${esc(dayName(date))}</h3><div class="pics-view" id="pv"><div class="spinner"></div></div>
+    <div class="foot"><button class="btn" type="button" data-close>إغلاق</button></div>`,async m=>{
+    m.classList.add("wide");const box=m.querySelector("#pv");
+    try{const urls=await Promise.all(arr.map(x=>loadPhoto(x.id)));
+      box.innerHTML=arr.map((x,i)=>urls[i]?`<figure class="list-pic"><a href="#" data-pic="${i}"><img src="${urls[i]}" alt="صورة القائمة"></a>
+        <figcaption><span>${esc(hm12(x.at))}${x.by?" · "+esc(x.by):""}</span>${w?`<button class="btn sm ghost danger-text" type="button" data-ldel="${esc(x.id)}">${I.trash}حذف</button>`:""}</figcaption></figure>`:"").join("")||`<p class="hint">الصورة غير موجودة.</p>`;
+      box.querySelectorAll("[data-pic]").forEach(a=>a.addEventListener("click",e=>{e.preventDefault();const u=a.querySelector("img").src;
+        fetch(u).then(r=>r.blob()).then(b=>{const win=window.open(URL.createObjectURL(b),"_blank");if(!win)toast("افتح الصورة من زر المشاركة.")})}));
+      box.querySelectorAll("[data-ldel]").forEach(bt=>bt.addEventListener("click",()=>confirmBox("حذف صورة القائمة","راح تنحذف هذي الصورة نهائياً.","حذف",()=>{
+        const cur=S.customers.get(c.id);if(!cur)return;const id=bt.dataset.ldel;
+        put("customers",{...cur,lists:(cur.lists||[]).filter(x=>x.id!==id)});dropPhotos([id]);log("delete","list",{customerName:cur.name,sup:true});toast("انحذفت الصورة")})));
+    }catch(e){console.warn(e);box.innerHTML=`<p class="err">${e&&e.code==="permission-denied"?"لازم تحديث قواعد Firebase حتى تنعرض الصور.":"تعذّر تحميل الصورة. تحقق من الإنترنت."}</p>`}
+  });
+}
 const SHEET_URL="https://ane161h3-png.github.io/shahm-debts/daily-sheet.pdf";
 function scanStart(){
   if(!window.AI_URL){openModal(`<h3>تصوير ورقة اليوميات</h3><p class="hint">هذي الخاصية بعدها ما مفعّلة. تحتاج ربط خدمة الذكاء الاصطناعي أول مرة.</p><div class="foot"><button class="btn" type="button" data-close>تمام</button></div>`);return}
@@ -2061,6 +2109,8 @@ document.addEventListener("click",e=>{
   switch(b.dataset.act){
     case "back":S.selected=null;render();break;
     case "viewpics":{const x=S.txns.get(b.dataset.id);if(x)viewPhotos(x);break}
+    case "viewlist":if(c)viewListPhotos(c,b.dataset.date);break;
+    case "listsall":if(c){S.listsAll=c.id;render()}break;
     case "newcustq":{const nm=($("#hq")||{}).value||"";S.kind="customer";customerForm(null,id=>openCustomer(id));setTimeout(()=>{const i=$("#cName");if(i&&!i.value)i.value=nm.trim()},0);break}
     case "monthrep":monthReport();break;
     case "bizshare":bizExport(true);break;
@@ -2103,7 +2153,7 @@ document.addEventListener("click",e=>{
       toast("حُذفت الحركة",{label:"تراجع",ms:8000,onClick:()=>{undone=true;clearTimeout(tm);put("txns",x);log("add",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount,detail:"تراجع عن الحذف",...(c&&isSup(c)?{sup:true}:{})});toast("رجعت الحركة")}})});break}
     case "delcust":if(canWrite()&&c)confirmBox("حذف الزبون",`سيُحذف ${c.name} وكل حركاته نهائياً. صدّر نسخة احتياطية أولاً إذا كنت تحتاج السجل.`,"حذف نهائي",()=>{
       const gone=txnsOf(c.id),cc={...c};for(const x of gone)del("txns",x.id);del("customers",c.id);log("delete","customer",{customerName:c.name});S.selected=null;render();
-      let undone=false;const tm=setTimeout(()=>{if(!undone)for(const x of gone)dropPhotos(x.photos)},9000);
+      let undone=false;const tm=setTimeout(()=>{if(!undone){for(const x of gone)dropPhotos(x.photos);dropPhotos((cc.lists||[]).map(x=>x.id))}},9000);
       toast("حُذف الحساب",{label:"تراجع",ms:8000,onClick:()=>{undone=true;clearTimeout(tm);put("customers",cc);for(const x of gone)put("txns",x);log("add","customer",{customerName:cc.name,detail:"تراجع عن الحذف"});openCustomer(cc.id);toast("رجع الحساب وكل حركاته")}})});break;
   }
 });
@@ -2158,6 +2208,7 @@ document.addEventListener("submit",e=>{
   if(e.target.id==="shopForm"){e.preventDefault();saveSettings({shopName:$("#sName").value.trim()||"ماركت الشهم",ownerName:$("#sOwner").value.trim()||"المدير",phone:$("#sPhone").value.trim(),address:$("#sAddr").value.trim()}).then(ok=>{if(ok){S.me.name=S.settings.ownerName;render();toast("تم الحفظ")}})}
 });
 document.addEventListener("click",e=>{if(e.target.id==="exportBtn"&&isAdmin())exportData()});
+document.addEventListener("change",e=>{const i=e.target.closest&&e.target.closest("[data-listadd]");if(i){const f=[...i.files];i.value="";addListPhotos(i.dataset.listadd,f)}});
 function userAction(act,id){
   const a=S.accounts.get(id);
   if(act==="create"){accountForm();return}
