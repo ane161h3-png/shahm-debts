@@ -477,7 +477,7 @@ function calcEval(s){
   let v=term();while(k[i]==="+"||k[i]==="-"){const op=k[i++],r=term();v=op==="+"?v+r:v-r}
   return i===k.length&&isFinite(v)?v:NaN;
 }
-const CALC_KEY="shahm-calc",WA_AUTO_KEY="shahm-wa-auto";
+const CALC_KEY="shahm-calc",WA_AUTO_KEY="shahm-wa-open";
 // Opens WhatsApp (or any external link) from code: the app's own browser can't, so the native build hands it to the system.
 function openExternal(url){
   if(NATIVE){plugin("AppLauncher").openUrl({url}).catch(()=>{location.href=url});return}
@@ -497,7 +497,12 @@ const waNumber=p=>{let d=normDigits(p).replace(/\D/g,"");if(!d)return "";if(d.st
 const waLink=(phone,text)=>{const n=waNumber(phone);return n?"https://wa.me/"+n+"?text="+encodeURIComponent(text):""};
 // Automatic WhatsApp: customers switched to "تلقائي" get the message from the server (worker/ POST /wa, Meta's official API)
 // without anyone opening WhatsApp. The server builds the message itself from the saved transaction.
-const autoWaOn=c=>!!(c&&c.autoWa&&!isSup(c)&&waNumber(c.phone));
+// Off by owner's choice (Meta charges per message): every customer is manual, WhatsApp opens with the message ready.
+const WA_AUTO=false;
+const autoWaOn=c=>!!(WA_AUTO&&c&&c.autoWa&&!isSup(c)&&waNumber(c.phone));
+/* Manual WhatsApp after a debt/payment saved outside the main form (opening debt, zeroing): open it with the template ready. */
+const waAfter=(c,t)=>{if(!c||isSup(c)||!waNumber(c.phone))return;try{if(localStorage.getItem(WA_AUTO_KEY)==="0")return}catch(e){}
+  openExternal(waLink(c.phone,fillTpl(t.type==="debt"?"debt":"pay",c,{amount:t.amount,date:t.date,note:t.note,time:hm12(t.createdAt)})))};
 async function sendAutoWa(t){
   if(!window.AI_URL)return {error:"الإرسال التلقائي بعده ما مفعّل."};
   const w=WRITES.get(t.id);
@@ -985,7 +990,7 @@ function renderDetail(){
       const pl=c.phone?waLink(c.phone,fillTpl("promise",c)):"";
       return `<div class="banner ${left<0?"warn":"info"} promise-row"><span><b>وعد بالدفع:</b> ${esc(dayName(pr.date))}${pr.amount?` · <span class="num">${fmt(pr.amount)}</span>`:""}${pr.note?" · "+esc(pr.note):""} <span class="chip ${left<0?"debt":left===0?"warn":"zero"}">${promiseText(left)}</span></span>
         <span class="ops">${pl&&left<=0?`<a class="btn wa sm" href="${esc(pl)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}">${I.wa}تذكير</a>`:""}${w?`<button class="btn sm" type="button" data-act="promise">تعديل</button>`:""}</span></div>`})():""}
-    ${sup?"":`<div class="wa-mode"><span>${I.wa}رسالة واتساب بعد كل دين أو دفعة</span>${!c.phone?`<span class="muted">${w?`<button class="linkish" type="button" data-act="addphone">أضف رقمه أولاً</button>`:"بدون رقم"}</span>`:w?`<div class="chips" role="group" aria-label="طريقة إرسال الرسالة"><button type="button" data-act="wamode" data-v="1" aria-pressed="${!!c.autoWa}">تلقائي</button><button type="button" data-act="wamode" data-v="0" aria-pressed="${!c.autoWa}">يدوي</button></div>`:`<b>${c.autoWa?"تلقائي":"يدوي"}</b>`}</div>`}
+    ${sup||!WA_AUTO?"":`<div class="wa-mode"><span>${I.wa}رسالة واتساب بعد كل دين أو دفعة</span>${!c.phone?`<span class="muted">${w?`<button class="linkish" type="button" data-act="addphone">أضف رقمه أولاً</button>`:"بدون رقم"}</span>`:w?`<div class="chips" role="group" aria-label="طريقة إرسال الرسالة"><button type="button" data-act="wamode" data-v="1" aria-pressed="${!!c.autoWa}">تلقائي</button><button type="button" data-act="wamode" data-v="0" aria-pressed="${!c.autoWa}">يدوي</button></div>`:`<b>${c.autoWa?"تلقائي":"يدوي"}</b>`}</div>`}
     ${per.bal>0&&!sup?(remind?`<a class="btn wa block" href="${esc(remind)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}">${I.bell}إرسال تذكير بالدين على واتساب</a>`:(w?`<button class="btn wa block" type="button" data-act="addphone">${I.bell}إرسال تذكير (أضف رقم واتساب أولاً)</button>`:"")):""}
     ${sup?(()=>{const oi=openInvoices(c),t0=todayISO();return oi.length?`<div class="inv-box"><h3>فواتير غير مسددة (${oi.length})</h3><ul>${oi.slice().reverse().map(({t,rem})=>{const left=t.due?daysBetween(t0,t.due):null;
       return `<li><span>${t.inv?`فاتورة <b class="num">#${esc(t.inv)}</b>`:"فاتورة"} · ${esc(shortDate(t.date))}${t.note?" · "+esc(t.note):""}${t.photos&&t.photos.length?` <button class="pic-btn" type="button" data-act="viewpics" data-id="${esc(t.id)}" aria-label="عرض صورة القائمة">${I.camera}${t.photos.length>1?t.photos.length:""}</button>`:""}</span><span class="inv-r">${left!==null?`<span class="chip ${left<0?"debt":left<=2?"warn":"zero"}">${left<=2?dueText(left):"تستحق "+esc(shortDate(t.due))}</span>`:""}<b class="num">${fmt(rem)}</b>${rem<t.amount?`<small> من ${fmt(t.amount)}</small>`:""}</span></li>`}).join("")}</ul></div>`:""})():""}
@@ -1424,13 +1429,13 @@ function setPage(k){
       <div class="ph">${ph.map(p=>`<button type="button" data-ph="${p}" data-for="tpl-${key}">{${p}}</button>`).join("")}</div>
       <div><button class="btn ghost sm" type="button" data-tplreset="${key}">رجوع للنص الافتراضي</button></div></div>`;
     const autoN=[...S.customers.values()].filter(autoWaOn).length;
-    const waCard=`<div class="tpl"><h3>${I.wa}الإرسال التلقائي (واتساب الرسمي)</h3>
+    const waCard=!WA_AUTO?"":`<div class="tpl"><h3>${I.wa}الإرسال التلقائي (واتساب الرسمي)</h3>
       <span class="ro-note">الزبون اللي على «تلقائي» توصله رسالة من رقم المحل بعد كل دين أو دفعة بدون ما تفتح واتساب. تختار لكل زبون من صفحته. نص هذي الرسائل ثابت بحساب ميتا، مو من القوالب اللي جوة.</span>
       <span class="ro-note" id="waStat">جاري فحص الربط…</span>
       <span class="ro-note">على التلقائي هسه: <b class="num">${autoN}</b> زبون</span>
       <label class="wa-auto"><input type="checkbox" data-act="waautonew" ${S.settings.waAutoNew?"checked":""}>الزبون الجديد يكون على التلقائي</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" type="button" data-act="waall" data-v="1">تشغيل التلقائي لكل اللي عندهم رقم</button><button class="btn ghost sm" type="button" data-act="waall" data-v="0">إرجاع الكل لليدوي</button></div></div>`;
-    setTimeout(waStatus,0);
+    if(WA_AUTO)setTimeout(waStatus,0);
     return `<h2>قوالب الرسائل</h2>${waCard}<p class="lead">للزبائن على «يدوي»: بعد كل دين أو تسديد ينفتح واتساب على رقم الزبون بهذا النص (تكدر تطفيها من نافذة التسجيل). الكلمات بين { } تتبدل تلقائياً.</p>
       ${box("debt","إضافة دين جديد","ترسل بعد تسجيل دين")}${box("pay","إضافة دفعة","ترسل بعد تسجيل تسديد")}${box("remind","تذكير بالرصيد","زر «تذكير واتساب» في صفحة الزبون")}${box("promise","تذكير بموعد الدفع","يوم الوعد بالدفع. {الموعد} و{مبلغ الوعد} تتبدل تلقائياً")}
       <div><button class="btn primary" type="button" data-act="savetpl">حفظ القوالب</button></div>`;
@@ -1505,7 +1510,7 @@ function customerForm(c,after){
     <form id="cf" class="field" style="gap:10px" novalidate>
       <div class="field"><label for="cName">الاسم</label><input id="cName" maxlength="80" value="${esc(c&&c.name)}" placeholder="مثال: أبو علي">${isNew&&NATIVE?`<div class="c-sug" id="cSug" hidden></div>`:""}</div>
       <div class="field"><label for="cPhone">رقم الهاتف (لرسائل واتساب)</label><div class="note-row"><input id="cPhone" inputmode="tel" maxlength="20" value="${esc(c&&c.phone)}" placeholder="07xx xxx xxxx" style="direction:ltr;text-align:right">${canPickContact()?`<button class="btn" type="button" id="cPick" style="flex:none">${I.users}جهات الاتصال</button>`:""}</div></div>
-      <div class="field" id="cWaF"><label>رسالة واتساب بعد كل دين أو دفعة</label><div class="chips" role="group" aria-label="طريقة إرسال الرسالة"><button type="button" data-wam="1" aria-pressed="${c?!!c.autoWa:!!S.settings.waAutoNew}">تلقائي</button><button type="button" data-wam="0" aria-pressed="${c?!c.autoWa:!S.settings.waAutoNew}">يدوي</button></div><span class="help">تلقائي: توصله الرسالة من رقم المحل بدون ما تفتح واتساب. يدوي: ينفتح واتساب وانت تدز.</span></div>
+      ${WA_AUTO?`<div class="field" id="cWaF"><label>رسالة واتساب بعد كل دين أو دفعة</label><div class="chips" role="group" aria-label="طريقة إرسال الرسالة"><button type="button" data-wam="1" aria-pressed="${c?!!c.autoWa:!!S.settings.waAutoNew}">تلقائي</button><button type="button" data-wam="0" aria-pressed="${c?!c.autoWa:!S.settings.waAutoNew}">يدوي</button></div><span class="help">تلقائي: توصله الرسالة من رقم المحل بدون ما تفتح واتساب. يدوي: ينفتح واتساب وانت تدز.</span></div>`:""}
       <div class="field"><label for="cNote">ملاحظة (اختياري)</label><input id="cNote" maxlength="120" value="${esc(c&&c.note)}" placeholder="العنوان أو أي تفصيل"></div>
       <div class="field"><label for="cKind">نوع الحساب</label><select id="cKind"><option value="customer" ${(c?kindOf(c):S.kind)==="customer"?"selected":""}>زبون (عليه دين لنا)</option><option value="supplier" ${(c?kindOf(c):S.kind)==="supplier"?"selected":""}>مورد (نحن ندين له)</option></select></div>
       <div class="field" id="cVisitF"><label>أيام زيارة المورد (اختياري)</label><div class="chips" role="group" aria-label="أيام الزيارة">${AR_DAYS.map((d,i)=>`<button type="button" data-vd="${i}" aria-pressed="${!!(c&&Array.isArray(c.visit)&&c.visit.includes(i))}">${d}</button>`).join("")}</div><span class="help">باليوم اللي يجي بيه المورد، الرئيسية تذكرك بيه وبالمبلغ اللي علينا له.</span></div>
@@ -1533,7 +1538,7 @@ function customerForm(c,after){
       loadPhoneBook(false).catch(e=>console.warn(e)).finally(show);
       $("#cName").addEventListener("input",()=>{clearTimeout(tm);tm=setTimeout(show,150)})}
     m.querySelectorAll("[data-wam]").forEach(b=>b.addEventListener("click",()=>m.querySelectorAll("[data-wam]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)))));
-    const kindSync=()=>{const sup=$("#cKind").value==="supplier";m.querySelector("#cVisitF").hidden=!sup;m.querySelector("#cLimitF").hidden=sup;m.querySelector("#cWaF").hidden=sup;
+    const kindSync=()=>{const sup=$("#cKind").value==="supplier";m.querySelector("#cVisitF").hidden=!sup;m.querySelector("#cLimitF").hidden=sup;{const wf=m.querySelector("#cWaF");if(wf)wf.hidden=sup}
       const ol=m.querySelector("label[for=cOpen]");if(ol)ol.textContent=sup?"رصيد سابق علينا له (اختياري)":"دين سابق (اختياري)"};
     $("#cKind").addEventListener("change",kindSync);kindSync();
     m.querySelectorAll("[data-vd]").forEach(b=>b.addEventListener("click",()=>b.setAttribute("aria-pressed",String(b.getAttribute("aria-pressed")!=="true"))));
@@ -1546,10 +1551,10 @@ function customerForm(c,after){
       if(isNew){const v=$("#cOpen").value.trim();if(v){open=parseAmt(v);if(!(open>0)){$("#cErr").textContent="الدين السابق يجب أن يكون رقماً أكبر من صفر.";return}}}
       const lv=$("#cLimit").value.trim();const limit=lv?parseAmt(lv):0;if(lv&&!(limit>0)){$("#cErr").textContent="حد الدين يجب أن يكون رقماً أكبر من صفر.";return}
       const kd=$("#cKind").value,visit=kd==="supplier"?[...m.querySelectorAll("[data-vd][aria-pressed=true]")].map(b=>Number(b.dataset.vd)):[];
-      const obj={...(c||{}),id:c?c.id:uid(),name,kind:kd,visit,limit:kd==="supplier"?0:Math.round(limit||0),phone:$("#cPhone").value.trim(),note:$("#cNote").value.trim(),autoWa:kd!=="supplier"&&m.querySelector("[data-wam='1']").getAttribute("aria-pressed")==="true",createdAt:c?c.createdAt:Date.now(),by:c?c.by:S.me.name};
+      const obj={...(c||{}),id:c?c.id:uid(),name,kind:kd,visit,limit:kd==="supplier"?0:Math.round(limit||0),phone:$("#cPhone").value.trim(),note:$("#cNote").value.trim(),autoWa:kd!=="supplier"&&(WA_AUTO?m.querySelector("[data-wam='1']").getAttribute("aria-pressed")==="true":!!(c&&c.autoWa)),createdAt:c?c.createdAt:Date.now(),by:c?c.by:S.me.name};
       S.kind=obj.kind;
       put("customers",obj);log(isNew?"add":"edit","customer",{customerName:name});
-      if(open>0){put("txns",{id:uid(),customerId:obj.id,type:"debt",amount:Math.round(open),note:"دين سابق",date:todayISO(),createdAt:Date.now(),by:S.me.name});log("add","debt",{customerName:name,amount:Math.round(open)})}
+      if(open>0){const t1={id:uid(),customerId:obj.id,type:"debt",amount:Math.round(open),note:"دين سابق",date:todayISO(),createdAt:Date.now(),by:S.me.name};put("txns",t1);log("add","debt",{customerName:name,amount:Math.round(open)});if(isNew)waAfter(obj,t1)}
       closeModal();
       if(after)after(obj.id);else openCustomer(obj.id);
       toast(isNew?"تمت إضافة "+name:"تم حفظ التعديل");
@@ -2146,7 +2151,7 @@ document.addEventListener("click",e=>{
     case "editcust":if(canWrite())customerForm(c);break;
     case "statement":showStatement();break;
     case "zero":if(canWrite()&&c){const b0=balanceOf(c.id);if(b0)confirmBox("تصفير الحساب",`سيُسجّل ${b0>0?"دفعة":"دين"} بمبلغ ${fmt(Math.abs(b0))} ${CUR} حتى يصبح رصيد ${c.name} صفراً.`,"تصفير",async()=>{
-      const t0={id:uid(),customerId:c.id,type:b0>0?"pay":"debt",amount:Math.abs(b0),note:"تصفير الحساب",date:todayISO(),createdAt:Date.now(),by:S.me.name};await put("txns",t0);log("add",t0.type,{customerName:c.name,amount:t0.amount});toast("تم تصفير الحساب")})}break;
+      const t0={id:uid(),customerId:c.id,type:b0>0?"pay":"debt",amount:Math.abs(b0),note:"تصفير الحساب",date:todayISO(),createdAt:Date.now(),by:S.me.name};await put("txns",t0);log("add",t0.type,{customerName:c.name,amount:t0.amount});toast("تم تصفير الحساب");waAfter(c,t0)})}break;
     case "setlimit":if(canWrite())customerForm(c);break;
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
