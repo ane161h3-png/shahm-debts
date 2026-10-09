@@ -7,6 +7,8 @@ service cloud.firestore {
     function prof() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function active() { return isOwner() || (hasProf() && prof().status == 'active'); }
     function writer() { return isOwner() || (active() && prof().role == 'editor'); }
+    // An editor the owner trusted with the items (users/{uid}.items, set only by the owner) manages items and prices.
+    function itemsMgr() { return isOwner() || (active() && prof().role == 'editor' && prof().get('items', false) == true); }
 
     match /customers/{id} { allow read: if active(); allow write: if writer(); }
     match /txns/{id}      { allow read: if active(); allow write: if writer(); }
@@ -18,13 +20,15 @@ service cloud.firestore {
       allow update, delete: if isOwner();
     }
     match /settings/{id}  { allow read: if active(); allow write: if isOwner(); }
-    // Cashier (web/pos/): the owner manages items and prices; editors sell; only the owner cancels a sale.
-    // A sale lowers the stock of what it sold, so editors may change the stock field and nothing else.
+    // Cashier (web/pos/): the owner (and an editor given «يدير المواد») manages items and prices; editors sell;
+    // only the owner cancels a sale. A sale lowers the stock of what it sold, so editors may change the stock field.
     match /products/{id}  {
       allow read: if active();
-      allow write: if isOwner();
+      allow write: if itemsMgr();
       allow update: if writer() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']);
     }
+    // One small photo per item (id = the item's id): everyone signed in sees them, whoever manages the items changes them.
+    match /itemPhotos/{id} { allow read: if active(); allow write: if itemsMgr(); }
     // An editor's sale with a discount needs a discount the owner approved for exactly this invoice total,
     // and the same write marks that approval used, so it cannot be spent twice.
     function apPath(aid) { return /databases/$(database)/documents/approvals/$(aid); }
@@ -60,15 +64,29 @@ service cloud.firestore {
       allow update: if writer() && resource.data.status == 'open';
       allow delete: if isOwner();
     }
-    // Stocktakes: the owner saves a count of the shelves; everyone who can read the cashier can see the record.
+    // Stocktakes: whoever manages the items saves a count of the shelves; everyone who can read the cashier can see the record.
     match /stocktakes/{id} {
       allow read: if active();
-      allow write: if isOwner();
+      allow create: if itemsMgr();
+      allow update, delete: if isOwner();
+    }
+    // Deliveries received (استلام المواد): the items, quantities and purchase prices, with the supplier.
+    match /receipts/{id} {
+      allow read: if active();
+      allow create: if itemsMgr();
+      allow update, delete: if isOwner();
+    }
+    // Price changes: whoever changes a price records it under their own account; the record is never edited.
+    match /prices/{id} {
+      allow read: if active();
+      allow create: if writer() && request.resource.data.byId == request.auth.uid;
+      allow delete: if isOwner();
     }
     match /users/{uid} {
       allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
       allow create: if isOwner() || (signedIn() && request.auth.uid == uid
-        && request.resource.data.status == 'pending' && request.resource.data.role == 'viewer');
+        && request.resource.data.status == 'pending' && request.resource.data.role == 'viewer'
+        && !('items' in request.resource.data));
       allow update, delete: if isOwner();
     }
   }
