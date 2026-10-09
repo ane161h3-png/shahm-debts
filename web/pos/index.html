@@ -22,6 +22,7 @@
   --accent:#0e5a3a; --accent-ink:#fff7e8; --accent-soft:#dceee3; --debt:#c2301e; --debt-soft:#fce9e5; --paid:#4a7f12; --paid-soft:#edf5e0; --warn:#a55f00; --warn-soft:#fdf0dc;
   --shadow:0 1px 2px rgba(28,36,33,.06),0 8px 24px rgba(28,36,33,.07); --shadow-fab:0 6px 18px rgba(14,90,58,.35);
   --brand-orange:#f39a1e; --brand-tomato:#e2412b; --brand-leaf:#7bc043; --brand-cream:#fff7e8; --brand-deep:#083b26;
+  --ill-sky:#4fa3d9; --ill-brown:#a0673a; --ill-rose:#e67a9a; --ill-gold:#e9b730;
   --f-brand:"Lalezar","Tajawal",sans-serif;
   --f-display:"Tajawal","IBM Plex Sans Arabic",Tahoma,sans-serif;
   --f-body:"IBM Plex Sans Arabic","Tajawal",Tahoma,"Segoe UI",sans-serif;
@@ -30,11 +31,11 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0f1512; --paper:#172019; --paper-2:#1e2921; --line:#2c3830; --ink:#ecf1ec; --muted:#9aa59d;
   --accent:#5fc48c; --accent-ink:#06200f; --accent-soft:#1b3527; --debt:#ff8a78; --debt-soft:#3a1f1b; --paid:#a6d86a; --paid-soft:#243319; --warn:#f5b654; --warn-soft:#3a2c14;
-  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); --shadow-fab:0 6px 18px rgba(0,0,0,.45); color-scheme:dark}}
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); --shadow-fab:0 6px 18px rgba(0,0,0,.45); --ill-sky:#6db8e8; --ill-brown:#c08552; --ill-rose:#f095b0; --ill-gold:#f2c94c; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0f1512; --paper:#172019; --paper-2:#1e2921; --line:#2c3830; --ink:#ecf1ec; --muted:#9aa59d;
   --accent:#5fc48c; --accent-ink:#06200f; --accent-soft:#1b3527; --debt:#ff8a78; --debt-soft:#3a1f1b; --paid:#a6d86a; --paid-soft:#243319; --warn:#f5b654; --warn-soft:#3a2c14;
-  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); --shadow-fab:0 6px 18px rgba(0,0,0,.45); color-scheme:dark}
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); --shadow-fab:0 6px 18px rgba(0,0,0,.45); --ill-sky:#6db8e8; --ill-brown:#c08552; --ill-rose:#f095b0; --ill-gold:#f2c94c; color-scheme:dark}
 
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -124,11 +125,17 @@ fieldset.sec legend{padding:0 6px;font-family:var(--f-display);font-weight:700;f
 .scan-pick{display:flex;flex-direction:column;gap:8px}
 .scan-pick label{cursor:pointer}
 .scan-wait{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0;color:var(--muted);text-align:center}
-.tile .pic{width:100%;aspect-ratio:4/3;object-fit:contain;background:var(--paper);border-radius:8px;display:block}
+.tile .pic{width:100%;aspect-ratio:1/1;object-fit:contain;background:var(--paper-2);border-radius:10px;display:block;padding:6px}
+.tile .pic.cat-ic{padding:0;background:color-mix(in srgb,var(--h) 10%,var(--paper))}
 .cart-lines .cpic{width:40px;height:40px;border-radius:8px;object-fit:contain;background:var(--paper);border:1px solid var(--line);flex:none}
-.cat-ic{display:grid;place-items:center;color:var(--accent);background:var(--paper-2)}
-.cat-ic svg{width:62%;height:62%;max-height:100%}
-.tile .pic.cat-ic{background:var(--paper-2)}
+/* Category drawings in colour: the body takes the category's hue, details a light tint, outline a deep shade of it. */
+.cat-ic{--h:var(--accent);display:grid;place-items:center;color:var(--accent);background:var(--paper-2)}
+.cat-ic svg{width:62%;height:62%;max-height:100%;stroke-width:1.4}
+.cat-ic svg>*{fill:color-mix(in srgb,var(--h) 22%,var(--paper))}
+.cat-ic svg>:first-child{fill:var(--h)}
+.cat-ic{color:color-mix(in srgb,var(--h) 55%,var(--ink));background:color-mix(in srgb,var(--h) 10%,var(--paper))}
+.ic-orange{--h:var(--brand-orange)}.ic-tomato{--h:var(--brand-tomato)}.ic-leaf{--h:var(--brand-leaf)}.ic-sky{--h:var(--ill-sky)}
+.ic-brown{--h:var(--ill-brown)}.ic-rose{--h:var(--ill-rose)}.ic-gold{--h:var(--ill-gold)}.ic-cream{--h:var(--brand-cream)}
 .cart-lines .cpic.cat-ic{border:1px solid var(--line)}
 img.avatar.pic-av{object-fit:cover;padding:0;background:var(--paper)}
 .pic-edit{display:flex;gap:12px;align-items:center}
@@ -205,12 +212,14 @@ input:disabled{opacity:.55}
 .cat-tools{padding:12px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--paper);border-radius:var(--r) var(--r) 0 0;z-index:2}
 .tool-row{display:flex;gap:8px;align-items:center}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px;padding:12px}
-.tile{position:relative;border:1px solid var(--line);background:var(--paper-2);border-radius:12px;padding:12px 10px 10px;cursor:pointer;text-align:right;display:flex;flex-direction:column;gap:6px;min-height:104px;touch-action:manipulation;border-top:3px solid var(--brand-orange)}
-.tile:hover{border-color:var(--accent);border-top-color:var(--brand-orange)}
+.tile{position:relative;border:1px solid var(--line);background:var(--paper);border-radius:var(--r);padding:8px 8px 10px;cursor:pointer;text-align:center;display:flex;flex-direction:column;gap:4px;min-height:104px;touch-action:manipulation;box-shadow:0 1px 2px rgba(28,36,33,.05)}
+.tile:hover{border-color:var(--accent)}
 .tile:active{transform:scale(.98)}
-.tile .nm{font-weight:600;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;flex:1}
-.tile .pr{font-family:var(--f-display);font-weight:800;font-size:17px;color:var(--accent)}
+.tile .nm{font-weight:600;font-size:14px;line-height:1.35;margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;flex:1}
+.tile .pr{font-family:var(--f-display);font-weight:800;font-size:17px;color:var(--ink)}
+.tile .of{align-self:center}
 .tile .ct{font-size:11.5px;color:var(--muted)}
+.tile.has-pic .ct{display:none}
 .tile .st{font-size:11.5px;color:var(--muted)}
 .tile .st.warn{color:var(--warn);font-weight:700}
 .tile .pr small{font-size:11px;font-weight:600;color:var(--warn)}
@@ -219,7 +228,7 @@ input:disabled{opacity:.55}
 s.was{color:var(--muted);font-weight:500;font-size:12px}
 .wpill{border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);border-radius:99px;padding:5px 12px;font-family:var(--f-display);font-weight:700;cursor:pointer;white-space:nowrap}
 .tile .q{position:absolute;top:-8px;left:-6px;min-width:26px;height:26px;padding:0 7px;border-radius:99px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:13px;display:grid;place-items:center;font-family:var(--f-display)}
-.tile.custom{border-style:dashed;border-top-style:dashed;border-top-color:var(--accent);background:var(--paper);align-items:center;justify-content:center;color:var(--accent);font-weight:700;font-family:var(--f-display)}
+.tile.custom{border-style:dashed;border-color:var(--accent);background:var(--paper);align-items:center;justify-content:center;color:var(--accent);font-weight:700;font-family:var(--f-display)}
 .tile.custom svg{width:26px;height:26px}
 
 .cart{display:flex;flex-direction:column;position:sticky;top:12px;height:calc(100vh - 96px);min-height:420px}
@@ -258,7 +267,8 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
   .sell{grid-template-columns:minmax(0,1fr)}
   .catalog{min-height:0;padding-bottom:84px;border-radius:var(--r)}
   .tiles{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
-  .tile{min-height:96px;padding:10px 8px 8px}
+  .tile{min-height:96px;padding:6px 6px 8px}
+  .tile .nm{font-size:13px}.tile .pr{font-size:15.5px}
   .cart{position:fixed;inset:0;top:auto;height:auto;min-height:0;max-height:92vh;border-radius:18px 18px 0 0;z-index:15;transform:translateY(105%);transition:transform .2s ease;box-shadow:0 -10px 40px rgba(0,0,0,.25)}
   body.show-cart .cart{transform:none}
   body.show-cart::after{content:"";position:fixed;inset:0;background:rgba(8,20,14,.45);z-index:14}
@@ -274,7 +284,7 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
   body.splitv .sell{grid-template-columns:minmax(0,1fr) minmax(0,46%);gap:8px}
   body.splitv .catalog{padding-bottom:0}
   body.splitv .tiles{grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:6px;padding:8px}
-  body.splitv .tile{min-height:84px;padding:8px 7px 7px}
+  body.splitv .tile{min-height:84px;padding:5px 5px 7px}
   body.splitv .cart{position:sticky;inset:auto;top:8px;transform:none;transition:none;height:calc(100dvh - 140px);max-height:none;min-height:0;border-radius:var(--r);box-shadow:none;z-index:1}
   body.splitv::after{content:none}
   body.splitv .cartbar{display:none}
@@ -928,8 +938,8 @@ function renderTiles(){
   el.innerHTML=custom+list.slice(0,300).map(p=>{const al=alertsOf(p),left=tracked(p)?round3(stockOf(p)-(inCart.get(p.id)||0)):null;
     const reg=priceFor(p,null,S.whole),of=S.whole?null:priceLine({},p,null,false),shown=of&&of.was?of.price:reg;
     const head=grouped&&(p.category||"")!==lastCat?`<div class="tile-head">${esc((lastCat=p.category||"")||"بدون صنف")}</div>`:"";
-    return `${head}<button class="tile${hasPic(p)?" has-pic":""}" type="button" data-add="${esc(p.id)}"${canSell()?"":" disabled"}>
-    ${inCart.has(p.id)?`<span class="q num">${qtyText(inCart.get(p.id))}</span>`:""}${picImg(p,"pic")}
+    return `${head}<button class="tile${hasPic(p)||!p.noStock?" has-pic":""}" type="button" data-add="${esc(p.id)}"${canSell()?"":" disabled"}>
+    ${inCart.has(p.id)?`<span class="q num">${qtyText(inCart.get(p.id))}</span>`:""}${picImg(p,"pic")||(p.noStock?"":icSpan("pic","box"))}
     <span class="nm">${esc(p.name)}</span><span class="ct">${esc(p.category||"")}</span>
     ${left!==null||al.some(a=>a.startsWith("exp"))?`<span class="st${al.length||(left!==null&&left<=0)?" warn":""}">${left!==null?`باقي <span class="num">${qtyText(left)}</span>`:""}${al.includes("expired")?" · منتهية":al.includes("expiring")?" · قرب انتهاؤها":""}</span>`:""}
     ${prRecent(p.id)?`<span class="of pn">سعر جديد</span>`:""}${of&&(of.was||of.deal)?`<span class="of">عرض${of.deal?" "+offerHtml(of.deal):""}</span>`:""}
@@ -2554,7 +2564,8 @@ function loadPic(p){
 }
 const picImg=(p,cls)=>{if(p&&p.pic)return `<img class="${cls}" data-pic="${esc(p.id)}" alt=""${picUrl(p)?` src="${picUrl(p)}"`:""}>`;
   const u=stockPic(p);if(u)return `<img class="${cls}" src="${u}" alt="" loading="lazy">`;
-  const k=catIcon(p);return k?`<span class="${cls} cat-ic">${iconSvg(k)}</span>`:""};
+  const k=catIcon(p);return k?icSpan(cls,k):""};
+const icSpan=(cls,k)=>`<span class="${cls} cat-ic ic-${ICON_HUE[k]||"leaf"}">${iconSvg(k)}</span>`;
 /* Ready-made fruit photos (img/fruit, from the Fruits-360 photo set; credits in img/fruit/CREDITS.md). A fruit item with no
    photo of its own shows the one that matches its name, so «تفاح أحمر» or «رمان» get a picture without the owner taking one.
    Only items under a fruit or vegetable category (or sold by weight) are matched, so «عصير برتقال» never gets an orange.
@@ -2579,7 +2590,7 @@ function stockPic(p){
 }
 /* Category drawings: an item with no photo (and no ready-made fruit photo) under a known category shows a simple line drawing of
    that kind of item instead of its first letter. Drawn inline in the app colour, so it follows light and dark. A real photo wins. */
-const CAT_ICONS={milk:"<path d=\"M8 3h8l2 4v14H6V7z\"/><path d=\"M6 7h12\"/><path d=\"M10 12h4v4h-4z\"/>",egg:"<path d=\"M12 3c3.5 0 6 6 6 10a6 6 0 0 1-12 0c0-4 2.5-10 6-10z\"/>",sack:"<path d=\"M8 4h8l1 3c2 2 2 5 2 8 0 3-2 5-7 5s-7-2-7-5c0-3 0-6 2-8z\"/><path d=\"M8 4c1 1.5 7 1.5 8 0\"/>",oil:"<path d=\"M10 3h4v3l2 3v11H8V9l2-3z\"/><path d=\"M8 13h8\"/>",cup:"<path d=\"M4 9h13v4a5 5 0 0 1-5 5h-3a5 5 0 0 1-5-5z\"/><path d=\"M17 10h2a2 2 0 0 1 0 4h-2\"/><path d=\"M8 4v2M12 4v2\"/>",can:"<ellipse cx=\"12\" cy=\"6\" rx=\"6\" ry=\"2\"/><path d=\"M6 6v12c0 1.1 2.7 2 6 2s6-.9 6-2V6\"/><path d=\"M6 12c0 1.1 2.7 2 6 2s6-.9 6-2\"/>",drink:"<path d=\"M10 2h4v3l2 3v13a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8l2-3z\"/><path d=\"M8 12h8M8 16h8\"/>",drop:"<path d=\"M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z\"/>",bread:"<path d=\"M5 10c0-3 3-5 7-5s7 2 7 5c0 1-.5 1.7-1 2v6H6v-6c-.5-.3-1-1-1-2z\"/>",choc:"<rect x=\"4\" y=\"7\" width=\"16\" height=\"10\" rx=\"2\"/><path d=\"M9 7v10M15 7v10M4 12h16\"/>",biscuit:"<circle cx=\"12\" cy=\"12\" r=\"8\"/><circle cx=\"9\" cy=\"10\" r=\".8\"/><circle cx=\"14\" cy=\"9\" r=\".8\"/><circle cx=\"12\" cy=\"14\" r=\".8\"/><circle cx=\"15\" cy=\"14\" r=\".8\"/>",chips:"<path d=\"M6 4h12l-1 16H7z\"/><path d=\"M6 8c2 1 4-1 6 0s4 1 6 0\"/><circle cx=\"12\" cy=\"14\" r=\"2\"/>",spray:"<path d=\"M9 10h5v10H9z\"/><path d=\"M10 10V7h3l2-2\"/><path d=\"M17 5h2M17 8h2\"/>",tissue:"<rect x=\"4\" y=\"9\" width=\"16\" height=\"9\" rx=\"2\"/><path d=\"M8 9c0-3 3-4 4-4s4 1 4 4\"/>",bottle:"<path d=\"M10 3h4v3h-4z\"/><path d=\"M8 8h8v13H8z\"/><path d=\"M8 13h8\"/>",baby:"<path d=\"M4 8h16v4c0 4-3 7-8 7s-8-3-8-7z\"/><path d=\"M4 8c0 2 2 3 4 3M20 8c0 2-2 3-4 3\"/>",pasta:"<path d=\"M5 7h14M5 11h14M5 15h14M5 19h14\"/>",jar:"<rect x=\"7\" y=\"8\" width=\"10\" height=\"12\" rx=\"2\"/><path d=\"M8 4h8v4H8z\"/><path d=\"M10 13h4\"/>",meat:"<path d=\"M5 14c0-4 4-8 9-8 3 0 5 2 5 5 0 4-4 8-9 8-3 0-5-2-5-5z\"/><circle cx=\"14\" cy=\"11\" r=\"1.5\"/>",fish:"<path d=\"M3 12c3-5 9-6 13-3l5-3v12l-5-3c-4 3-10 2-13-3z\"/><circle cx=\"8\" cy=\"11\" r=\".8\"/>",snow:"<path d=\"M12 3v18M4 7.5l16 9M4 16.5l16-9\"/>",cone:"<path d=\"M8 11a4 4 0 0 1 8 0z\"/><path d=\"M8 11l4 10 4-10\"/>",nuts:"<path d=\"M12 4c4 0 7 4 7 8 0 5-3 8-7 8s-7-3-7-8c0-4 3-8 7-8z\"/><path d=\"M12 4v16\"/>",home:"<path d=\"M5 20V10l7-5 7 5v10z\"/><path d=\"M10 20v-6h4v6\"/>",battery:"<rect x=\"4\" y=\"8\" width=\"14\" height=\"8\" rx=\"1.5\"/><path d=\"M20 11v2M8 12h4M10 10v4\"/>",pencil:"<path d=\"M5 19l1-4 10-10 3 3-10 10z\"/><path d=\"M14 7l3 3\"/>",bag:"<path d=\"M6 8h12l1 12H5z\"/><path d=\"M9 8V6a3 3 0 0 1 6 0v2\"/>",paw:"<circle cx=\"7\" cy=\"10\" r=\"1.6\"/><circle cx=\"11\" cy=\"7\" r=\"1.6\"/><circle cx=\"15\" cy=\"7\" r=\"1.6\"/><circle cx=\"18\" cy=\"10\" r=\"1.6\"/><path d=\"M12 12c-3 0-5 3-5 5 0 2 2 2 5 1 3 1 5 1 5-1 0-2-2-5-5-5z\"/>"};
+const CAT_ICONS={milk:"<path d=\"M8 3h8l2 4v14H6V7z\"/><path d=\"M6 7h12\"/><path d=\"M10 12h4v4h-4z\"/>",egg:"<path d=\"M12 3c3.5 0 6 6 6 10a6 6 0 0 1-12 0c0-4 2.5-10 6-10z\"/>",sack:"<path d=\"M8 4h8l1 3c2 2 2 5 2 8 0 3-2 5-7 5s-7-2-7-5c0-3 0-6 2-8z\"/><path d=\"M8 4c1 1.5 7 1.5 8 0\"/>",oil:"<path d=\"M10 3h4v3l2 3v11H8V9l2-3z\"/><path d=\"M8 13h8\"/>",cup:"<path d=\"M4 9h13v4a5 5 0 0 1-5 5h-3a5 5 0 0 1-5-5z\"/><path d=\"M17 10h2a2 2 0 0 1 0 4h-2\"/><path d=\"M8 4v2M12 4v2\"/>",can:"<ellipse cx=\"12\" cy=\"6\" rx=\"6\" ry=\"2\"/><path d=\"M6 6v12c0 1.1 2.7 2 6 2s6-.9 6-2V6\"/><path d=\"M6 12c0 1.1 2.7 2 6 2s6-.9 6-2\"/>",drink:"<path d=\"M10 2h4v3l2 3v13a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8l2-3z\"/><path d=\"M8 12h8M8 16h8\"/>",drop:"<path d=\"M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z\"/>",bread:"<path d=\"M5 10c0-3 3-5 7-5s7 2 7 5c0 1-.5 1.7-1 2v6H6v-6c-.5-.3-1-1-1-2z\"/>",choc:"<rect x=\"4\" y=\"7\" width=\"16\" height=\"10\" rx=\"2\"/><path d=\"M9 7v10M15 7v10M4 12h16\"/>",biscuit:"<circle cx=\"12\" cy=\"12\" r=\"8\"/><circle cx=\"9\" cy=\"10\" r=\".8\"/><circle cx=\"14\" cy=\"9\" r=\".8\"/><circle cx=\"12\" cy=\"14\" r=\".8\"/><circle cx=\"15\" cy=\"14\" r=\".8\"/>",chips:"<path d=\"M6 4h12l-1 16H7z\"/><path d=\"M6 8c2 1 4-1 6 0s4 1 6 0\"/><circle cx=\"12\" cy=\"14\" r=\"2\"/>",spray:"<path d=\"M9 10h5v10H9z\"/><path d=\"M10 10V7h3l2-2\"/><path d=\"M17 5h2M17 8h2\"/>",tissue:"<rect x=\"4\" y=\"9\" width=\"16\" height=\"9\" rx=\"2\"/><path d=\"M8 9c0-3 3-4 4-4s4 1 4 4\"/>",bottle:"<path d=\"M10 3h4v3h-4z\"/><path d=\"M8 8h8v13H8z\"/><path d=\"M8 13h8\"/>",baby:"<path d=\"M4 8h16v4c0 4-3 7-8 7s-8-3-8-7z\"/><path d=\"M4 8c0 2 2 3 4 3M20 8c0 2-2 3-4 3\"/>",pasta:"<path d=\"M5 7h14M5 11h14M5 15h14M5 19h14\"/>",jar:"<rect x=\"7\" y=\"8\" width=\"10\" height=\"12\" rx=\"2\"/><path d=\"M8 4h8v4H8z\"/><path d=\"M10 13h4\"/>",meat:"<path d=\"M5 14c0-4 4-8 9-8 3 0 5 2 5 5 0 4-4 8-9 8-3 0-5-2-5-5z\"/><circle cx=\"14\" cy=\"11\" r=\"1.5\"/>",fish:"<path d=\"M3 12c3-5 9-6 13-3l5-3v12l-5-3c-4 3-10 2-13-3z\"/><circle cx=\"8\" cy=\"11\" r=\".8\"/>",snow:"<path d=\"M12 3v18M4 7.5l16 9M4 16.5l16-9\"/>",cone:"<path d=\"M8 11a4 4 0 0 1 8 0z\"/><path d=\"M8 11l4 10 4-10\"/>",nuts:"<path d=\"M12 4c4 0 7 4 7 8 0 5-3 8-7 8s-7-3-7-8c0-4 3-8 7-8z\"/><path d=\"M12 4v16\"/>",home:"<path d=\"M5 20V10l7-5 7 5v10z\"/><path d=\"M10 20v-6h4v6\"/>",battery:"<rect x=\"4\" y=\"8\" width=\"14\" height=\"8\" rx=\"1.5\"/><path d=\"M20 11v2M8 12h4M10 10v4\"/>",pencil:"<path d=\"M5 19l1-4 10-10 3 3-10 10z\"/><path d=\"M14 7l3 3\"/>",bag:"<path d=\"M6 8h12l1 12H5z\"/><path d=\"M9 8V6a3 3 0 0 1 6 0v2\"/>",box:"<path d=\"M4 8l8-4 8 4v9l-8 4-8-4z\"/><path d=\"M4 8l8 4 8-4M12 12v9\"/>",paw:"<circle cx=\"7\" cy=\"10\" r=\"1.6\"/><circle cx=\"11\" cy=\"7\" r=\"1.6\"/><circle cx=\"15\" cy=\"7\" r=\"1.6\"/><circle cx=\"18\" cy=\"10\" r=\"1.6\"/><path d=\"M12 12c-3 0-5 3-5 5 0 2 2 2 5 1 3 1 5 1 5-1 0-2-2-5-5-5z\"/>"};
 const CAT_ICON_BY=[["milk","جبن|البان|لبن|حليب|اجبان"],["egg","بيض"],["sack","رز|طحين|سكر|بقول|حبوب"],["oil","زيوت|سمن|زيت"],["cup","شاي|قهوه"],
   ["pasta","معكرون|شعير"],["can","معلبات"],["jar","بهارات|توابل|صلصات|مربيات"],["meat","لحوم|دجاج"],["fish","اسماك"],["snow","مجمدات"],["cone","ايس كريم|ايس"],
   ["bread","خبز|معجنات|كيك|كرواسون"],["choc","حلويات|شوكولات"],["biscuit","بسكويت"],["nuts","مكسرات|كرزات"],["chips","شيبس|سناك"],
@@ -2592,6 +2603,9 @@ function catIcon(p){
   const c=foldAr(p.category||"");if(iconMemo.has(c))return iconMemo.get(c);
   const h=CAT_ICON_BY.find(([,re])=>re.test(c));const k=h?h[0]:"";iconMemo.set(c,k);return k;
 }
+const ICON_HUE={milk:"sky",egg:"cream",sack:"gold",oil:"gold",cup:"brown",pasta:"gold",can:"tomato",jar:"tomato",meat:"tomato",fish:"sky",snow:"sky",
+  cone:"rose",bread:"orange",choc:"brown",biscuit:"orange",nuts:"brown",chips:"orange",drop:"sky",drink:"orange",spray:"leaf",tissue:"rose",
+  bottle:"leaf",baby:"sky",home:"leaf",bag:"leaf",pencil:"gold",battery:"leaf",paw:"brown",box:"brown"};
 const iconSvg=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CAT_ICONS[k]}</svg>`;
 const hasPic=p=>!!(p&&(p.pic||stockPic(p)||catIcon(p)));
 let picIO=null;
