@@ -103,6 +103,9 @@ header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .sum-hero .v{font-family:var(--f-display);font-weight:800;font-size:44px;line-height:1.15;overflow-wrap:anywhere}
 .sum-hero .v small{font-size:16px;font-weight:500;opacity:.85;margin-inline-start:6px}
 .sum-hero .s{font-size:13.5px;opacity:.85}
+.sum-hero .k .eye{margin-inline-start:auto;background:none;border:1px solid currentColor;color:inherit;border-radius:8px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:12.5px;cursor:pointer;opacity:.9}
+.sum-hero .k .eye svg{width:16px;height:16px}
+.masked{letter-spacing:.12em;opacity:.85}
 .sum-mini{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)}
 .sum-mini>div{padding:12px 14px;min-width:0}
 .sum-mini>div+div{border-inline-start:1px solid var(--line)}
@@ -428,6 +431,12 @@ td.x{width:64px;white-space:nowrap}
 const CUR="د.ع";
 const BRAND_MARK=document.querySelector("header.top .logo").innerHTML; // brand mark (ش with produce dots), reused by the login gate
 const SESSION_KEY="shahm-session-v1",THEME_KEY="shahm-theme",CACHE_KEY="shahm-debts-cache-v1";
+/* Home-screen numbers the user chose to hide on this device (Settings > إخفاء الأرقام). S.reveal shows them until the next reload. */
+const HIDE_KEY="shahm-hide";
+const HIDE_ITEMS=[["total","مجموع الدين على الزبائن"],["owing","عدد الزبائن اللي عليهم دين"],["cust","عدد الزبائن"],["paid","المحصّل هذا الشهر"],["added","المضاف هذا الشهر"],["top","مبالغ أعلى الديون"],["sup","ديون الموردين (علينا)"]];
+const hiddenNums=()=>{try{const v=JSON.parse(localStorage.getItem(HIDE_KEY)||"[]");return Array.isArray(v)?v:[]}catch(e){return []}};
+const setHidden=a=>{try{localStorage.setItem(HIDE_KEY,JSON.stringify(a))}catch(e){}};
+const shown=(k,html)=>!S.reveal&&hiddenNums().includes(k)?'<span class="masked" aria-label="مخفي">••••</span>':html;
 const ROLE_LABEL={owner:"المدير",editor:"محرر",viewer:"مشاهد"};
 const PDF_AUTO_KEY="shahm-pdf-auto";
 const DEFAULT_CATS=["مشكل","مواد غذائية","خضروات","فواكه","أجبان وألبان","لحوم ودجاج","معلبات","حلويات","مشروبات","منظفات","خبز ومعجنات","سكائر","كارت رصيد","غاز"];
@@ -534,6 +543,8 @@ const I={
   store:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 10v10h16V10M3 4h18l-1.5 6h-15zM10 20v-5h4v5"/></svg>',
   wa:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 1a4 4 0 0 1-2-2l1-1-1-2z"/></svg>',
   save:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>',
+  eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.6 3.4M6.6 6.6C3.6 8.5 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m3 3 18 18"/></svg>',
   moon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
   out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/></svg>',
   bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4zM10 21h4"/></svg>',
@@ -828,15 +839,15 @@ function homeView(){
   const acts=S.activity.filter(a=>a.kind!=="login"&&(S.actFilter==="all"?a.kind!=="remind":a.kind===S.actFilter)).slice(0,60);
   return `<div style="display:flex;flex-direction:column;gap:14px">
   <section class="pane summary" aria-label="ملخص">
-    <div class="sum-hero"><div class="k">${I.wallet}مجموع الدين على الزبائن</div>
-      <div class="v"><span class="num">${fmt(total)}</span><small>${CUR}</small></div>
-      <div class="s"><span class="num">${owing}</span> زبون عليهم دين</div></div>
+    <div class="sum-hero"><div class="k">${I.wallet}مجموع الدين على الزبائن${hiddenNums().length?`<button class="eye" type="button" data-act="reveal" aria-pressed="${!!S.reveal}">${S.reveal?I.eyeOff+"إخفاء":I.eye+"إظهار"}</button>`:""}</div>
+      <div class="v">${shown("total",`<span class="num">${fmt(total)}</span><small>${CUR}</small>`)}</div>
+      <div class="s">${shown("owing",`<span class="num">${owing}</span>`)} زبون عليهم دين</div></div>
     <div class="sum-mini">
-      <div><div class="k">${I.users}الزبائن</div><div class="v num">${custN}</div></div>
-      <div><div class="k">${I.check}المحصّل هذا الشهر</div><div class="v paid num">${fmt(mPay)}</div></div>
-      <div><div class="k">${I.trend}المضاف هذا الشهر</div><div class="v debt num">${fmt(mAdd)}</div></div>
+      <div><div class="k">${I.users}الزبائن</div><div class="v num">${shown("cust",custN)}</div></div>
+      <div><div class="k">${I.check}المحصّل هذا الشهر</div><div class="v paid num">${shown("paid",fmt(mPay))}</div></div>
+      <div><div class="k">${I.trend}المضاف هذا الشهر</div><div class="v debt num">${shown("added",fmt(mAdd))}</div></div>
     </div>
-    <div class="sum-actions" role="group" aria-label="إجراءات سريعة">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button><button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`:""}<button class="btn" type="button" data-act="monthrep">${I.trend}التقرير الشهري</button><button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين (${owing})</button></div>
+    <div class="sum-actions" role="group" aria-label="إجراءات سريعة">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button><button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`:""}<button class="btn" type="button" data-act="monthrep">${I.trend}التقرير الشهري</button><button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين${shown("owing",` (${owing})`)}</button></div>
   </section>
   <section class="pane card-pad home-search" aria-label="بحث عن زبون">
     <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -850,11 +861,11 @@ function homeView(){
           return `<div class="banner info" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>🤝 وعود دفع: ${today?`<b class="num">${today}</b> موعدهم اليوم`:""}${today&&past?" و ":""}${past?`<b class="num">${past}</b> فات موعدهم`:""}</span><button class="btn sm" type="button" data-go="reminders" data-remf="promise">${I.bell}عرضهم</button></div>`})()}
         ${(()=>{const n=[...lateInfo().values()].filter(x=>x.late).length;return n?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${n}</b> زبون ما دافع من أكثر من ${LATE_DAYS} يوم.</span><button class="btn sm" type="button" data-go="reminders" data-remf="late">${I.bell}عرضهم</button></div>`:""})()}
         ${(()=>{const {due,visits}=supplierAlerts();let h="";
-          if(visits.length)h+=`<div class="banner info"><b>اليوم يزورك:</b> ${visits.map(v=>`<button class="linkish" type="button" data-open="${esc(v.c.id)}">${esc(v.c.name)}</button>${v.bal>0?` (علينا له <span class="num">${fmt(v.bal)}</span>)`:""}`).join("، ")}</div>`;
+          if(visits.length)h+=`<div class="banner info"><b>اليوم يزورك:</b> ${visits.map(v=>`<button class="linkish" type="button" data-open="${esc(v.c.id)}">${esc(v.c.name)}</button>${v.bal>0?` (علينا له ${shown("sup",`<span class="num">${fmt(v.bal)}</span>`)})`:""}`).join("، ")}</div>`;
           if(due.length){const tot=due.reduce((a,x)=>a+x.rem,0),late=due.filter(x=>x.left<0).length;
-            h+=`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${due.length}</b> فاتورة موردين ${late?`(${late} متأخرة)`:"قرب موعد دفعها"} بمجموع <b class="num">${fmt(tot)}</b> ${CUR}</span><button class="btn sm" type="button" data-act="gosup">عرضها</button></div>`}
+            h+=`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${due.length}</b> فاتورة موردين ${late?`(${late} متأخرة)`:"قرب موعد دفعها"} بمجموع ${shown("sup",`<b class="num">${fmt(tot)}</b> ${CUR}`)}</span><button class="btn sm" type="button" data-act="gosup">عرضها</button></div>`}
           return h})()}
-        ${supOwed>0?`<div class="banner warn">علينا للموردين: <b class="num">${fmt(supOwed)}</b> ${CUR}</div>`:""}</div>
+        ${supOwed>0?`<div class="banner warn">علينا للموردين: ${shown("sup",`<b class="num">${fmt(supOwed)}</b> ${CUR}`)}</div>`:""}</div>
   <div class="home-grid">
     <section class="pane card-pad" aria-label="سجل النشاط">
       <div class="section-title"><h2>سجل النشاط</h2></div>
@@ -867,7 +878,7 @@ function homeView(){
     </section>
     <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
       <section class="pane card-pad"><div class="section-title"><h2>أعلى الديون</h2><button class="linkish" type="button" data-go="customers">كل الزبائن</button></div>
-        ${top.length?`<ul class="top-list">${top.map(x=>`<li><span class="avatar" aria-hidden="true">${initial(x.c.name)}</span><button type="button" data-open="${esc(x.c.id)}">${esc(x.c.name)}</button><span class="chip debt"><span class="num">${fmt(x.b)}</span></span></li>`).join("")}</ul>`
+        ${top.length?`<ul class="top-list">${top.map(x=>`<li><span class="avatar" aria-hidden="true">${initial(x.c.name)}</span><button type="button" data-open="${esc(x.c.id)}">${esc(x.c.name)}</button><span class="chip debt">${shown("top",`<span class="num">${fmt(x.b)}</span>`)}</span></li>`).join("")}</ul>`
         :`<div class="empty"><b>لا توجد ديون</b>أضف زبوناً وسجّل عليه أول دين.</div>`}
       </section>
     </div>
@@ -1360,7 +1371,7 @@ async function bizExport(share){
 }
 
 /* ---------- settings ---------- */
-const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["cats","أصناف المواد",I.edit,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false]];
+const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["cats","أصناف المواد",I.edit,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 function settingsView(){
   const pages=SET_PAGES.filter(p=>!p[3]||isAdmin());
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
@@ -1462,6 +1473,10 @@ function setPage(k){
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button" data-act="copylinks" data-txt="${esc(shareTxt)}">${I.copy}نسخ روابط التثبيت</button><a class="btn wa" href="https://wa.me/?text=${encodeURIComponent(shareTxt)}" target="_blank" rel="noopener">${I.wa}إرسال الروابط واتساب</a></div>
     <p class="ro-note" style="margin:0">يشتغل بدون إنترنت، وأول ما يرجع الإنترنت ترسل التعديلات وتتزامن.</p>`;}
   if(k==="card")return bizPage();
+  if(k==="hide"){const h=hiddenNums();
+    return `<h2>إخفاء أرقام الواجهة الرئيسية</h2><p class="lead">الرقم المخفي يظهر نقاط ••••. تكدر تشوفه مؤقتاً بزر «إظهار» بأعلى الواجهة. الإعداد خاص بهذا الجهاز فقط، والأرقام داخل صفحة كل زبون تبقى ظاهرة.</p>
+    ${HIDE_ITEMS.map(([k2,l])=>`<div class="toggle-row"><span>${l}</span><div class="seg" role="group" aria-label="${l}">${[["0","يظهر"],["1","مخفي"]].map(([v,t2])=>`<button type="button" data-hide="${k2}" data-v="${v}" aria-pressed="${h.includes(k2)===(v==="1")}">${t2}</button>`).join("")}</div></div>`).join("")}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" type="button" data-hideall="1">${I.eyeOff}إخفاء الكل</button><button class="btn" type="button" data-hideall="0">${I.eye}إظهار الكل</button></div>`}
   if(k==="look"){let th="system";try{th=localStorage.getItem(THEME_KEY)||"system"}catch(e){}
     return `<h2>المظهر</h2><div class="toggle-row"><span>الوضع</span><div class="seg" role="group" aria-label="الوضع">${[["system","تلقائي"],["light","فاتح"],["dark","ليلي"]].map(([k2,l])=>`<button type="button" data-theme-set="${k2}" aria-pressed="${th===k2}">${l}</button>`).join("")}</div></div>`}
   return "";
@@ -2100,6 +2115,8 @@ document.addEventListener("click",e=>{
   const f=t.closest("[data-f]");if(f){S.filter=f.dataset.f;document.querySelectorAll("[data-f]").forEach(x=>x.setAttribute("aria-pressed",x===f));renderList();return}
   const bs=t.closest("[data-bizstyle]");if(bs){S.bizDraft={...(S.bizDraft||{}),style:bs.dataset.bizstyle};bs.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===bs));bizRedraw();return}
   const sp=t.closest("[data-set]");if(sp){S.setPage=sp.dataset.set||null;render();window.scrollTo(0,0);return}
+  const hd=t.closest("[data-hide]");if(hd){const k=hd.dataset.hide,h=hiddenNums().filter(x=>x!==k);if(hd.dataset.v==="1")h.push(k);setHidden(h);render();return}
+  const ha=t.closest("[data-hideall]");if(ha){setHidden(ha.dataset.hideall==="1"?HIDE_ITEMS.map(x=>x[0]):[]);S.reveal=false;render();return}
   const th=t.closest("[data-theme-set]");if(th){const v=th.dataset.themeSet;try{localStorage.setItem(THEME_KEY,v)}catch(x){}applyTheme(v);render();return}
   const ph=t.closest("[data-ph]");if(ph){const ta=document.getElementById(ph.dataset.for);const s=ta.selectionStart??ta.value.length;ta.value=ta.value.slice(0,s)+"{"+ph.dataset.ph+"}"+ta.value.slice(ta.selectionEnd??s);ta.focus();return}
   const tr=t.closest("[data-tplreset]");if(tr){document.getElementById("tpl-"+tr.dataset.tplreset).value=DEFAULT_TPL[tr.dataset.tplreset];return}
@@ -2113,6 +2130,7 @@ document.addEventListener("click",e=>{
     case "listsall":if(c){S.listsAll=c.id;render()}break;
     case "newcustq":{const nm=($("#hq")||{}).value||"";S.kind="customer";customerForm(null,id=>openCustomer(id));setTimeout(()=>{const i=$("#cName");if(i&&!i.value)i.value=nm.trim()},0);break}
     case "monthrep":monthReport();break;
+    case "reveal":S.reveal=!S.reveal;render();break;
     case "bizshare":bizExport(true);break;
     case "bizsave":bizExport(false);break;
     case "promise":if(canWrite()&&c)promiseForm(c);break;
