@@ -24,6 +24,9 @@ export const windowPdf = ({ start, end, isoDay, hm, timeText, subText, ...o }) =
   txnsPdf({ ...o, hm, inRange: ms => ms >= start && ms < end, tag: `${isoDay(end - 1)}-${hm(end).replace(/[:\s]/g, "")}`,
     dateText: isoDay(end - 1), timeText: timeText || `من ${hm(start)} إلى ${hm(end)}`, subText: subText || "حركات آخر ساعتين" });
 
+// Baghdad calendar date (d/m/yyyy) of a timestamp: the working day crosses midnight, so each row shows its own date.
+const calDay = ms => { const [y, m, d] = new Date(Number(ms) + 3 * 3600e3).toISOString().slice(0, 10).split("-"); return `${+d}/${+m}/${y}`; };
+
 async function txnsPdf({ inRange, tag, dateText, timeText, subText, customers, txns, activity, settings, fmt, hm }) {
   const byId = new Map(customers.map(c => [c.id, c]));
   const sup = id => (byId.get(id) || {}).kind === "supplier";
@@ -40,8 +43,8 @@ async function txnsPdf({ inRange, tag, dateText, timeText, subText, customers, t
 
   const chrome = findChrome();
   if (!chrome) {
-    const csv = "﻿" + [["الوقت", "الحساب", "العملية", "المبلغ", "ملاحظة", "بواسطة"].join(","),
-      ...rows.map(t => [hm(t.createdAt), (byId.get(t.customerId) || {}).name || "", op(t), t.amount, t.note || "", t.by || ""]
+    const csv = "﻿" + [["التاريخ", "الوقت", "الحساب", "العملية", "المبلغ", "ملاحظة", "بواسطة"].join(","),
+      ...rows.map(t => [calDay(t.createdAt), hm(t.createdAt), (byId.get(t.customerId) || {}).name || "", op(t), t.amount, t.note || "", t.by || ""]
         .map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))].join("\n");
     return { name: `حركات-${slug}-${tag}.csv`, data: csv, type: "text/csv" };
   }
@@ -87,12 +90,12 @@ tr{break-inside:avoid}
 <div class="sum"><span>صافي الديون</span><b class="${debt - pay > 0 ? "debt" : "paid"}">${debt - pay > 0 ? "زادت " : debt - pay < 0 ? "نقصت " : ""}${fmt(Math.abs(debt - pay))}</b></div>
 <div class="sum"><span>الموردين</span><small>مشتريات: <b>${fmt(buy)}</b></small><small>دفعات: <b>${fmt(paySup)}</b></small></div>
 </div>
-${rows.length ? `<table><thead><tr><th>ت</th><th>الوقت</th><th>الحساب</th><th>العملية</th><th>المبلغ (د.ع)</th><th>ملاحظة</th><th>بواسطة</th></tr></thead><tbody>
-${rows.map((t, i) => `<tr><td class="n">${i + 1}</td><td class="t">${esc(hm(t.createdAt))}</td><td>${esc((byId.get(t.customerId) || {}).name || "حساب محذوف")}</td>
+${rows.length ? `<table><thead><tr><th>ت</th><th>التاريخ</th><th>الوقت</th><th>الحساب</th><th>العملية</th><th>المبلغ (د.ع)</th><th>ملاحظة</th><th>بواسطة</th></tr></thead><tbody>
+${rows.map((t, i) => `<tr><td class="n">${i + 1}</td><td class="t">${calDay(t.createdAt)}</td><td class="t">${esc(hm(t.createdAt))}</td><td>${esc((byId.get(t.customerId) || {}).name || "حساب محذوف")}</td>
 <td class="o ${t.type === "debt" ? "debt" : "paid"}">${op(t)}</td><td class="a ${t.type === "debt" ? "debt" : "paid"}">${fmt(t.amount)}</td><td>${esc(t.note || "")}${t.source === "photo" ? " 📷" : ""}</td><td class="t">${esc(t.by || "")}</td></tr>`).join("\n")}
 </tbody></table>` : `<p class="sub">ما انسجلت حركات جديدة.</p>`}
-${changes.length ? `<h2>التعديلات والحذف</h2><table><thead><tr><th>الوقت</th><th>شنو صار</th><th>بواسطة</th></tr></thead><tbody>
-${changes.map(a => `<tr><td class="t">${esc(hm(a.at))}</td><td>${a.kind === "delete" ? "حذف" : "تعديل"} ${a.what === "debt" ? (a.sup ? "فاتورة" : "دين") : (a.sup ? "دفعة" : "تسديد")}${a.amount ? " " + fmt(a.amount) : ""} · ${esc(a.customerName || "")}${a.detail ? " (" + esc(a.detail) + ")" : ""}</td><td class="t">${esc(a.by || "")}</td></tr>`).join("\n")}
+${changes.length ? `<h2>التعديلات والحذف</h2><table><thead><tr><th>التاريخ والوقت</th><th>شنو صار</th><th>بواسطة</th></tr></thead><tbody>
+${changes.map(a => `<tr><td class="t">${calDay(a.at)} ${esc(hm(a.at))}</td><td>${a.kind === "delete" ? "حذف" : "تعديل"} ${a.what === "debt" ? (a.sup ? "فاتورة" : "دين") : (a.sup ? "دفعة" : "تسديد")}${a.amount ? " " + fmt(a.amount) : ""} · ${esc(a.customerName || "")}${a.detail ? " (" + esc(a.detail) + ")" : ""}</td><td class="t">${esc(a.by || "")}</td></tr>`).join("\n")}
 </tbody></table>` : ""}
 </body></html>`;
 
