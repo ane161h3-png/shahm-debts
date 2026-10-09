@@ -203,6 +203,8 @@ tr.edge td{background:var(--paper-2);color:var(--muted);font-size:13px}
 .detail-head .who{flex:1;min-width:0}
 .detail-head h2{margin:0;font-family:var(--f-display);font-size:22px;line-height:1.3;overflow-wrap:anywhere}
 .detail-head .phone{color:var(--muted);font-size:13.5px}
+.head-tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+@media (max-width:760px){.head-tools{flex-basis:100%}}
 .back{display:none}
 .balance-card{border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--paper-2)}
 .balance-card .lbl{font-size:13px;color:var(--muted)}
@@ -230,7 +232,6 @@ td.x{width:64px;white-space:nowrap}
 .icon-btn.del:hover{color:var(--debt);background:var(--debt-soft)}
 .icon-btn svg{width:16px;height:16px}
 @media (max-width:480px){th,td{padding:8px 6px}table{font-size:13.5px;min-width:0}td.x{width:30px}td.x .icon-btn{display:grid}td.desc{min-width:90px}}
-.tools-row{display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
 .placeholder{padding:48px 20px;text-align:center;color:var(--muted)}
 .placeholder svg{width:56px;height:56px;color:var(--line);margin-bottom:8px}
 .placeholder b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px;font-family:var(--f-display)}
@@ -967,6 +968,12 @@ function renderDetail(){
     <div class="detail-head">
       <button class="btn ghost back" type="button" data-act="back">${I.back}رجوع</button>
       <div class="who"><h2>${esc(c.name)}</h2><div class="phone">${sup?"مورد":"زبون"}${sup&&c.visit&&c.visit.length?" · يزورك: "+c.visit.slice().sort().map(i=>AR_DAYS[i]).join("، "):""} · ${c.phone?'<span class="num">'+esc(c.phone)+'</span>':"بدون رقم هاتف"}${c.note?" · "+esc(c.note):""}</div></div>
+      <div class="head-tools">
+        ${c.phone?`<a class="btn sm" href="${esc(waLink(c.phone,statementText(c)))}" target="_blank" rel="noopener">${I.wa}إرسال الكشف</a>`:""}
+        <button class="btn sm" type="button" data-act="statement">${I.copy}نسخ الكشف</button>
+        ${w?`<button class="btn sm" type="button" data-act="editcust">${I.edit}تعديل</button>
+        <button class="btn sm ghost danger-text" type="button" data-act="delcust">${I.trash}حذف الحساب</button>`:""}
+      </div>
     </div>
     <div class="balance-card ${balCls}">
       <div><div class="lbl">${balLbl}</div><div class="amt"><span class="num">${fmt(Math.abs(per.bal))}</span><small>${CUR}</small></div>
@@ -996,12 +1003,7 @@ function renderDetail(){
       </tbody></table></div>`:`<div class="empty"><b>لا توجد حركات</b>${w?"سجّل أول دين بالضغط على «دين».":""}</div>`}
       <div class="mini-sums" style="margin-top:8px"><span>${sup?"مشتريات المدة":"ديون المدة"}: <b class="num">${fmt(L.dSum)}</b></span><span>دفعات المدة: <b class="num">${fmt(L.pSum)}</b></span><span>عدد الحركات: <b class="num">${L.list.length}</b></span></div>
     </div>
-    <div class="tools-row">
-      ${c.phone?`<a class="btn" href="${esc(waLink(c.phone,statementText(c)))}" target="_blank" rel="noopener">${I.wa}إرسال الكشف واتساب</a>`:""}
-      <button class="btn" type="button" data-act="statement">${I.copy}نسخ الكشف</button>
-      ${w?`<button class="btn" type="button" data-act="editcust">${I.edit}تعديل البيانات</button>
-      <button class="btn ghost danger-text" type="button" data-act="delcust">${I.trash}حذف الحساب</button>`:""}
-    </div></div>`;
+</div>`;
 }
 function openCustomer(id){S.hq="";S.view="customers";S.selected=id;const oc=S.customers.get(id);if(oc)S.kind=kindOf(oc);render();if(window.innerWidth<=820)window.scrollTo(0,0)}
 
