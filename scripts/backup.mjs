@@ -142,24 +142,28 @@ function stockAlerts(products, today) {
 
 const BAGHDAD = 3 * 3600e3;
 const isoDay = ms => new Date(ms + BAGHDAD).toISOString().slice(0, 10);
+// The shop's working day runs 2 AM to 2 AM Baghdad (it stays open past midnight); day reports and the day PDF use it.
+const DAY_START = 2 * 3600e3;
+const bizDay = ms => isoDay(ms - DAY_START);
+const bizDayStart = day => Date.parse(day + "T00:00:00Z") - BAGHDAD + DAY_START;
 
-// End-of-day report. The job runs at 02:00 Baghdad time, so before noon it reports the day that just ended;
-// a manual run in the afternoon reports today so far. Counts what was recorded that day (createdAt).
+// End-of-day report. The job runs at 02:00 Baghdad time, so between 2 AM and noon it reports the working day that just
+// ended (2 AM to 2 AM); any other run reports the working day so far. Counts what was recorded that day (createdAt).
 function reportDay(now) {
-  const local = new Date(now.getTime() + BAGHDAD);
-  return isoDay(now.getTime() - (local.getUTCHours() < 12 ? 24 * 3600e3 : 0));
+  const h = new Date(now.getTime() + BAGHDAD).getUTCHours();
+  return bizDay(now.getTime() - (h >= 2 && h < 12 ? 24 * 3600e3 : 0));
 }
 function daySummary(customers, txns, settings, now, sales = [], products = [], shifts = [], stocktakes = []) {
   const day = reportDay(now);
   const next = isoDay(Date.parse(day + "T12:00:00Z") + 24 * 3600e3);
   const byId = new Map(customers.map(c => [c.id, c]));
   const sup = id => (byId.get(id) || {}).kind === "supplier";
-  const done = txns.filter(t => t.createdAt && isoDay(Number(t.createdAt)) === day);
+  const done = txns.filter(t => t.createdAt && bizDay(Number(t.createdAt)) === day);
   const sum = (list, type, supplier) => list.filter(t => t.type === type && sup(t.customerId) === supplier)
     .reduce((a, t) => ({ n: a.n + 1, v: a.v + (Number(t.amount) || 0) }), { n: 0, v: 0 });
   const debt = sum(done, "debt", false), pay = sum(done, "pay", false);
   const buy = sum(done, "debt", true), paySup = sum(done, "pay", true);
-  const newCust = customers.filter(c => c.kind !== "supplier" && c.createdAt && isoDay(Number(c.createdAt)) === day).length;
+  const newCust = customers.filter(c => c.kind !== "supplier" && c.createdAt && bizDay(Number(c.createdAt)) === day).length;
 
   const who = new Map();
   for (const t of done) { const k = t.by || "غير معروف"; who.set(k, (who.get(k) || 0) + 1); }
@@ -172,8 +176,8 @@ function daySummary(customers, txns, settings, now, sales = [], products = [], s
     .map(c => `  • ${c.name}${c.promise.amount ? ": " + fmt(c.promise.amount) : ""}`);
 
   const shop = settings.shopName || "ماركت الشهم";
-  const lines = [`📊 ملخص يوم ${day}: ${shop}`, ""];
-  const pos = salesSummary(sales, ms => isoDay(ms) === day);
+  const lines = [`📊 ملخص يوم ${day}: ${shop}`, "من 2 الفجر لـ 2 الفجر", ""];
+  const pos = salesSummary(sales, ms => bizDay(ms) === day);
   if (pos.n) {
     lines.push(salesLine(pos));
     if (profitLine(pos)) lines.push(profitLine(pos));
@@ -183,13 +187,13 @@ function daySummary(customers, txns, settings, now, sales = [], products = [], s
     lines.push("");
   }
   // Shifts closed that day (cashier Z reports): how the drawer counted against what it should hold.
-  const closed = shifts.filter(x => x.status === "closed" && x.closedAt && isoDay(Number(x.closedAt)) === day).sort((a, b) => a.closedAt - b.closedAt);
+  const closed = shifts.filter(x => x.status === "closed" && x.closedAt && bizDay(Number(x.closedAt)) === day).sort((a, b) => a.closedAt - b.closedAt);
   if (closed.length) {
     const dt = d => d === 0 ? "مضبوط ✅" : d > 0 ? `زايد ${fmt(d)}` : `ناقص ${fmt(-d)} ⚠️`;
     lines.push("🔒 الورديات:", ...closed.map(x => `  • ${x.openedBy || "؟"} ${hm(Number(x.openedAt))} إلى ${hm(Number(x.closedAt))}: مبيعات ${fmt((x.z && x.z.total) || 0)}، الدرج ${dt(Number(x.diff) || 0)}${x.noSale ? `، فتح الدرج بدون بيع ${x.noSale} مرة` : ""}`), "");
   }
   // Stocktakes saved that day: how many items were counted and what was missing, at purchase price.
-  const takes = stocktakes.filter(x => x.at && isoDay(Number(x.at)) === day);
+  const takes = stocktakes.filter(x => x.at && bizDay(Number(x.at)) === day);
   if (takes.length) lines.push("📋 الجرد:", ...takes.map(x => `  • ${x.by || "؟"}: ${x.n || 0} مادة، ناقص ${x.short || 0}${x.shortValue ? ` (${fmt(x.shortValue)} د.ع)` : ""}، زايد ${x.extra || 0}`), "");
   if (!done.length && !newCust) lines.push("ما انسجلت أي حركة ديون بهذا اليوم.");
   else {
@@ -322,7 +326,7 @@ async function periodic(token) {
   const now = new Date();
   const manual = process.env.MANUAL === "true";
   const end = manual ? now.getTime() : Math.floor(now.getTime() / 7200e3) * 7200e3;
-  const dayStart = Date.parse(isoDay(end - 1) + "T00:00:00Z") - BAGHDAD;
+  const dayStart = bizDayStart(bizDay(end - 1));
   const from = Math.min(end - 7200e3, dayStart);
   const [customers, txns, settings, activity, sales] = await Promise.all([
     readAll(token, "customers"), readAll(token, "txns"), readDoc(token, "settings/main"),
@@ -333,10 +337,10 @@ async function periodic(token) {
   // Quiet slots (usually at night) get a silent one-line message.
   await tg("sendMessage", { chat_id: chat, text: rep.text, ...(rep.changed ? {} : { disable_notification: true }) });
   if (rep.changed) {
-    // The PDF grows through the day: every transaction since Baghdad midnight, up to the end of this slot.
-    const file = await windowPdf({ start: dayStart, end: rep.end, customers, txns, activity, settings, fmt, isoDay, hm,
+    // The PDF grows through the working day: every transaction since 2 AM Baghdad, up to the end of this slot.
+    const file = await windowPdf({ start: dayStart, end: rep.end, customers, txns, activity, settings, fmt, isoDay: bizDay, hm,
       subText: "كل حركات اليوم لحد هسه", timeText: `لحد ${hm(rep.end)}` });
-    if (file) await sendFile(file.name, file.data, file.type, `📄 كل حركات اليوم ${isoDay(rep.end - 1)} لحد ${hm(rep.end)}`);
+    if (file) await sendFile(file.name, file.data, file.type, `📄 كل حركات اليوم ${bizDay(rep.end - 1)} لحد ${hm(rep.end)}`);
   }
   console.log(`Sent 2-hour report (${rep.changed ? "with" : "no"} changes): read ${customers.length} customers, ${txns.length} transactions, ${activity.length} activity, ${sales.length} sales.`);
 }
@@ -350,7 +354,8 @@ async function main() {
     readOptional(token, "sales"), readOptional(token, "products"), readOptional(token, "shifts"), readOptional(token, "stocktakes"),
   ]);
   const now = new Date();
-  const day = isoDay(now.getTime());
+  // Files are named after the working day they close (the 2 AM run closes yesterday's day).
+  const day = reportDay(now);
   const shop = settings.shopName || "ماركت الشهم";
   const slug = shop.replace(/\s+/g, "-");
   const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: "daily-telegram", settings, customers, txns, accounts: [], activity, products, sales, shifts, stocktakes };
@@ -375,11 +380,11 @@ async function main() {
   console.log("Sent end-of-day summary.");
 
   // Every transaction of the reported day in one PDF (CSV if no browser is available to print it).
-  const rDay = reportDay(now);
-  const file = await dayPdf({ day: rDay, customers, txns, activity, settings, fmt, isoDay, hm });
+  const rDay = day;
+  const file = await dayPdf({ day: rDay, customers, txns, activity, settings, fmt, isoDay: bizDay, hm });
   if (file) { await sendFile(file.name, file.data, file.type, `📄 كل حركات يوم ${rDay}`); console.log("Sent day file:", file.type); }
 
-  const sh = debtSheets(customers, txns, day);
+  const sh = debtSheets(customers, txns, isoDay(now.getTime()));
   await sendFile(`ديون-الزبائن-${day}.xlsx`, xlsx(sh.all), XLSX_TYPE, `📗 ${day} - ديون الزبائن (${sh.owing} زبون)`);
   await sendFile(`لم-يسددوا-منذ-شهر-${day}.xlsx`, xlsx(sh.late), XLSX_TYPE, `📕 ${day} - الزبائن اللي ما سددوا من شهر: ${sh.lateCount} زبون، ${fmt(sh.lateTotal)} د.ع`);
   console.log(`Sent spreadsheets: ${sh.owing} owing, ${sh.lateCount} late.`);

@@ -1,4 +1,4 @@
-// Transactions file for Telegram as a branded PDF: every transaction recorded on one Baghdad day
+// Transactions file for Telegram as a branded PDF: every transaction recorded on one working day (2 AM to 2 AM Baghdad)
 // (end-of-day file), or in one time window (the 2-hour report sends the day so far).
 // The page is plain HTML printed by headless Chrome (preinstalled on GitHub's Ubuntu runners), so Arabic
 // shapes correctly with the app's own fonts. If no browser is found, a CSV (opens in Excel) is sent instead.
@@ -17,7 +17,7 @@ function findChrome() {
 }
 
 export const dayPdf = ({ day, isoDay, ...o }) =>
-  txnsPdf({ ...o, inRange: ms => isoDay(ms) === day, tag: day, dateText: day, subText: "كل حركات اليوم" });
+  txnsPdf({ ...o, inRange: ms => isoDay(ms) === day, tag: day, dateText: day, subText: "كل حركات اليوم (من 2 الفجر لـ 2 الفجر)" });
 
 // Same file for a time window [start, end), e.g. the day so far (2-hour report).
 export const windowPdf = ({ start, end, isoDay, hm, timeText, subText, ...o }) =>

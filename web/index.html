@@ -1117,6 +1117,10 @@ const dmy=iso=>{const [y,m,d]=iso.split("-");return `${d}/${m}/${y}`};
 const wday=iso=>AR_DAYS[new Date(iso+"T12:00:00").getDay()];
 const hm12=ms=>{const d=new Date(ms);let hr=d.getHours();const ap=hr<12?"ص":"م";hr=hr%12||12;return String(hr).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+" "+ap};
 const msISO=ms=>{const d=new Date(ms);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+// The shop's working day runs 2 AM to 2 AM (it stays open past midnight): daily backup and its report use this day.
+const DAY_START_H=2;
+const shopDay=(ms=Date.now())=>msISO(ms-DAY_START_H*36e5);
+const shopDayRange=day=>{const [y,m,d]=day.split("-").map(Number);const start=new Date(y,m-1,d,DAY_START_H).getTime();return {start,end:new Date(y,m-1,d+1,DAY_START_H).getTime()}};
 const stamp=ms=>(msISO(ms)===todayISO()?"اليوم ":shortDate(msISO(ms))+" ")+hm12(ms);
 // وقت الحركة: الساعة إذا انسجلت بنفس يومها، وإلا متى انسجلت فعلاً، ووقت آخر تعديل
 const txnTime=t=>(t.createdAt?(msISO(t.createdAt)===t.date?hm12(t.createdAt):"سُجّلت "+stamp(t.createdAt)):"")+(t.updatedAt?(t.createdAt?" · ":"")+"عُدّلت "+stamp(t.updatedAt)+(t.updatedBy&&t.updatedBy!==t.by?" ("+t.updatedBy+")":""):"");
@@ -1264,20 +1268,22 @@ function listPdf(kind,opt){
 // Full report of one day for the daily backup: the day's numbers, every movement with its time, and every balance still open.
 function dayPdf(day,opt){
   const per=stats(),nm=id=>{const c=S.customers.get(id);return c?c.name:"؟"};
-  const all=[...S.txns.values()].filter(t=>t.date===day&&S.customers.get(t.customerId)).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+  // Movements recorded from 2 AM that day to 2 AM the next; old entries without a record time go by their date.
+  const {start,end}=shopDayRange(day),inDay=ms=>ms>=start&&ms<end;
+  const all=[...S.txns.values()].filter(t=>(t.createdAt?inDay(t.createdAt):t.date===day)&&S.customers.get(t.customerId)).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
   const cust=all.filter(t=>!isSup(S.customers.get(t.customerId))),sup=all.filter(t=>isSup(S.customers.get(t.customerId)));
   const sum=(arr,type)=>arr.filter(t=>t.type===type).reduce((a,t)=>a+t.amount,0);
   const dAdd=sum(cust,"debt"),dPay=sum(cust,"pay");
   // Balance right after each movement, from the customer's own ledger order.
   const after=new Map();for(const id of new Set(all.map(t=>t.customerId))){let run=0;for(const t of txnsOf(id)){run+=t.type==="debt"?t.amount:-t.amount;after.set(t.id,run)}}
-  const newCust=[...S.customers.values()].filter(c=>!isSup(c)&&c.createdAt&&msISO(c.createdAt)===day).length;
+  const newCust=[...S.customers.values()].filter(c=>!isSup(c)&&c.createdAt&&inDay(c.createdAt)).length;
   const open=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,p:per.get(c.id)})).filter(x=>x.p&&x.p.bal!==0).sort((a,b)=>b.p.bal-a.p.bal);
   let owed=0;for(const x of open)if(x.p.bal>0)owed+=x.p.bal;
   const opRow=(t,i,s)=>({cells:[t.createdAt?hm12(t.createdAt):"",nm(t.customerId),s?(t.type==="debt"?"فاتورة":"دفعة للمورد"):(t.type==="debt"?"دين":"تسديد"),fmt(t.amount),fmt(after.get(t.id)||0),t.by||""],
     colors:[null,null,t.type==="debt"?PDFC.debt:PDFC.paid,t.type==="debt"?PDFC.debt:PDFC.paid,null,null],shade:i%2===1});
   const opCols=[{label:"الوقت",w:.14,num:true},{label:"الاسم",w:.28},{label:"الحركة",w:.13},{label:"المبلغ",w:.15,num:true},{label:"الرصيد بعدها",w:.16,num:true},{label:"بواسطة",w:.14}];
   return buildPdf({shop:shopName(),title:"التقرير اليومي: "+dayName(day),
-    info:[["ديون اليوم",{text:`${fmt(dAdd)} ${CUR} (${cust.filter(t=>t.type==="debt").length} حركة)`,color:PDFC.debt}],["تسديد اليوم",{text:`${fmt(dPay)} ${CUR} (${cust.filter(t=>t.type==="pay").length} حركة)`,color:PDFC.paid}],
+    info:[["الفترة",{text:`${shortDate(day)} ${hm12(start)} إلى ${shortDate(msISO(end))} ${hm12(end)}`}],["ديون اليوم",{text:`${fmt(dAdd)} ${CUR} (${cust.filter(t=>t.type==="debt").length} حركة)`,color:PDFC.debt}],["تسديد اليوم",{text:`${fmt(dPay)} ${CUR} (${cust.filter(t=>t.type==="pay").length} حركة)`,color:PDFC.paid}],
       ["صافي اليوم",{text:(dAdd-dPay>0?"+":"")+fmt(dAdd-dPay)+" "+CUR}],...(newCust?[["زبائن جدد",{text:String(newCust)}]]:[]),
       ...(sup.length?[["الموردين اليوم",{text:`فواتير ${fmt(sum(sup,"debt"))} · دفعات ${fmt(sum(sup,"pay"))} ${CUR}`}]]:[]),
       ["مجموع الديون الكلي",{text:fmt(owed)+" "+CUR,color:PDFC.debt}],["عدد المدينين",{text:String(open.filter(x=>x.p.bal>0).length)}]],
@@ -1447,7 +1453,7 @@ function setPage(k){
     return `<h2>النسخ الاحتياطي والاستعادة</h2>
     <div class="banner info">بياناتك محفوظة على السحابة (Firebase)، فإذا حذفت البرنامج أو بدّلت الموبايل ثبّته من جديد وسجّل دخول وكل شي يرجع. ملف النسخة الاحتياطية للأمان الإضافي: إذا انحذف شي بالغلط تقدر ترجّعه منه.</div>
     <div class="tpl"><h3>${I.save}نسخة اليوم (النسخة + تقرير اليوم PDF)</h3>
-      <span class="ro-note">تحفظ ملفين سوا: النسخة الاحتياطية، وتقرير شامل لليوم (حركات اليوم بأوقاتها، والمجاميع، وكل زبون وشكد عليه).</span>
+      <span class="ro-note">تحفظ ملفين سوا: النسخة الاحتياطية، وتقرير شامل لليوم (حركات اليوم بأوقاتها، والمجاميع، وكل زبون وشكد عليه). اليوم يحسب من 2 الفجر لـ 2 الفجر، فإذا حفظت بعد نص الليل يبقى نفس يوم الشغل.</span>
       ${FOLDER_OK?`<span class="ro-note">يسألك وين تحفظ: اختار مجلد اليوم بالفلاش، والملفين ينحفظون بيه مباشرة بدون ما يسوي أي مجلد.</span>`:""}
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button></div></div>
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
@@ -1985,10 +1991,10 @@ async function changePassword(){
 }
 
 /* ---------- backup ---------- */
-async function backupJson(){
+async function backupJson(day=todayISO()){
   let activity=S.activity;try{const all=await db.collection("activity").get();activity=all.docs.map(d=>d.data())}catch(e){}
   const data=JSON.stringify({app:"shahm-debts",version:3,exportedAt:new Date().toISOString(),settings:S.settings,customers:[...S.customers.values()],txns:[...S.txns.values()],accounts:[],activity},null,1);
-  return {name:"نسخة-ديون-"+shopName().replace(/\s+/g,"-")+"-"+todayISO()+".json",data};
+  return {name:"نسخة-ديون-"+shopName().replace(/\s+/g,"-")+"-"+day+".json",data};
 }
 const backupDone=detail=>{saveSettings({lastBackupAt:Date.now()});log("add","import",{detail})};
 // Small key/value store in this browser's IndexedDB: keeps the chosen backup folder (a folder handle can't go in localStorage).
@@ -2004,7 +2010,7 @@ const FOLDER_OK=!NATIVE&&typeof window.showDirectoryPicker==="function";
 // The shop keeps its own year/month/day folders on the flash drive, so the app never makes folders:
 // it asks which folder (opening where it saved last time) and writes the two files straight into it.
 async function dailyBackup(){
-  const day=todayISO();let dir=null;
+  const day=shopDay();let dir=null;
   if(FOLDER_OK){
     try{
       const prev=await kv.get("backupDir");
@@ -2014,7 +2020,7 @@ async function dailyBackup(){
     }catch(e){if(e&&e.name==="AbortError")return;console.warn(e);dir=null}
   }
   toast("جارِ تجهيز النسخة والتقرير اليومي…");
-  const bk=await backupJson();
+  const bk=await backupJson(day);
   const pdf=await dayPdf(day,{blob:true});
   if(!pdf)return;
   if(dir){
