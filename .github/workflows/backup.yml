@@ -1,5 +1,5 @@
 # Telegram reports for the debt book:
-# - every 2 hours (7 minutes past even UTC hours, started by the Cloudflare worker's cron because GitHub kept skipping its own schedule): what happened in the last 2 hours, what is still pending, plus, if anything changed, a backup and a PDF of all of the day's transactions so far.
+# - every 2 hours (7 minutes past even UTC hours, started by the Cloudflare worker's cron because GitHub kept skipping its own schedule): what happened in the last 2 hours, what is still pending, plus, if anything changed, a PDF of all of the day's transactions so far. It reads only today's data (the free Firestore plan allows 50,000 reads a day); the full backup file comes with the daily run.
 # - every day at 2am Baghdad time (23:00 UTC): full backup, end-of-day summary, a PDF with all of the previous day's transactions, and Excel lists of who owes.
 # Secrets (Settings > Secrets and variables > Actions): BACKUP_PASSWORD, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
 name: Daily backup

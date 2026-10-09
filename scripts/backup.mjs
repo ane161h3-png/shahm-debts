@@ -1,7 +1,7 @@
 // Telegram reports: signs in to Firebase as the read-only `backup` account, reads every collection the app
 // uses, and sends backups in the same format as the app's «حفظ نسخة» (so «استعادة» accepts them).
-//   MODE=periodic (every 2 hours): what changed in the last two hours, what is still pending, a backup, and a PDF of all
-//   of today's transactions so far.
+//   MODE=periodic (every 2 hours): what changed in the last two hours, what is still pending, and a PDF of all of today's
+//   transactions so far. It reads little on purpose (see periodic()); the backup file comes with the daily run.
 //   MODE=daily (02:00 Baghdad): backup, end-of-day summary, a PDF with every transaction of the day, and Excel files of
 //   who owes and who has not paid for a month.
 // Runs from .github/workflows/backup.yml. Needs env: BACKUP_PASSWORD, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
@@ -78,6 +78,19 @@ async function readDoc(token, path) {
   const j = await r.json();
   if (!r.ok) throw new Error(`Reading ${path} failed: ${j.error && j.error.message}`);
   return fields(j.fields || {});
+}
+
+// Only the documents whose numeric `field` is at or after `from`. The 2-hour report uses this for activity and sales:
+// Firestore's free plan allows 50,000 reads a day and every document read counts, so it must not re-read the whole history each time.
+async function readSince(token, coll, field, from) {
+  const r = await fetch(`${DB_URL}/v1/projects/${cfg.projectId}/databases/(default)/documents:runQuery`, {
+    method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: coll }], where: { fieldFilter: { field: { fieldPath: field }, op: "GREATER_THAN_OR_EQUAL", value: { integerValue: String(Math.floor(from)) } } } } }),
+  });
+  const j = await r.json();
+  if (r.status === 403) throw new Error(`Reading ${coll} was refused (rules).`);
+  if (!r.ok) throw new Error(`Reading ${coll} failed: ${(Array.isArray(j) ? j[0] : j).error?.message}`);
+  return j.filter(x => x.document).map(x => ({ id: x.document.name.split("/").pop(), ...fields(x.document.fields || {}) }));
 }
 
 // The cashier's collections are newer than the backup account's rules may be: until firestore.rules is published
@@ -301,9 +314,36 @@ async function sendFile(name, data, type, caption, quiet) {
   await tg("sendDocument", form);
 }
 
+// The 2-hour report reads only what it shows: every customer and transaction (for balances) plus the activity and sales of
+// today. The full backup file (which needs every collection) comes with the daily run, so a day of reports stays far
+// below the free read quota.
+async function periodic(token) {
+  const now = new Date();
+  const manual = process.env.MANUAL === "true";
+  const end = manual ? now.getTime() : Math.floor(now.getTime() / 7200e3) * 7200e3;
+  const dayStart = Date.parse(isoDay(end - 1) + "T00:00:00Z") - BAGHDAD;
+  const from = Math.min(end - 7200e3, dayStart);
+  const [customers, txns, settings, activity, sales] = await Promise.all([
+    readAll(token, "customers"), readAll(token, "txns"), readDoc(token, "settings/main"),
+    readSince(token, "activity", "at", from), readSince(token, "sales", "at", from).catch(e => { console.warn(`Skipping sales: ${e.message}`); return []; }),
+  ]);
+  const chat = env("TELEGRAM_CHAT_ID");
+  const rep = periodicReport(customers, txns, activity, settings, now, manual, sales);
+  // Quiet slots (usually at night) get a silent one-line message.
+  await tg("sendMessage", { chat_id: chat, text: rep.text, ...(rep.changed ? {} : { disable_notification: true }) });
+  if (rep.changed) {
+    // The PDF grows through the day: every transaction since Baghdad midnight, up to the end of this slot.
+    const file = await windowPdf({ start: dayStart, end: rep.end, customers, txns, activity, settings, fmt, isoDay, hm,
+      subText: "كل حركات اليوم لحد هسه", timeText: `لحد ${hm(rep.end)}` });
+    if (file) await sendFile(file.name, file.data, file.type, `📄 كل حركات اليوم ${isoDay(rep.end - 1)} لحد ${hm(rep.end)}`);
+  }
+  console.log(`Sent 2-hour report (${rep.changed ? "with" : "no"} changes): read ${customers.length} customers, ${txns.length} transactions, ${activity.length} activity, ${sales.length} sales.`);
+}
+
 async function main() {
   const mode = (process.env.MODE || "daily").trim();
   const token = await signIn();
+  if (mode === "periodic") return periodic(token);
   const [customers, txns, activity, settings, sales, products, shifts, stocktakes] = await Promise.all([
     readAll(token, "customers"), readAll(token, "txns"), readAll(token, "activity"), readDoc(token, "settings/main"),
     readOptional(token, "sales"), readOptional(token, "products"), readOptional(token, "shifts"), readOptional(token, "stocktakes"),
@@ -312,25 +352,9 @@ async function main() {
   const day = isoDay(now.getTime());
   const shop = settings.shopName || "ماركت الشهم";
   const slug = shop.replace(/\s+/g, "-");
-  const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: mode === "periodic" ? "telegram-2h" : "daily-telegram", settings, customers, txns, accounts: [], activity, products, sales, shifts, stocktakes };
+  const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: "daily-telegram", settings, customers, txns, accounts: [], activity, products, sales, shifts, stocktakes };
   const backupJson = JSON.stringify(backup);
   const chat = env("TELEGRAM_CHAT_ID");
-
-  if (mode === "periodic") {
-    const rep = periodicReport(customers, txns, activity, settings, now, process.env.MANUAL === "true", sales);
-    // Quiet slots (usually at night) get a silent one-line message; the last backup is still current.
-    await tg("sendMessage", { chat_id: chat, text: rep.text, ...(rep.changed ? {} : { disable_notification: true }) });
-    if (rep.changed) {
-      await sendFile(`نسخة-${slug}-${rep.stamp}.json`, backupJson, "application/json", "💾 نسخة احتياطية بعد آخر تحديث");
-      // The PDF grows through the day: every transaction since Baghdad midnight, up to the end of this slot.
-      const dayStart = Date.parse(isoDay(rep.end - 1) + "T00:00:00Z") - BAGHDAD;
-      const file = await windowPdf({ start: dayStart, end: rep.end, customers, txns, activity, settings, fmt, isoDay, hm,
-        subText: "كل حركات اليوم لحد هسه", timeText: `لحد ${hm(rep.end)}` });
-      if (file) await sendFile(file.name, file.data, file.type, `📄 كل حركات اليوم ${isoDay(rep.end - 1)} لحد ${hm(rep.end)}`);
-    }
-    console.log(`Sent 2-hour report (${rep.changed ? "with" : "no"} changes).`);
-    return;
-  }
 
   const bal = new Map();
   for (const t of txns) bal.set(t.customerId, (bal.get(t.customerId) || 0) + (t.type === "debt" ? t.amount : -t.amount));
