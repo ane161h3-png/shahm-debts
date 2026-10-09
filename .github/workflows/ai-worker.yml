@@ -1,6 +1,7 @@
 # Deploys worker/ (reads ledger photos with AI) to Cloudflare Workers.
 # Secrets: CLOUDFLARE_API_TOKEN, and GEMINI_API_KEY (free) or ANTHROPIC_API_KEY (Claude; wins if set).
 # Optional DISPATCH_TOKEN: a GitHub token with Actions read/write on this repo, so the worker's cron can start the 2-hour Telegram report.
+# Optional WA_TOKEN + WA_PHONE_ID: Meta WhatsApp Cloud API, for automatic customer messages (README.md, "واتساب التلقائي").
 name: AI worker
 on:
   push:
@@ -20,6 +21,8 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+      WA_TOKEN: ${{ secrets.WA_TOKEN }}
+      WA_PHONE_ID: ${{ secrets.WA_PHONE_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -47,3 +50,9 @@ jobs:
         run: |
           if [ -n "$DISPATCH_TOKEN" ]; then printf '%s' "$DISPATCH_TOKEN" | tr -d '[:space:]' | npx wrangler secret put GH_DISPATCH_TOKEN
           else echo "::warning::DISPATCH_TOKEN is not set, so the 2-hour Telegram report will not start."; fi
+      - name: Store the WhatsApp keys for automatic messages
+        run: |
+          if [ -n "$WA_TOKEN" ] && [ -n "$WA_PHONE_ID" ]; then
+            printf '%s' "$WA_TOKEN" | tr -d '[:space:]"'"'"'' | npx wrangler secret put WA_TOKEN
+            printf '%s' "$WA_PHONE_ID" | tr -dc '0-9' | npx wrangler secret put WA_PHONE_ID
+          else echo "::warning::WA_TOKEN / WA_PHONE_ID are not set, so automatic WhatsApp messages stay off (the app falls back to opening WhatsApp)."; fi
