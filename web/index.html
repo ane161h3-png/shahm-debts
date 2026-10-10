@@ -445,9 +445,18 @@ const cats=()=>Array.isArray(S.settings.categories)&&S.settings.categories.lengt
 const DEFAULT_TPL={
   debt:"مرحباً {الاسم}،\nتم تسجيل دين جديد بمبلغ {المبلغ} د.ع ({البيان}) بتاريخ {التاريخ}.\nالرصيد المتبقي عليك: {الرصيد} د.ع.\n{المتجر}",
   pay:"مرحباً {الاسم}،\nاستلمنا منك {المبلغ} د.ع بتاريخ {التاريخ}. شكراً لك.\nالرصيد المتبقي: {الرصيد} د.ع.\n{المتجر}",
-  remind:"مرحباً {الاسم}،\nنذكّرك بأن الرصيد المتبقي عليك هو {الرصيد} د.ع.\nنتشرف بزيارتك.\n{المتجر}",
+  remind:"السلام عليكم ورحمة الله وبركاته\n{الاسم}، تحية طيبة.\nنود تذكيركم بلطف بأن الرصيد المتبقي على حسابكم هو {الرصيد} د.ع.\nنتشرف بزيارتكم في أي وقت، وشكراً لثقتكم بنا.\n{المتجر}",
+  monthend:"السلام عليكم ورحمة الله وبركاته\n{الاسم}، تحية طيبة.\nأولاً: نود تذكيركم بأن المبلغ المطلوب على حسابكم هو {الرصيد} د.ع، ونرجو تسديده قبل نهاية الشهر ({نهاية الشهر}).\nثانياً: نعتذر عن إعطاء دين جديد في حال لم يتم تصفير الحساب.\nشاكرين تعاونكم وثقتكم بنا.\n{المتجر}",
   promise:"مرحباً {الاسم}،\nنذكّرك بموعد الدفع اللي اتفقنا عليه ({الموعد}){مبلغ الوعد}.\nالرصيد المتبقي عليك: {الرصيد} د.ع.\nشكراً لك.\n{المتجر}"
 };
+// Saved templates that still hold an old default follow the new default.
+const OLD_TPL={remind:"مرحباً {الاسم}،\nنذكّرك بأن الرصيد المتبقي عليك هو {الرصيد} د.ع.\nنتشرف بزيارتك.\n{المتجر}"};
+const tplText=k=>{const t=S.settings.templates&&S.settings.templates[k];return t&&t!==OLD_TPL[k]?t:DEFAULT_TPL[k]};
+// Month-end reminder: the last MONTH_END_DAYS days of the month ask to send everyone in debt the «monthend» template.
+const MONTH_END_DAYS=5;
+const monthEndISO=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(new Date(d.getFullYear(),d.getMonth()+1,0).getDate()).padStart(2,"0")};
+const monthEndLeft=()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,0).getDate()-d.getDate()}; // 0 on the last day
+const monthEndStart=()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,1-MONTH_END_DAYS).getTime()};
 const S={customers:new Map(),txns:new Map(),accounts:new Map(),activity:[],settings:{},
   me:null,isOwner:false,view:"home",kind:"customer",period:"all",remTab:"send",remFilter:"all",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,ready:{c:false,t:false,a:false,s:false}};
 let db=null,auth=null,unsubs=[],dataOn=false,flash=null,REG=null,installEvt=null;
@@ -550,10 +559,10 @@ function autoWaToast(c,link,res){
   else toast("ما انرسلت رسالة واتساب: "+res.error,link?{href:link,label:"إرسال يدوي",ms:12000}:{ms:9000});
 }
 function fillTpl(kind,c,extra){
-  const tpl=(S.settings.templates&&S.settings.templates[kind])||DEFAULT_TPL[kind];
+  const tpl=tplText(kind);
   const bal=balanceOf(c.id);
   const pr=c.promise||{};
-  const map={"الموعد":pr.date?dayName(pr.date):"","مبلغ الوعد":pr.amount?` بمبلغ ${fmt(pr.amount)} د.ع`:"","الاسم":c.name,"المبلغ":fmt(extra&&extra.amount),"الرصيد":fmt(bal),"التاريخ":((extra&&extra.date)||todayISO())+(extra&&extra.time?" الساعة "+extra.time:""),"الوقت":(extra&&extra.time)||hm12(Date.now()),"البيان":(extra&&extra.note)||(kind==="debt"?"مشتريات":"دفعة"),"المتجر":shopName()};
+  const map={"نهاية الشهر":dayName(monthEndISO()),"الموعد":pr.date?dayName(pr.date):"","مبلغ الوعد":pr.amount?` بمبلغ ${fmt(pr.amount)} د.ع`:"","الاسم":c.name,"المبلغ":fmt(extra&&extra.amount),"الرصيد":fmt(bal),"التاريخ":((extra&&extra.date)||todayISO())+(extra&&extra.time?" الساعة "+extra.time:""),"الوقت":(extra&&extra.time)||hm12(Date.now()),"البيان":(extra&&extra.note)||(kind==="debt"?"مشتريات":"دفعة"),"المتجر":shopName()};
   return tpl.replace(/\{([^}]+)\}/g,(m,k)=>k in map?map[k]:m);
 }
 const I={
@@ -913,6 +922,8 @@ function homeView(){
         ${(()=>{const due=[...S.customers.values()].filter(c=>!isSup(c)&&c.promise&&promiseLeft(c)<=0&&balanceOf(c.id)>0);if(!due.length)return "";
           const today=due.filter(c=>promiseLeft(c)===0).length,past=due.length-today;
           return `<div class="banner info" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>🤝 وعود دفع: ${today?`<b class="num">${today}</b> موعدهم اليوم`:""}${today&&past?" و ":""}${past?`<b class="num">${past}</b> فات موعدهم`:""}</span><button class="btn sm" type="button" data-go="reminders" data-remf="promise">${I.bell}عرضهم</button></div>`})()}
+        ${(()=>{if(monthEndLeft()>=MONTH_END_DAYS)return "";const n=[...S.customers.values()].filter(c=>!isSup(c)&&balanceOf(c.id)>0).length;if(!n)return "";const left=monthEndLeft();
+          return `<div class="banner info" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>📅 ${left?`باقي <b class="num">${left+1}</b> أيام على نهاية الشهر`:"اليوم آخر يوم بالشهر"}: ذكّر المدينين (<b class="num">${n}</b>) بتسديد حساباتهم.</span><button class="btn sm" type="button" data-go="reminders" data-remf="month">${I.bell}إرسال التذكير</button></div>`})()}
         ${(()=>{const n=[...lateInfo().values()].filter(x=>x.late).length;return n?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${n}</b> زبون ما دافع من أكثر من ${LATE_DAYS} يوم.</span><button class="btn sm" type="button" data-go="reminders" data-remf="late">${I.bell}عرضهم</button></div>`:""})()}
         ${(()=>{const {due,visits}=supplierAlerts();let h="";
           if(visits.length)h+=`<div class="banner info"><b>اليوم يزورك:</b> ${visits.map(v=>`<button class="linkish" type="button" data-open="${esc(v.c.id)}">${esc(v.c.name)}</button>${v.bal>0?` (علينا له ${shown("sup",`<span class="num">${fmt(v.bal)}</span>`)})`:""}`).join("، ")}</div>`;
@@ -1067,7 +1078,8 @@ function remindersView(){
   const LI=lateInfo();const lateN=[...LI.values()].filter(x=>x.late).length;
   const promN=[...S.customers.values()].filter(c=>!isSup(c)&&c.promise&&per.get(c.id).bal>0).length;
   if(S.remFilter==="late"&&!lateN)S.remFilter="all";
-  const PR=S.remFilter==="promise";
+  const PR=S.remFilter==="promise",ME=S.remFilter==="month";
+  const meFrom=monthEndStart();
   const list=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal,li:LI.get(c.id)}))
     .filter(x=>x.b>0&&(S.remFilter!=="late"||(x.li&&x.li.late))&&(!PR||x.c.promise))
     .sort(PR?(a,b)=>a.c.promise.date<b.c.promise.date?-1:1:S.remFilter==="late"?(a,b)=>b.li.days-a.li.days:(a,b)=>b.b-a.b);
@@ -1075,9 +1087,10 @@ function remindersView(){
   return `<section class="pane card-pad">
     <div class="seg kind-seg" role="group" aria-label="التذكيرات"><button type="button" data-remtab="send" aria-pressed="${S.remTab==="send"}">إرسال تذكيرات</button><button type="button" data-remtab="log" aria-pressed="${S.remTab==="log"}">سجل التذكيرات (${logs.length})</button></div>
     ${S.remTab==="send"?`<p class="ro-note" style="margin:0">اضغط «إرسال» يفتح واتساب على رقم الزبون والرسالة جاهزة فيها اسمه والمبلغ المتبقي، وأنت تضغط إرسال. نص الرسالة يتغيّر من الإعدادات ← قوالب الرسائل.</p>
-      <div class="chips" role="group" aria-label="تصفية المدينين"><button type="button" data-remf="all" aria-pressed="${S.remFilter==="all"}">كل المدينين</button><button type="button" data-remf="late" aria-pressed="${S.remFilter==="late"}">متأخرين أكثر من ${LATE_DAYS} يوم (${lateN})</button><button type="button" data-remf="promise" aria-pressed="${PR}">وعود الدفع (${promN})</button></div>
-      ${list.length?list.map(({c,b,li})=>{const l=c.phone?waLink(c.phone,fillTpl(PR?"promise":"remind",c)):"";const lr=last.get(c.id);const pl=promiseLeft(c);
-        return `<div class="rem-row"><span class="avatar">${initial(c.name)}</span><div class="meta"><b>${esc(c.name)}</b>${c.promise?`<span class="${pl<=0?"late":""}">وعد: ${esc(dayName(c.promise.date))}${c.promise.amount?" · "+fmt(c.promise.amount):""} (${promiseText(pl)})</span>`:""}${li&&!PR?`<span class="${li.late?"late":""}">${lateText(li)}</span>`:""}<span>${lr?"آخر تذكير: "+esc(timeAgo(lr)):"لم يُرسل له تذكير"}</span></div>
+      <div class="chips" role="group" aria-label="تصفية المدينين"><button type="button" data-remf="all" aria-pressed="${S.remFilter==="all"}">كل المدينين</button><button type="button" data-remf="late" aria-pressed="${S.remFilter==="late"}">متأخرين أكثر من ${LATE_DAYS} يوم (${lateN})</button><button type="button" data-remf="promise" aria-pressed="${PR}">وعود الدفع (${promN})</button><button type="button" data-remf="month" aria-pressed="${ME}">نهاية الشهر</button></div>
+      ${ME?`<p class="ro-note" style="margin:0">رسالة نهاية الشهر لكل المدينين: المبلغ المطلوب، وتنبيه إنه ما ينطى دين جديد إذا ما تصفّر الحساب. اللي دزيتله من ${dayName(new Date(meFrom).getFullYear()+"-"+String(new Date(meFrom).getMonth()+1).padStart(2,"0")+"-"+String(new Date(meFrom).getDate()).padStart(2,"0"))} يطلع عليه «✓ وصله».</p>`:""}
+      ${list.length?list.map(({c,b,li})=>{const l=c.phone?waLink(c.phone,fillTpl(PR?"promise":ME?"monthend":"remind",c)):"";const lr=last.get(c.id);const pl=promiseLeft(c);
+        return `<div class="rem-row"><span class="avatar">${initial(c.name)}</span><div class="meta"><b>${esc(c.name)}</b>${c.promise?`<span class="${pl<=0?"late":""}">وعد: ${esc(dayName(c.promise.date))}${c.promise.amount?" · "+fmt(c.promise.amount):""} (${promiseText(pl)})</span>`:""}${li&&!PR?`<span class="${li.late?"late":""}">${lateText(li)}</span>`:""}<span>${ME&&lr>=meFrom?"✓ وصله تذكير · ":""}${lr?"آخر تذكير: "+esc(timeAgo(lr)):"لم يُرسل له تذكير"}</span></div>
         <span class="chip debt"><span class="num">${fmt(b)}</span></span>
         ${l?`<a class="btn wa sm" href="${esc(l)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}">${I.wa}إرسال</a>`:(canWrite()?`<button class="btn sm" type="button" data-addphone="${esc(c.id)}">أضف رقمه</button>`:`<span class="ro-note">بدون رقم</span>`)}</div>`}).join("")
       :`<div class="empty"><b>${PR?"لا توجد وعود دفع":"لا توجد ديون"}</b>${PR?"سجّل موعد الدفع من صفحة الزبون.":"كل الزبائن مسددين."}</div>`}`
@@ -1479,9 +1492,9 @@ function setPage(k){
   }
   if(k==="templates"){
     const t=st.templates||{};
-    const ph=["الاسم","المبلغ","الرصيد","التاريخ","البيان","المتجر"];
+    const ph=["الاسم","المبلغ","الرصيد","التاريخ","البيان","نهاية الشهر","المتجر"];
     const box=(key,title,desc)=>`<div class="tpl"><h3>${I.wa}${title}</h3><span class="ro-note">${desc}</span>
-      <div class="field"><textarea id="tpl-${key}" aria-label="${title}">${esc(t[key]||DEFAULT_TPL[key])}</textarea></div>
+      <div class="field"><textarea id="tpl-${key}" aria-label="${title}">${esc(tplText(key))}</textarea></div>
       <div class="ph">${ph.map(p=>`<button type="button" data-ph="${p}" data-for="tpl-${key}">{${p}}</button>`).join("")}</div>
       <div><button class="btn ghost sm" type="button" data-tplreset="${key}">رجوع للنص الافتراضي</button></div></div>`;
     const autoN=[...S.customers.values()].filter(autoWaOn).length;
@@ -1493,7 +1506,7 @@ function setPage(k){
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" type="button" data-act="waall" data-v="1">تشغيل التلقائي لكل اللي عندهم رقم</button><button class="btn ghost sm" type="button" data-act="waall" data-v="0">إرجاع الكل لليدوي</button></div></div>`;
     if(WA_AUTO)setTimeout(waStatus,0);
     return `<h2>قوالب الرسائل</h2>${waCard}<p class="lead">للزبائن على «يدوي»: بعد كل دين أو تسديد ينفتح واتساب على رقم الزبون بهذا النص (تكدر تطفيها من نافذة التسجيل). الكلمات بين { } تتبدل تلقائياً.</p>
-      ${box("debt","إضافة دين جديد","ترسل بعد تسجيل دين")}${box("pay","إضافة دفعة","ترسل بعد تسجيل تسديد")}${box("remind","تذكير بالرصيد","زر «تذكير واتساب» في صفحة الزبون")}${box("promise","تذكير بموعد الدفع","يوم الوعد بالدفع. {الموعد} و{مبلغ الوعد} تتبدل تلقائياً")}
+      ${box("debt","إضافة دين جديد","ترسل بعد تسجيل دين")}${box("pay","إضافة دفعة","ترسل بعد تسجيل تسديد")}${box("remind","تذكير بالرصيد","زر «تذكير واتساب» في صفحة الزبون")}${box("promise","تذكير بموعد الدفع","يوم الوعد بالدفع. {الموعد} و{مبلغ الوعد} تتبدل تلقائياً")}${box("monthend","تذكير نهاية الشهر","لكل المدينين قبل نهاية الشهر: التذكيرات ← «نهاية الشهر». {نهاية الشهر} يتبدل بآخر يوم بالشهر")}
       <div><button class="btn primary" type="button" data-act="savetpl">حفظ القوالب</button></div>`;
   }
   if(k==="cats")return `<h2>أصناف المواد</h2><p class="lead">تطلع بقائمة «الأصناف» بنافذة الدين الجديد. اكتب كل صنف بسطر.</p>
