@@ -2,7 +2,15 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function isOwner() { return signedIn() && request.auth.token.email == 'admin@shahm-debts.app'; }
+    // The owner is the uid in settings/owner (written by the app on the owner's first login). Until that
+    // document exists the original admin account (admin@shahm-debts.app) is the owner, so the owner can then
+    // switch to a real email. Deleting settings/owner from the Firebase console hands ownership back to admin@.
+    function ownerDoc() { return /databases/$(database)/documents/settings/owner; }
+    function isOwner() {
+      return signedIn() && (exists(ownerDoc())
+        ? get(ownerDoc()).data.uid == request.auth.uid
+        : request.auth.token.email == 'admin@shahm-debts.app');
+    }
     function hasProf() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
     function prof() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function active() { return isOwner() || (hasProf() && prof().status == 'active'); }
@@ -19,7 +27,12 @@ service cloud.firestore {
       allow create: if writer() || (active() && request.resource.data.kind == 'remind');
       allow update, delete: if isOwner();
     }
-    match /settings/{id}  { allow read: if active(); allow write: if isOwner(); }
+    match /settings/{id}  {
+      allow read: if active();
+      allow write: if isOwner() && (id != 'owner' || (request.resource != null && request.resource.data.uid is string));
+    }
+    // Readable only once these rules are published; the app checks it before letting the owner change email.
+    match /meta/{id} { allow get: if signedIn() && id == 'rules-v2'; }
     // Cashier (web/pos/): the owner (and an editor given «يدير المواد») manages items and prices; editors sell;
     // only the owner cancels a sale. A sale lowers the stock of what it sold, so editors may change the stock field.
     match /products/{id}  {

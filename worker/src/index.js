@@ -147,9 +147,14 @@ async function authorize(request, env) {
   const j = await r.json().catch(() => ({}));
   const user = r.ok && j.users && j.users[0];
   if (!user) return { error: "انتهت الجلسة. اطلع وادخل من جديد.", status: 401 };
-  if (user.email === env.OWNER_EMAIL) return { user, token };
+  // The owner is the uid in settings/owner (as in firestore.rules); until that exists, the original admin@ login.
   const dbUrl = env.FIRESTORE_URL || "https://firestore.googleapis.com";
-  const p = await fetch(`${dbUrl}/v1/projects/${env.FIREBASE_PROJECT}/databases/(default)/documents/users/${user.localId}`, { headers: { Authorization: "Bearer " + token } });
+  const docs = `${dbUrl}/v1/projects/${env.FIREBASE_PROJECT}/databases/(default)/documents`;
+  const o = await fetch(`${docs}/settings/owner`, { headers: { Authorization: "Bearer " + token } });
+  const od = o.ok ? await o.json().catch(() => null) : null;
+  const ownerUid = od && od.fields && od.fields.uid && od.fields.uid.stringValue;
+  if (ownerUid ? ownerUid === user.localId : o.status === 404 && user.email === env.OWNER_EMAIL) return { user, token, owner: true };
+  const p = await fetch(`${docs}/users/${user.localId}`, { headers: { Authorization: "Bearer " + token } });
   const d = p.ok ? await p.json() : null;
   const f = (d && d.fields) || {};
   const active = f.status && f.status.stringValue === "active";
@@ -413,7 +418,7 @@ export default {
       const input = readBody(await request.json().catch(() => null));
       if (input.error) return json({ error: input.error }, 400, cors);
       // Only the owner adds items in the cashier app.
-      if (input.kind === "items" && auth.user.email !== env.OWNER_EMAIL) return json({ error: "إضافة المواد للمدير فقط." }, 403, cors);
+      if (input.kind === "items" && !auth.owner) return json({ error: "إضافة المواد للمدير فقط." }, 403, cors);
 
       const useClaude = !!env.ANTHROPIC_API_KEY;
       const out = useClaude ? await readWithClaude(env, input) : await readWithGemini(env, input);

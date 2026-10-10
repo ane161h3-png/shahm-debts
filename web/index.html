@@ -454,6 +454,30 @@ let db=null,auth=null,unsubs=[],dataOn=false,flash=null,REG=null,installEvt=null
 const NATIVE=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
 const DOMAIN="shahm-debts.app",OWNER_USER="admin";
 const emailOf=u=>u+"@"+DOMAIN;
+/* Real e-mail: an account can move from its made-up login (user@shahm-debts.app) to the person's own e-mail, so a
+   forgotten password can be reset by Firebase's e-mail. Usernames keep working on a device that has seen the e-mail. */
+const isFakeEmail=e=>(e||"").endsWith("@"+DOMAIN);
+const LOGINS_KEY="shahm-logins",OWNER_KEY="shahm-owner-uid";
+const loginMap=()=>{try{return JSON.parse(localStorage.getItem(LOGINS_KEY)||"{}")||{}}catch(e){return {}}};
+const rememberLogin=(user,email)=>{try{const m=loginMap();if(email&&!isFakeEmail(email))m[user]=email;else delete m[user];localStorage.setItem(LOGINS_KEY,JSON.stringify(m))}catch(e){}};
+const badLogin=e=>/invalid-credential|user-not-found|wrong-password|invalid-login|invalid-email/.test((e&&e.code)||"");
+async function signInAny(id,pw){
+  if(id.includes("@"))return auth.signInWithEmailAndPassword(id,pw);
+  const mapped=loginMap()[id];
+  if(mapped){try{return await auth.signInWithEmailAndPassword(mapped,pw)}catch(e){if(!badLogin(e))throw e}}
+  return auth.signInWithEmailAndPassword(emailOf(id),pw);
+}
+// The owner is the uid in settings/owner; until that exists, the original admin@ login (firestore.rules does the same).
+async function ownerCheck(u){
+  const orig=isFakeEmail(u.email)&&u.email.split("@")[0]===OWNER_USER;
+  let cached=null;try{cached=localStorage.getItem(OWNER_KEY)}catch(e){}
+  try{
+    const s=await db.doc("settings/owner").get();
+    if(s.exists&&s.data().uid){try{localStorage.setItem(OWNER_KEY,s.data().uid)}catch(e){}return {owner:s.data().uid===u.uid,known:true}}
+    if(!s.metadata.fromCache)return {owner:orig,known:false};
+  }catch(e){if(e&&e.code==="permission-denied")return {owner:false,known:true}}
+  return {owner:cached?cached===u.uid:orig,known:!!cached}; // offline: last owner this device saw
+}
 const WEB_URL="https://ane161h3-png.github.io/shahm-debts/";
 const APK_URL="https://github.com/ane161h3-png/shahm-debts/releases/latest/download/shahm-debts.apk";
 const PLUG={};const plugin=n=>PLUG[n]||(PLUG[n]=window.Capacitor.registerPlugin(n));
@@ -722,22 +746,46 @@ function showLogin(msg,kind){
   gateCard({sub:"سجّل الدخول للمتابعة",body:`
     ${msg?`<div class="banner ${kind||"bad"}">${esc(msg)}</div>`:""}
     <form id="lf" class="field" style="gap:12px" novalidate>
-      <div class="field"><label for="lUser">اسم المستخدم</label><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div>
+      <div class="field"><label for="lUser">اسم المستخدم أو الإيميل</label><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div>
       <div class="field"><label for="lPw">كلمة المرور</label><div class="pw"><input id="lPw" type="password" autocomplete="current-password"><button type="button" data-showpw="lPw">إظهار</button></div></div>
       <p class="err" id="lErr"></p>
       <button class="btn primary block" type="submit" id="lGo">دخول</button>
     </form>
+    <div class="gate-foot"><button class="linkish" type="button" id="toForgot">نسيت كلمة المرور؟</button></div>
     <div class="gate-foot">ليس لديك حساب؟ <button class="linkish" type="button" id="toReg">إنشاء حساب</button></div>`,
   mount:g=>{
-    wirePw(g);g.querySelector("#toReg").onclick=()=>showRegister();
+    wirePw(g);g.querySelector("#toReg").onclick=()=>showRegister();g.querySelector("#toForgot").onclick=()=>showForgot($("#lUser").value);
     g.querySelector("#lf").addEventListener("submit",async e=>{
       e.preventDefault();const u=normDigits($("#lUser").value).trim().toLowerCase(),p=$("#lPw").value;const err=$("#lErr"),btn=$("#lGo");
       if(!u||!p){err.textContent="اكتب اسم المستخدم وكلمة المرور.";return}
-      if(!/^[a-z0-9_.]{3,30}$/.test(u)){err.textContent="اسم المستخدم أو كلمة المرور غير صحيحة.";return}
+      if(!/^[a-z0-9_.]{3,30}$/.test(u)&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u)){err.textContent="اسم المستخدم أو كلمة المرور غير صحيحة.";return}
       btn.disabled=true;btn.textContent="جارِ الدخول…";
-      try{await auth.signInWithEmailAndPassword(emailOf(u),p)}catch(x){err.textContent=authMsg(x);btn.disabled=false;btn.textContent="دخول"}
+      try{await signInAny(u,p)}catch(x){err.textContent=authMsg(x)+(badLogin(x)&&!u.includes("@")?" إذا ربطت إيميلك، ادخل بالإيميل.":"");btn.disabled=false;btn.textContent="دخول"}
     });
     setTimeout(()=>$("#lUser")&&$("#lUser").focus(),30);
+  }});
+}
+// Password reset works only for accounts that linked a real e-mail (Settings > حسابي); Firebase sends the link.
+function showForgot(prefill){
+  prefill=normDigits(prefill||"").trim().toLowerCase();
+  const guess=prefill.includes("@")?prefill:(loginMap()[prefill]||"");
+  gateCard({sub:"استرجاع كلمة المرور",body:`
+    <form id="ff" class="field" style="gap:12px" novalidate>
+      <div class="field"><label for="fMail">الإيميل المربوط بحسابك</label><input id="fMail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right" value="${esc(guess)}"></div>
+      <p class="err" id="fErr"></p>
+      <button class="btn primary block" type="submit" id="fGo">دز رابط تغيير كلمة المرور</button>
+    </form>
+    <p class="ro-note">يشتغل بس إذا ربطت إيميلك من الإعدادات ← حسابي. إذا ما ربطته: المستخدم يطلب من المدير يحذف حسابه ويسوي واحد جديد.</p>
+    <div class="gate-foot"><button class="linkish" type="button" id="toLogin">رجوع لتسجيل الدخول</button></div>`,
+  mount:g=>{
+    g.querySelector("#toLogin").onclick=()=>showLogin();
+    g.querySelector("#ff").addEventListener("submit",async e=>{
+      e.preventDefault();const m=$("#fMail").value.trim().toLowerCase(),err=$("#fErr"),btn=$("#fGo");
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)||isFakeEmail(m)){err.textContent="اكتب إيميلك الحقيقي.";return}
+      btn.disabled=true;btn.textContent="جارِ الإرسال…";
+      try{auth.languageCode="ar";await auth.sendPasswordResetEmail(m);showLogin("إذا الإيميل مربوط بحساب، راح يوصلك رابط لتغيير كلمة المرور. شوف البريد المزعج (Spam) هم.","info")}
+      catch(x){err.textContent=x&&x.code==="auth/user-not-found"?"هذا الإيميل مو مربوط بأي حساب.":authMsg(x);btn.disabled=false;btn.textContent="دز رابط تغيير كلمة المرور"}
+    });
   }});
 }
 function showRegister(){
@@ -1469,6 +1517,7 @@ function setPage(k){
       <button class="btn ghost" type="button" data-act="pastebackup">لصق نص النسخة</button></div></div>`;}
   if(k==="account")return `<h2>حسابي</h2>
     <div class="user-row"><span class="avatar">${initial(S.me.name)}</span><div class="meta"><b>${esc(S.me.name)}</b><span class="num">@${esc(S.me.username||"")}</span></div><span class="role">${ROLE_LABEL[S.me.role]}</span></div>
+    ${emailCard()}
     <div class="tpl"><h3>${I.edit}تغيير كلمة المرور</h3>
       <form id="pwForm" class="field" style="gap:10px" novalidate>
         <div class="field"><label for="pCur">كلمة المرور الحالية</label><div class="pw"><input id="pCur" type="password" autocomplete="current-password"><button type="button" data-showpw="pCur">إظهار</button></div></div>
@@ -1982,6 +2031,46 @@ function accountForm(){
       }catch(x){err.textContent=authMsg(x);btn.disabled=false}
     }));
 }
+/* Settings > حسابي: move the login to the person's real e-mail. Firebase mails a confirmation link to the new address and
+   switches the login only after it is opened. The owner can do it only once firestore.rules knows the owner by uid
+   (the meta/rules-v2 probe is readable only under those rules); otherwise the freed admin@ login would count as owner. */
+let rulesV2=null;
+function checkRulesV2(){
+  if(rulesV2!==null||!S.isOwner)return;
+  db.doc("meta/rules-v2").get().then(()=>{rulesV2=true},e=>{rulesV2=e&&e.code==="permission-denied"?false:null}).then(()=>{if(S.view==="settings"&&S.setPage==="account")render()});
+}
+function emailCard(){
+  const u=auth.currentUser;if(!u)return "";
+  const real=!isFakeEmail(u.email);
+  const head=`<div class="tpl"><h3>${I.users}الإيميل (لاسترجاع كلمة المرور)</h3>`;
+  const status=real?`<span class="ro-note">مربوط: <b class="num">${esc(u.email)}</b>. إذا نسيت كلمة المرور، اضغط «نسيت كلمة المرور؟» بصفحة الدخول ويوصلك رابط عليه.</span>`
+    :`<span class="ro-note">حسابك بعده بدون إيميل حقيقي، فإذا نسيت كلمة المرور ما تكدر ترجعها. اربط إيميلك هنا.</span>`;
+  if(S.isOwner&&!real){checkRulesV2();
+    if(rulesV2===null)return head+status+`<span class="ro-note">جاري الفحص…</span></div>`;
+    if(rulesV2===false)return head+status+`<div class="banner warn">قبل ربط إيميل المدير لازم تحديث قواعد Firebase مرة وحدة: افتح Firebase ← Firestore Database ← Rules، الصق محتوى ملف firestore.rules من المستودع، واضغط Publish. بعدها ارجع لهالصفحة.</div></div>`;}
+  return head+status+`<form id="mailForm" class="field" style="gap:10px" novalidate>
+      <div class="field"><label for="mNew">${real?"إيميل جديد":"إيميلك"}</label><input id="mNew" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right" placeholder="name@gmail.com"></div>
+      <div class="field"><label for="mPw">كلمة المرور الحالية</label><div class="pw"><input id="mPw" type="password" autocomplete="current-password"><button type="button" data-showpw="mPw">إظهار</button></div></div>
+      <p class="err" id="mErr"></p>
+      <div><button class="btn primary" type="submit">دز رابط التأكيد</button></div>
+    </form><span class="ro-note">يوصلك رابط على الإيميل. بعد ما تفتحه يصير دخولك بالإيميل، واسم المستخدم يبقى يشتغل على هذا الجهاز.</span></div>`;
+}
+async function linkEmail(){
+  const m=$("#mNew").value.trim().toLowerCase(),pw=$("#mPw").value,err=$("#mErr");
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)||isFakeEmail(m)){err.textContent="اكتب إيميل صحيح.";return}
+  if(!pw){err.textContent="اكتب كلمة المرور الحالية.";return}
+  try{
+    const u=auth.currentUser;await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,pw));
+    if(S.isOwner){ // make sure the owner is recorded by uid before the admin@ login goes away
+      const o=await db.doc("settings/owner").get({source:"server"});
+      if(!o.exists||o.data().uid!==u.uid)await db.doc("settings/owner").set({uid:u.uid,at:Date.now()});
+    }
+    auth.languageCode="ar";await u.verifyBeforeUpdateEmail(m);
+    rememberLogin(S.me.username,m);
+    $("#mNew").value="";$("#mPw").value="";err.textContent="";
+    toast(`دزينا رابط تأكيد إلى ${m}. افتحه (شوف Spam هم)، وبعدها سجّل دخول من جديد.`,{ms:12000});
+  }catch(x){err.textContent=x&&x.code==="auth/email-already-in-use"?"هذا الإيميل مربوط بحساب ثاني.":x&&x.code==="auth/invalid-email"?"اكتب إيميل صحيح.":authMsg(x)}
+}
 async function changePassword(){
   const cur=$("#pCur").value,nw=$("#pNew").value,err=$("#pErr");
   if(!cur){err.textContent="اكتب كلمة المرور الحالية.";return}
@@ -2236,6 +2325,7 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("submit",e=>{
   if(e.target.id==="pwForm"){e.preventDefault();changePassword();return}
+  if(e.target.id==="mailForm"){e.preventDefault();linkEmail();return}
   if(e.target.id==="bizForm"){e.preventDefault();if(!isAdmin())return;const b=bizData();S.bizDraft=null;
     saveSettings({shopName:b.name.trim()||"ماركت الشهم",phone:b.phone.trim(),address:b.address.trim(),card:{desc:b.desc.trim(),manager:b.manager.trim(),social:b.social.trim(),style:b.style}}).then(ok=>{if(ok)toast("انحفظت البطاقة")});return}
   if(e.target.id==="shopForm"){e.preventDefault();saveSettings({shopName:$("#sName").value.trim()||"ماركت الشهم",ownerName:$("#sOwner").value.trim()||"المدير",phone:$("#sPhone").value.trim(),address:$("#sAddr").value.trim()}).then(ok=>{if(ok){S.me.name=S.settings.ownerName;render();toast("تم الحفظ")}})}
@@ -2278,12 +2368,20 @@ if(NATIVE){
   if(window.FIREBASE_EMULATOR){auth.useEmulator("http://127.0.0.1:9099",{disableWarnings:true});db.useEmulator("127.0.0.1",8080)}
   try{await db.enablePersistence({synchronizeTabs:true})}catch(e){console.warn("offline cache off",e&&e.code)}
   let profUnsub=null;
-  auth.onAuthStateChanged(u=>{
+  let authSeq=0;
+  auth.onAuthStateChanged(async u=>{
     if(profUnsub){profUnsub();profUnsub=null}
+    const seq=++authSeq;
     if(!u){stopData();S.me=null;S.isOwner=false;const f=flash;flash=null;showLogin(f&&f.msg,f&&f.kind);return}
-    const uname=(u.email||"").split("@")[0];
-    S.isOwner=uname===OWNER_USER&&(u.email||"").endsWith("@"+DOMAIN);
+    const fake=isFakeEmail(u.email),uname=fake?u.email.split("@")[0]:"";
+    if(fake&&uname===OWNER_USER||!fake)gateCard({sub:"جارِ التحقق من الحساب…",body:`<div class="spinner" aria-hidden="true"></div>`});
+    const oc=fake&&uname!==OWNER_USER?{owner:false,known:false}:await ownerCheck(u);
+    if(seq!==authSeq)return;
+    S.isOwner=oc.owner;
     if(S.isOwner){
+      rememberLogin(OWNER_USER,u.email);
+      // Record which account is the owner, so the made-up admin@ login stops counting once the owner moves to a real e-mail.
+      if(!oc.known)db.doc("settings/owner").set({uid:u.uid,at:Date.now()}).then(()=>{try{localStorage.setItem(OWNER_KEY,u.uid)}catch(e){}}).catch(e=>console.warn("owner record",e));
       S.me={id:u.uid,name:S.settings.ownerName||(REG&&REG.name)||"المدير",role:"owner",username:OWNER_USER};
       if(REG){const n=REG.name;REG=null;setTimeout(()=>{if(!S.settings.ownerName)saveSettings({ownerName:n})},2500)}
       startData();showApp();return;
@@ -2292,8 +2390,9 @@ if(NATIVE){
     profUnsub=db.collection("users").doc(u.uid).onSnapshot({includeMetadataChanges:true},s=>{
       if(!s.exists){
         if(s.metadata.fromCache)return; // wait for the server before deciding the profile is missing
-        const name=(REG&&REG.username===uname&&REG.name)||uname;REG=null;
-        db.collection("users").doc(u.uid).set({id:u.uid,name,username:uname,role:"viewer",status:"pending",createdAt:Date.now()})
+        const un=uname||(u.email||"").split("@")[0].toLowerCase().replace(/[^a-z0-9_.]/g,"").slice(0,30)||"user"; // a deleted account that had linked its e-mail asks again
+        const name=(REG&&REG.username===un&&REG.name)||un;REG=null;
+        db.collection("users").doc(u.uid).set({id:u.uid,name,username:un,role:"viewer",status:"pending",createdAt:Date.now()})
           .catch(()=>showWaiting("تعذّر إرسال طلبك. تحقق من الإنترنت وسجّل دخول مرة ثانية.","bad"));
         return;
       }
@@ -2301,7 +2400,8 @@ if(NATIVE){
       if(p.status==="pending"){stopData();S.me=null;showWaiting("تم استلام طلبك ✅ بانتظار موافقة المدير. أول ما يفعّل حسابك يفتح البرنامج تلقائياً.","warn");return}
       if(p.status==="disabled"){stopData();S.me=null;showWaiting("تم إيقاف هذا الحساب. راجع المدير.","bad");return}
       const first=!S.me;
-      S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:uname};
+      S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:p.username||uname};
+      rememberLogin(S.me.username,u.email);
       startData();if(first||$("#app").hidden)showApp();else render();
     },e=>{console.warn(e);showWaiting("تعذّر قراءة حسابك. تحقق من الإنترنت.","bad")});
   });
