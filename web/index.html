@@ -1279,9 +1279,11 @@ function dayPdf(day,opt){
   const newCust=[...S.customers.values()].filter(c=>!isSup(c)&&c.createdAt&&inDay(c.createdAt)).length;
   const open=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,p:per.get(c.id)})).filter(x=>x.p&&x.p.bal!==0).sort((a,b)=>b.p.bal-a.p.bal);
   let owed=0;for(const x of open)if(x.p.bal>0)owed+=x.p.bal;
-  const opRow=(t,i,s)=>({cells:[t.createdAt?hm12(t.createdAt):"",nm(t.customerId),s?(t.type==="debt"?"فاتورة":"دفعة للمورد"):(t.type==="debt"?"دين":"تسديد"),fmt(t.amount),fmt(after.get(t.id)||0),t.by||""],
-    colors:[null,null,t.type==="debt"?PDFC.debt:PDFC.paid,t.type==="debt"?PDFC.debt:PDFC.paid,null,null],shade:i%2===1});
-  const opCols=[{label:"الوقت",w:.14,num:true},{label:"الاسم",w:.28},{label:"الحركة",w:.13},{label:"المبلغ",w:.15,num:true},{label:"الرصيد بعدها",w:.16,num:true},{label:"بواسطة",w:.14}];
+  // The working day crosses midnight, so every row carries its own calendar date (d/m/yyyy).
+  const dmy=iso=>{const [y,m,d]=iso.split("-");return `${+d}/${+m}/${y}`};
+  const opRow=(t,i,s)=>({cells:[dmy(t.createdAt?msISO(t.createdAt):t.date),t.createdAt?hm12(t.createdAt):"",nm(t.customerId),s?(t.type==="debt"?"فاتورة":"دفعة للمورد"):(t.type==="debt"?"دين":"تسديد"),fmt(t.amount),fmt(after.get(t.id)||0),t.by||""],
+    colors:[null,null,null,t.type==="debt"?PDFC.debt:PDFC.paid,t.type==="debt"?PDFC.debt:PDFC.paid,null,null],shade:i%2===1});
+  const opCols=[{label:"التاريخ",w:.14,num:true},{label:"الوقت",w:.12,num:true},{label:"الاسم",w:.24},{label:"الحركة",w:.1},{label:"المبلغ",w:.13,num:true},{label:"الرصيد بعدها",w:.15,num:true},{label:"بواسطة",w:.12}];
   return buildPdf({shop:shopName(),title:"التقرير اليومي: "+dayName(day),
     info:[["الفترة",{text:`${shortDate(day)} ${hm12(start)} إلى ${shortDate(msISO(end))} ${hm12(end)}`}],["ديون اليوم",{text:`${fmt(dAdd)} ${CUR} (${cust.filter(t=>t.type==="debt").length} حركة)`,color:PDFC.debt}],["تسديد اليوم",{text:`${fmt(dPay)} ${CUR} (${cust.filter(t=>t.type==="pay").length} حركة)`,color:PDFC.paid}],
       ["صافي اليوم",{text:(dAdd-dPay>0?"+":"")+fmt(dAdd-dPay)+" "+CUR}],...(newCust?[["زبائن جدد",{text:String(newCust)}]]:[]),
