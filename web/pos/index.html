@@ -505,6 +505,29 @@ const THEME_KEY="shahm-theme",CART_KEY="shahm-pos-cart",COUNT_KEY="shahm-pos-cou
 const ROLE_LABEL={owner:"المدير",editor:"محرر",viewer:"مشاهد"};
 const DOMAIN="shahm-debts.app",OWNER_USER="admin";
 const emailOf=u=>u+"@"+DOMAIN;
+// Same logins as the debt book (web/index.html): an account may have moved to a real e-mail; the username still works
+// on a device that has seen it (shared localStorage), and the owner is the uid in settings/owner.
+const isFakeEmail=e=>(e||"").endsWith("@"+DOMAIN);
+const LOGINS_KEY="shahm-logins",OWNER_KEY="shahm-owner-uid";
+const loginMap=()=>{try{return JSON.parse(localStorage.getItem(LOGINS_KEY)||"{}")||{}}catch(e){return {}}};
+const rememberLogin=(user,email)=>{try{const m=loginMap();if(email&&!isFakeEmail(email))m[user]=email;else delete m[user];localStorage.setItem(LOGINS_KEY,JSON.stringify(m))}catch(e){}};
+const badLogin=e=>/invalid-credential|user-not-found|wrong-password|invalid-login|invalid-email/.test((e&&e.code)||"");
+async function signInAny(id,pw){
+  if(id.includes("@"))return auth.signInWithEmailAndPassword(id,pw);
+  const mapped=loginMap()[id];
+  if(mapped){try{return await auth.signInWithEmailAndPassword(mapped,pw)}catch(e){if(!badLogin(e))throw e}}
+  return auth.signInWithEmailAndPassword(emailOf(id),pw);
+}
+async function ownerCheck(u){
+  const orig=isFakeEmail(u.email)&&u.email.split("@")[0]===OWNER_USER;
+  let cached=null;try{cached=localStorage.getItem(OWNER_KEY)}catch(e){}
+  try{
+    const s=await db.doc("settings/owner").get();
+    if(s.exists&&s.data().uid){try{localStorage.setItem(OWNER_KEY,s.data().uid)}catch(e){}return s.data().uid===u.uid}
+    if(!s.metadata.fromCache)return orig;
+  }catch(e){if(e&&e.code==="permission-denied")return false}
+  return cached?cached===u.uid:orig;
+}
 const DEBTS_URL="../";
 // The Android app (Capacitor, built by android.yml as its own APK) can't download files or open WhatsApp from the page,
 // so files go through Filesystem + the share sheet and links go to the system, like in the debt book.
@@ -646,20 +669,21 @@ function showLogin(msg){
   gateCard({sub:"نفس حسابك بدفتر الديون",body:`
     ${msg?`<div class="banner bad">${esc(msg)}</div>`:""}
     <form id="lf" class="field" style="gap:12px" novalidate>
-      <div class="field"><label for="lUser">اسم المستخدم</label><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div>
+      <div class="field"><label for="lUser">اسم المستخدم أو الإيميل</label><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div>
       <div class="field"><label for="lPw">كلمة المرور</label><div class="pw"><input id="lPw" type="password" autocomplete="current-password"><button type="button" data-showpw="lPw">إظهار</button></div></div>
       <p class="err" id="lErr"></p>
       <button class="btn primary block" type="submit" id="lGo">دخول</button>
     </form>
+    <div class="gate-foot">نسيت كلمة المرور؟ استرجعها من <a href="${DEBTS_URL}">دفتر الديون</a>.</div>
     <div class="gate-foot">ما عندك حساب؟ سوّيه من <a href="${DEBTS_URL}">دفتر الديون</a> والمدير يفعّله.</div>`,
   mount:g=>{
     g.querySelectorAll("[data-showpw]").forEach(b=>b.addEventListener("click",()=>{const i=document.getElementById(b.dataset.showpw);const s=i.type==="password";i.type=s?"text":"password";b.textContent=s?"إخفاء":"إظهار"}));
     g.querySelector("#lf").addEventListener("submit",async e=>{
       e.preventDefault();const u=normDigits($("#lUser").value).trim().toLowerCase(),p=$("#lPw").value;const err=$("#lErr"),btn=$("#lGo");
       if(!u||!p){err.textContent="اكتب اسم المستخدم وكلمة المرور.";return}
-      if(!/^[a-z0-9_.]{3,30}$/.test(u)){err.textContent="اسم المستخدم أو كلمة المرور غير صحيحة.";return}
+      if(!/^[a-z0-9_.]{3,30}$/.test(u)&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u)){err.textContent="اسم المستخدم أو كلمة المرور غير صحيحة.";return}
       btn.disabled=true;btn.textContent="جارِ الدخول…";
-      try{await auth.signInWithEmailAndPassword(emailOf(u),p)}catch(x){err.textContent=authMsg(x);btn.disabled=false;btn.textContent="دخول"}
+      try{await signInAny(u,p)}catch(x){err.textContent=authMsg(x)+(badLogin(x)&&!u.includes("@")?" إذا ربطت إيميلك، ادخل بالإيميل.":"");btn.disabled=false;btn.textContent="دخول"}
     });
     setTimeout(()=>$("#lUser")&&$("#lUser").focus(),30);
   }});
@@ -4138,20 +4162,25 @@ if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceW
   if(window.FIREBASE_EMULATOR){auth.useEmulator("http://127.0.0.1:9099",{disableWarnings:true});db.useEmulator("127.0.0.1",8080)}
   try{await db.enablePersistence({synchronizeTabs:true})}catch(e){console.warn("offline cache off",e&&e.code)}
   let profUnsub=null;
-  auth.onAuthStateChanged(u=>{
+  let authSeq=0;
+  auth.onAuthStateChanged(async u=>{
     if(profUnsub){profUnsub();profUnsub=null}
+    const seq=++authSeq;
     if(!u){stopData();S.me=null;S.isOwner=false;showLogin();return}
-    const uname=(u.email||"").split("@")[0];
-    S.isOwner=uname===OWNER_USER&&(u.email||"").endsWith("@"+DOMAIN);
-    if(S.isOwner){S.me={id:u.uid,name:S.settings.ownerName||"المدير",role:"owner",username:OWNER_USER};if(!S.homeSeen){S.homeSeen=true;S.view="home"}startData();showApp();return}
+    const fake=isFakeEmail(u.email),uname=fake?u.email.split("@")[0]:"";
     gateCard({sub:"جارِ التحقق من الحساب…",body:`<div class="spinner" aria-hidden="true"></div>`});
+    const own=fake&&uname!==OWNER_USER?false:await ownerCheck(u);
+    if(seq!==authSeq)return;
+    S.isOwner=own;
+    if(S.isOwner){rememberLogin(OWNER_USER,u.email);S.me={id:u.uid,name:S.settings.ownerName||"المدير",role:"owner",username:OWNER_USER};if(!S.homeSeen){S.homeSeen=true;S.view="home"}startData();showApp();return}
     profUnsub=db.collection("users").doc(u.uid).onSnapshot({includeMetadataChanges:true},s=>{
       if(!s.exists){if(s.metadata.fromCache)return;showWaiting("هذا الحساب ما مسجل. سجّل من دفتر الديون أول.","bad");return}
       const p=s.data();
       if(p.status==="pending"){stopData();S.me=null;showWaiting("حسابك بانتظار موافقة المدير.","warn");return}
       if(p.status==="disabled"){stopData();S.me=null;showWaiting("تم إيقاف هذا الحساب. راجع المدير.","bad");return}
       const first=!S.me;
-      S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:uname,items:p.role==="editor"&&p.items===true};
+      S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:p.username||uname,items:p.role==="editor"&&p.items===true};
+      rememberLogin(S.me.username,u.email);
       startData();if(first||$("#app").hidden)showApp();else render();
     },e=>{console.warn(e);showWaiting("تعذّر قراءة حسابك. تحقق من الإنترنت.","bad")});
   });
