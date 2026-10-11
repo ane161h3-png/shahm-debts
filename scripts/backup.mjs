@@ -381,8 +381,8 @@ async function periodic(token) {
       subText: "كل حركات اليوم لحد هسه", timeText: `لحد ${hm(rep.end)}` });
     if (file) await sendFile(file.name, file.data, file.type, `📄 كل حركات اليوم ${bizDay(rep.end - 1)} لحد ${hm(rep.end)}`);
   }
-  if (!manual && end - dayStart === SLOT) {
-    const note = await startMissedBackup(now).catch(e => (console.warn("Backup check failed:", e.message), null));
+  if (!manual && (end - dayStart === SLOT || end - dayStart === 2 * SLOT)) {
+    const note = await startMissedBackup(dayStart, (end - dayStart) / SLOT).catch(e => (console.warn("Backup check failed:", e.message), null));
     if (note) await tg("sendMessage", { chat_id: chat, text: note });
   }
   const reads = txns.length + 1 + activity.length + promised.length + promiseTxns + customers.length - due.length;
@@ -431,14 +431,26 @@ async function dailyChecks(now) {
   if (n === 0 && !tokenNote) notes.push("⚠️ تقارير الـ5 ساعات ما اشتغلت من 24 ساعة. شوف دليل الصيانة، القسم 8 (أغلب الأحيان DISPATCH_TOKEN، أو حساب Cloudflare).");
   return notes;
 }
-async function startMissedBackup(now) {
-  // The 2 AM run starts about 02:15 Baghdad; this check runs at 7 AM, so 8 hours back covers it.
-  const n = await runsSince("schedule", now.getTime() - 8 * 3600e3);
-  if (n !== 0) return null;
+// The daily backup runs of today's working day (backup.yml names each run "Daily backup" or "Periodic report"), or null.
+async function dailyRunsSince(since) {
+  const tok = process.env.GH_TOKEN, repo = process.env.GITHUB_REPOSITORY;
+  if (!tok || !repo) return null;
+  const r = await gh(`/repos/${repo}/actions/workflows/backup.yml/runs?created=${encodeURIComponent(">=" + new Date(since).toISOString())}&per_page=50`, tok);
+  if (!r.ok) { console.warn(`Run list failed: ${r.status}`); return null; }
+  return ((await r.json()).workflow_runs || []).filter(x => /^daily/i.test(x.display_title || ""));
+}
+// 7 AM report: GitHub skipped the 2 AM run altogether → start it.
+// Noon report (after the free read limit resets at 10 AM): the 2 AM run failed, usually that limit → start it again.
+async function startMissedBackup(dayStart, slot) {
+  const runs = await dailyRunsSince(dayStart - 30 * 60e3);
+  if (!runs) return null;
+  if (slot === 1 && runs.length) return null;
+  if (slot === 2 && runs.some(x => x.conclusion === "success" || x.status !== "completed")) return null;
   const r = await gh(`/repos/${process.env.GITHUB_REPOSITORY}/actions/workflows/backup.yml/dispatches`, process.env.GH_TOKEN,
     { method: "POST", body: JSON.stringify({ ref: "main", inputs: { mode: "daily" } }) });
-  return r.ok ? "ℹ️ النسخة الاحتياطية الليلية ما اشتغلت (GitHub تخطاها)، فشغلتها هسه. توصلك بعد دقائق."
-    : `⚠️ النسخة الاحتياطية الليلية ما اشتغلت، وما گدرت أشغلها (${r.status}). شغّلها يدوياً: GitHub ← Actions ← Daily backup ← Run workflow.`;
+  const what = runs.length ? "فشلت بالليل" : "ما اشتغلت (GitHub تخطاها)";
+  return r.ok ? `ℹ️ النسخة الاحتياطية الليلية ${what}، فشغلتها هسه. توصلك بعد دقائق.`
+    : `⚠️ النسخة الاحتياطية الليلية ${what}، وما گدرت أشغلها (${r.status}). شغّلها يدوياً: GitHub ← Actions ← Daily backup ← Run workflow.`;
 }
 
 async function main() {
@@ -494,7 +506,8 @@ main().catch(async e => {
   // Tell the owner on Telegram too, so a broken backup does not go unnoticed.
   const tok = process.env.TELEGRAM_TOKEN, chat = process.env.TELEGRAM_CHAT_ID;
   if (tok && chat) {
-    try { await fetch(`${TG_URL}/bot${tok}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: chat, text: (process.env.MODE === "periodic" ? "⚠️ فشل تقرير الـ5 ساعات: " : "⚠️ فشلت النسخة الاحتياطية اليومية: ") + e.message }) }); } catch {}
+    try { await fetch(`${TG_URL}/bot${tok}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: chat, text: (process.env.MODE === "periodic" ? "⚠️ فشل تقرير الـ5 ساعات: " : "⚠️ فشلت النسخة الاحتياطية اليومية: ") + e.message
+      + (process.env.MODE !== "periodic" && /quota/i.test(e.message) ? "\nخلص حد القراءة المجاني لليوم. تنعاد وحدها ويّا تقرير الساعة 12 الظهر، بعد ما يتجدد الحد." : "") }) }); } catch {}
   }
   process.exit(1);
 });

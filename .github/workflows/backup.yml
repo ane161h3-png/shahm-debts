@@ -4,6 +4,8 @@
 # Secrets (Settings > Secrets and variables > Actions): BACKUP_PASSWORD, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
 # DISPATCH_TOKEN (the worker's token) is read only to warn on Telegram two weeks before it expires.
 name: Daily backup
+# Each run says what it is, so the reports can tell whether today's backup ran (scripts/backup.mjs, startMissedBackup).
+run-name: ${{ inputs.mode == 'periodic' && 'Periodic report' || 'Daily backup' }}
 on:
   schedule:
     - cron: "0 23 * * *"
