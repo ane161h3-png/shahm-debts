@@ -1,5 +1,5 @@
 // Transactions file for Telegram as a branded PDF: every transaction recorded on one working day (2 AM to 2 AM Baghdad)
-// (end-of-day file), or in one time window (the 2-hour report sends the day so far).
+// (end-of-day file), or in one time window (the periodic report sends the day so far).
 // The page is plain HTML printed by headless Chrome (preinstalled on GitHub's Ubuntu runners), so Arabic
 // shapes correctly with the app's own fonts. If no browser is found, a CSV (opens in Excel) is sent instead.
 import { execFileSync } from "node:child_process";
@@ -19,10 +19,10 @@ function findChrome() {
 export const dayPdf = ({ day, isoDay, ...o }) =>
   txnsPdf({ ...o, inRange: ms => isoDay(ms) === day, tag: day, dateText: day, subText: "كل حركات اليوم (من 2 الفجر لـ 2 الفجر)" });
 
-// Same file for a time window [start, end), e.g. the day so far (2-hour report).
+// Same file for a time window [start, end), e.g. the day so far (periodic report).
 export const windowPdf = ({ start, end, isoDay, hm, timeText, subText, ...o }) =>
   txnsPdf({ ...o, hm, inRange: ms => ms >= start && ms < end, tag: `${isoDay(end - 1)}-${hm(end).replace(/[:\s]/g, "")}`,
-    dateText: isoDay(end - 1), timeText: timeText || `من ${hm(start)} إلى ${hm(end)}`, subText: subText || "حركات آخر ساعتين" });
+    dateText: isoDay(end - 1), timeText: timeText || `من ${hm(start)} إلى ${hm(end)}`, subText: subText || "حركات الفترة" });
 
 // Baghdad calendar date (d/m/yyyy) of a timestamp: the working day crosses midnight, so each row shows its own date.
 const calDay = ms => { const [y, m, d] = new Date(Number(ms) + 3 * 3600e3).toISOString().slice(0, 10).split("-"); return `${+d}/${+m}/${y}`; };
