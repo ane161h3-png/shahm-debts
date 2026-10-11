@@ -544,11 +544,15 @@ const DEFAULT_CATS=["مشكل","مواد غذائية","خضروات","فواك�
 const S={products:new Map(),customers:new Map(),txns:new Map(),sales:new Map(),settings:{},me:null,isOwner:false,
   view:"sell",cat:"all",q:"",cart:[],slots:[null],cur:0,discount:0,whole:false,day:"",repDay:"",repMode:"day",repMonth:"",repCache:new Map(),pq:"",pcat:"all",shift:null,shiftLog:null,approvals:new Map(),approval:null,ready:{p:false,s:false,sh:false},
   pos:{},count:null,cq:"",ccat:"all",cshow:"all",cany:false,takes:null,rv:null,rq:"",rvPend:null,rvNewName:null,recvs:null};
-let db=null,auth=null,unsubs=[],salesUnsub=null,dataOn=false,modalCleanup=null,deniedShown=false;
+let db=null,auth=null,unsubs=[],salesUnsub=null,dataOn=false,modalCleanup=null,deniedShown=false,quotaShown=false;
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// Photos come from Firestore, where any editor can write: only a real base64 JPEG/PNG/WebP is ever put in a page.
+const safeImg=u=>typeof u==="string"&&/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(u)?u:"";
+// What to tell people when a read fails: the free plan's daily read quota runs out until 07:00 UTC (10 AM Baghdad).
+const readErrMsg=e=>e&&e.code==="resource-exhausted"?"خلص حد القراءة اليومي المجاني. البيانات من الجهاز، ويرجع طبيعي الساعة 10 الصبح.":"تعذّر قراءة حسابك. تحقق من الإنترنت.";
 const fmt=n=>Math.round(Number(n)||0).toLocaleString("en-US");
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 const isoOf=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
@@ -688,14 +692,15 @@ function showLogin(msg){
     setTimeout(()=>$("#lUser")&&$("#lUser").focus(),30);
   }});
 }
-function showWaiting(msg,kind){
-  gateCard({sub:"",body:`<div class="banner ${kind||"warn"}">${esc(msg)}</div><button class="btn block" type="button" id="wOut">تسجيل الخروج</button>`,
-    mount:g=>{g.querySelector("#wOut").onclick=()=>signOut()}});
+function showWaiting(msg,kind,retry){
+  gateCard({sub:"",body:`<div class="banner ${kind||"warn"}">${esc(msg)}</div>${retry?`<button class="btn primary block" type="button" id="wRetry">إعادة المحاولة</button>`:""}<button class="btn block" type="button" id="wOut">تسجيل الخروج</button>`,
+    mount:g=>{g.querySelector("#wOut").onclick=()=>signOut();const r=g.querySelector("#wRetry");if(r)r.onclick=()=>location.reload()}});
 }
 function signOut(){stopData();S.me=null;auth.signOut()}
 
 /* ---------- live data ---------- */
-function readFail(e){console.warn(e);if(e&&e.code==="permission-denied"&&!deniedShown){deniedShown=true;
+function readFail(e){console.warn(e);if(e&&e.code==="resource-exhausted"&&!quotaShown){quotaShown=true;toast(readErrMsg(e),7000)}
+  if(e&&e.code==="permission-denied"&&!deniedShown){deniedShown=true;
   toast(isAdmin()?"قاعدة البيانات رفضت القراءة. انشر قواعد firestore.rules الجديدة من Firebase console.":"ما عندك صلاحية لقراءة بيانات الكاشير. راجع المدير.",7000)}}
 function stopData(){
   unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];if(salesUnsub){salesUnsub();salesUnsub=null}dataOn=false;
@@ -2055,7 +2060,7 @@ function renderSales(){
         <div class="m"><b>#<span class="num">${esc(s.no)}</span> · ${esc(itemsText(s.items||[],60))}</b><span>${hm12(s.at)} · ${esc(s.by||"")}${s.customerName?" · "+esc(s.customerName):""}${s.wholesale?" · جملة":""}</span></div>
         <div class="a"><span class="num">${fmt(s.total)}</span><small>${s.status==="void"?`<span class="chip zero">ملغية</span>`:s.debt>0?(s.cash>0?`<span class="chip warn">كاش + دين</span>`:`<span class="chip debt">دين</span>`):`<span class="chip paid">كاش</span>`}</small></div></button></li>`).join("")}</ul>`
         :`<div class="empty"><b>ماكو مبيعات بهذا اليوم</b>${day===todayISO()?"أول ما تبيع تطلع هنا.":""}</div>`}</section>`;
-  const daysPane=`<section class="pane"><h2>الأيام</h2>${r.days.length?`<ul class="rows">${r.days.map(([d,x])=>`<li><button class="r" type="button" data-openday="${d}">
+  const daysPane=`<section class="pane"><h2>الأيام</h2>${r.days.length?`<ul class="rows">${r.days.map(([d,x])=>`<li><button class="r" type="button" data-openday="${esc(d)}">
         <div class="m"><b>${esc(dayName(d))}</b><span><span class="num">${x.n}</span> فاتورة</span></div>
         <div class="a"><span class="num">${fmt(x.v)}</span>${admin?`<small>ربح <span class="num">${fmt(x.profit)}</span></small>`:""}</div></button></li>`).join("")}</ul>`
         :`<div class="empty"><b>ماكو مبيعات بهذا الشهر</b></div>`}</section>`;
@@ -2202,7 +2207,7 @@ function renderShift(){
     ${S.shift&&canSell()?`<button class="btn primary" type="button" data-act="closeshift">${I.check}تقفيل الوردية</button>`:""}</div>`;
   fetchShiftLog();
   const log=`<section class="pane"><h2>الورديات السابقة</h2>${S.shiftLog&&S.shiftLog.length?`<ul class="rows">${S.shiftLog.map(x=>`<li><button class="r" type="button" data-shift="${esc(x.id)}">
-      <div class="m"><b>${esc(dayName(isoOf(new Date(x.openedAt))))} · ${esc(hm12(x.openedAt))} إلى ${esc(hm12(x.closedAt))}</b><span>${esc(x.openedBy||"")}${x.closedBy&&x.closedBy!==x.openedBy?" ← "+esc(x.closedBy):""} · <span class="num">${(x.z&&x.z.n)||0}</span> فاتورة</span></div>
+      <div class="m"><b>${esc(dayName(isoOf(new Date(x.openedAt))))} · ${esc(hm12(x.openedAt))} إلى ${esc(hm12(x.closedAt))}</b><span>${esc(x.openedBy||"")}${x.closedBy&&x.closedBy!==x.openedBy?" ← "+esc(x.closedBy):""} · <span class="num">${Number(x.z&&x.z.n)||0}</span> فاتورة</span></div>
       <div class="a"><span class="num">${fmt(x.z&&x.z.total)}</span><small><span class="chip ${diffCls(x.diff)}">${esc(diffText(x.diff))}</span></small></div></button></li>`).join("")}</ul>`
       :`<div class="empty">${S.shiftLog?"ماكو ورديات مقفلة بعد.":"…"}</div>`}</section>`;
   if(!S.ready.sh){v.innerHTML=head+`<div class="pane"><div class="spinner" style="margin:30px auto"></div></div>`;return}
@@ -2230,7 +2235,7 @@ function renderShift(){
       <div class="stat"><div class="k">كاش</div><div class="v paid"><span class="num">${fmt(z.cash)}</span></div></div>
       <div class="stat"><div class="k">دين على الزبائن</div><div class="v debt"><span class="num">${fmt(z.debt)}</span></div></div>
       <div class="stat"><div class="k">الخصومات</div><div class="v"><span class="num">${fmt(z.disc)}</span></div></div>
-      <div class="stat"><div class="k">عدد الفواتير</div><div class="v"><span class="num">${z.n}</span>${z.voids?`<small>(${z.voids} ملغية)</small>`:""}</div></div>
+      <div class="stat"><div class="k">عدد الفواتير</div><div class="v"><span class="num">${Number(z.n)||0}</span>${z.voids?`<small>(${Number(z.voids)||0} ملغية)</small>`:""}</div></div>
       ${S.shift.noSale?`<div class="stat"><div class="k">فتح الدرج بدون بيع</div><div class="v warn"><span class="num">${S.shift.noSale}</span></div></div>`:""}
     </div>
     <div class="rep-grid">${log}
@@ -2251,7 +2256,7 @@ function closeShiftForm(){
   const list=shiftSales(sh);if(!list){toast("لحظة، دا يحمّل مبيعات الوردية.");return}
   const z=zOf(sh,list);
   openModal(`<h3>تقفيل الوردية</h3><p class="hint">عدّ الكاش اللي بالدرج هسه واكتبه.</p>
-    <div class="due"><span class="k">المفروض بالدرج</span><span class="v"><span class="num">${fmt(z.expected)}</span> <small style="font-size:16px">${CUR}</small></span><span class="k">${drawerHtml(z)} (<span class="num">${z.n}</span> فاتورة)</span>${z.usd?`<span class="k">ودولار <b class="num">${usdFmt(z.usd)}</b></span>`:""}</div>
+    <div class="due"><span class="k">المفروض بالدرج</span><span class="v"><span class="num">${fmt(z.expected)}</span> <small style="font-size:16px">${CUR}</small></span><span class="k">${drawerHtml(z)} (<span class="num">${Number(z.n)||0}</span> فاتورة)</span>${z.usd?`<span class="k">ودولار <b class="num">${usdFmt(z.usd)}</b></span>`:""}</div>
     <form id="czf" class="field" style="gap:12px" novalidate>
       <div class="field"><label for="czC">الكاش المعدود (دينار)</label><input id="czC" class="big" inputmode="numeric" placeholder="0"></div>
       <div class="banner info" id="czD" hidden></div>
@@ -2285,7 +2290,7 @@ function zModal(x){
       <div class="ln big" style="color:var(--${diffCls(x.diff)})"><span>الفرق</span><span>${esc(diffText(x.diff))}</span></div>
       ${"usdCounted" in x?`<hr>${ln("دولار المفروض",usdFmt(x.usdExpected))}${ln("دولار المعدود",usdFmt(x.usdCounted))}<div class="ln" style="color:var(--${diffCls(x.usdDiff)})"><span>فرق الدولار</span><span>${esc(usdDiffText(x.usdDiff))}</span></div>`:""}<hr>
       ${ln("مجموع المبيعات",fmt(z.total))}${ln("دين على الزبائن",fmt(z.debt),"color:var(--debt)")}${ln("الخصومات",fmt(z.disc))}${admin&&z.profit!=null?ln("الربح",fmt(z.profit)):""}
-      ${ln("عدد الفواتير",String(z.n||0)+(z.voids?` (+${z.voids} ملغية)`:""))}${x.noSale?ln("فتح الدرج بدون بيع",String(x.noSale)):""}
+      ${ln("عدد الفواتير",String(Number(z.n)||0)+(z.voids?` (+${Number(z.voids)||0} ملغية)`:""))}${x.noSale?ln("فتح الدرج بدون بيع",String(x.noSale)):""}
       ${(z.who||[]).length>1?"<hr>"+z.who.map(w=>ln(esc(w.name),fmt(w.v))).join(""):""}
       ${x.note?`<hr><div class="ln"><span>${esc(x.note)}</span></div>`:""}</div>
     <div class="foot">${canPrint()?`<button class="btn primary" type="button" id="zPrint">${I.print}طباعة</button>`:""}<button class="btn${canPrint()?"":" primary"}" type="button" id="zPdf">${I.pdf}تقرير PDF</button><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
@@ -2485,7 +2490,7 @@ function productForm(p){
         <span class="help">${scaleCfg().on?"نفس الرقم اللي مسجل لهاي المادة بميزان الملصقات، حتى ينقرا ملصقها بالسكانر.":"لميزان الملصقات. فعّل «باركود الميزان» من قائمة الحساب ← الطابعة والميزان."}</span></div>
       <fieldset class="sec"><legend>عرض</legend>
         <div class="seg" id="ofT" role="group" aria-label="نوع العرض">${[["","بدون"],["price","سعر خاص"],["qty","كمية بسعر"]].map(([k,l])=>`<button type="button" data-of="${k}" aria-pressed="${((p.offer&&p.offer.type)||"")===k}">${l}</button>`).join("")}</div>
-        <div class="row3" id="ofF"><div class="field" id="ofNf"><label for="ofN">العدد</label><input id="ofN" inputmode="numeric" value="${p.offer&&p.offer.n?p.offer.n:""}" placeholder="3"></div>
+        <div class="row3" id="ofF"><div class="field" id="ofNf"><label for="ofN">العدد</label><input id="ofN" inputmode="numeric" value="${p.offer&&p.offer.n?esc(p.offer.n):""}" placeholder="3"></div>
           <div class="field"><label for="ofP" id="ofPl">سعر العرض</label><input id="ofP" inputmode="numeric" value="${p.offer&&p.offer.price>0?fmt(p.offer.price):""}" placeholder="0"></div>
           <div class="field"><label for="ofTo">ينتهي بتاريخ (اختياري)</label><input id="ofTo" type="date" value="${esc((p.offer&&p.offer.to)||"")}"></div></div>
         <p class="hint" id="ofH"></p>
@@ -2583,10 +2588,10 @@ function loadPic(p){
   const k=picKey(p);if(PICS.has(k))return Promise.resolve(PICS.get(k));if(picWait.has(k))return picWait.get(k);
   const ref=db.collection("itemPhotos").doc(p.id);
   const pr=ref.get({source:"cache"}).catch(()=>null).then(d=>d&&d.exists&&Number(d.data().at)===Number(p.pic)?d:ref.get())
-    .then(d=>{const u=d.exists?d.data().data||"":"";PICS.set(k,u);return u}).finally(()=>picWait.delete(k));
+    .then(d=>{const u=d.exists?safeImg(d.data().data):"";PICS.set(k,u);return u}).finally(()=>picWait.delete(k));
   picWait.set(k,pr);return pr;
 }
-const picImg=(p,cls)=>{if(p&&p.pic)return `<img class="${cls}" data-pic="${esc(p.id)}" alt=""${picUrl(p)?` src="${picUrl(p)}"`:""}>`;
+const picImg=(p,cls)=>{if(p&&p.pic)return `<img class="${cls}" data-pic="${esc(p.id)}" alt=""${picUrl(p)?` src="${esc(picUrl(p))}"`:""}>`;
   const u=stockPic(p);if(u)return `<img class="${cls}" src="${u}" alt="" loading="lazy">`;
   const k=catIcon(p);return k?icSpan(cls,k):""};
 const icSpan=(cls,k)=>`<span class="${cls} cat-ic ic-${ICON_HUE[k]||"leaf"}">${iconSvg(k)}</span>`;
@@ -2647,7 +2652,7 @@ function flashItem(p,pack){
   const sp=stockPic(p);if(!p||!p.pic&&!sp)return;
   (p.pic?loadPic(p):Promise.resolve(sp)).then(u=>{if(!u)return;let f=$("#flash");
     if(!f){f=document.createElement("div");f.id="flash";f.className="flash";f.setAttribute("aria-hidden","true");document.body.appendChild(f)}
-    f.innerHTML=`<img src="${u}" alt=""><div><b>${esc(p.name)}${pack?` (${esc(pack.name)})`:""}</b><span class="num">${fmt(priceFor(p,pack||null,S.whole))}</span></div>`;
+    f.innerHTML=`<img src="${esc(u)}" alt=""><div><b>${esc(p.name)}${pack?` (${esc(pack.name)})`:""}</b><span class="num">${fmt(priceFor(p,pack||null,S.whole))}</span></div>`;
     f.hidden=false;clearTimeout(flashT);flashT=setTimeout(()=>{f.hidden=true},1800)}).catch(()=>{});
 }
 // The photo box in the item forms: take a photo, pick one, or remove it. The change is saved with the form (commitPic).
@@ -2658,7 +2663,7 @@ const picFieldHtml=x=>`<div class="pic-edit"><div class="pic-prev" id="${x}Prev"
 function picField(m,x,p,init){
   const st=init||{url:"",changed:false},prev=m.querySelector("#"+x+"Prev"),del=m.querySelector("#"+x+"Del");
   if(!init&&p&&!p.pic&&stockPic(p)){st.url=stockPic(p);st.stock=true}
-  const show=()=>{prev.innerHTML=st.url?`<img src="${st.url}" alt="صورة المادة">`:I.camera;prev.classList.toggle("empty",!st.url);del.hidden=!st.url;
+  const show=()=>{prev.innerHTML=st.url?`<img src="${esc(st.url)}" alt="صورة المادة">`:I.camera;prev.classList.toggle("empty",!st.url);del.hidden=!st.url;
     prev.title=st.stock?"صورة جاهزة، تكدر تصوّر المادة بدالها":""};
   const pick=async f=>{if(!f)return;try{const r=await shrinkImage(f,480,.8);st.url=r.url;st.changed=true;st.stock=false;show()}catch(e){console.warn(e);toast("تعذّر فتح الصورة.")}};
   m.querySelector("#"+x+"Cam").addEventListener("change",e=>pick(e.target.files[0]));
@@ -4161,6 +4166,8 @@ if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceW
   try{db.settings({ignoreUndefinedProperties:true,merge:true})}catch(e){}
   if(window.FIREBASE_EMULATOR){auth.useEmulator("http://127.0.0.1:9099",{disableWarnings:true});db.useEmulator("127.0.0.1",8080)}
   try{await db.enablePersistence({synchronizeTabs:true})}catch(e){console.warn("offline cache off",e&&e.code)}
+  // Ask the browser to keep the login and offline copy when space runs low.
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
   let profUnsub=null;
   let authSeq=0;
   auth.onAuthStateChanged(async u=>{
@@ -4182,7 +4189,10 @@ if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceW
       S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:p.username||uname,items:p.role==="editor"&&p.items===true};
       rememberLogin(S.me.username,u.email);
       startData();if(first||$("#app").hidden)showApp();else render();
-    },e=>{console.warn(e);showWaiting("تعذّر قراءة حسابك. تحقق من الإنترنت.","bad")});
+    },e=>{console.warn(e);
+      // Already open from the device's copy: keep selling and say why it isn't updating, rather than locking people out.
+      if(S.me&&!$("#app").hidden){toast(readErrMsg(e),7000);return}
+      showWaiting(readErrMsg(e),"bad",true)});
   });
 })();
 })();
