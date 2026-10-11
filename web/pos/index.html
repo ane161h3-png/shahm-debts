@@ -56,6 +56,7 @@ h1,h2,h3{text-wrap:balance}
 .gate-head p{margin:0;color:var(--muted)}
 .banner{border-radius:12px;padding:10px 14px;font-size:14px}
 .banner.bad{background:var(--debt-soft);color:var(--debt)}
+.unsent{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 14px 0}.unsent>span{flex:1;min-width:180px}
 .banner.ok{background:var(--paid-soft);color:var(--paid)}
 .banner.info{background:var(--accent-soft);color:var(--accent)}
 .banner.warn{background:var(--warn-soft);color:var(--warn)}
@@ -487,6 +488,7 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
     <button class="me" id="meBox" type="button" aria-label="الحساب"></button>
   </header>
   <div id="approvals" class="apvs" hidden aria-live="polite"></div>
+  <div id="unsent" class="banner bad unsent" hidden role="alert"></div>
   <div id="view"></div>
 </div>
 <div id="modalRoot"></div>
@@ -720,6 +722,7 @@ function startData(){
   if(isAdmin())unsubs.push(db.collection("approvals").where("status","==","pending").onSnapshot(s=>{
     S.approvals=new Map(s.docs.map(d=>[d.id,d.data()]));renderApprovals()},readFail));
   watchToday();
+  renderUnsent();setTimeout(()=>unsentRetry(false),3000);
 }
 /* Customers load only when needed (a sale on credit, suppliers, a receipt), and debt records only for the customer in hand.
    Reading every customer and every record on each open was most of the daily free Firestore reads. */
@@ -1526,26 +1529,60 @@ function saveSale(pay){
   const sale={id,no,at:now,date:todayISO(),items,count:items.length,subtotal:t.sub,discount:t.disc,total:t.total,cash:pay.cash,debt:pay.debt,
     ...(S.whole?{wholesale:true}:{}),...(S.shift?{shiftId:S.shift.id}:{}),...(S.approval&&t.disc>0?{approvalId:S.approval.id}:{}),...(pay.received?{received:pay.received,change:pay.received-t.total}:{}),
     ...(pay.usd?{usd:pay.usd,rate:pay.rate,usdIqd:pay.usdIqd,...(pay.usdIqd>t.total?{change:pay.usdIqd-t.total}:{}),...(pay.usdIqd<t.total?{topUp:t.total-pay.usdIqd}:{})}:{}),by:S.me.name,byId:S.me.id,status:"done"};
-  const b=db.batch();
+  const b=db.batch(),core=[];
   if(pay.debt>0){
     const c=pay.customer;
     const note=`فاتورة كاشير #${no}: ${itemsText(items,160)}${pay.cash>0?` (دفع ${fmt(pay.cash)} كاش من ${fmt(t.total)})`:""}${t.disc?` خصم ${fmt(t.disc)}`:""}`;
     const txn={id:uid(),customerId:c.id,type:"debt",amount:pay.debt,note,date:sale.date,createdAt:now,by:S.me.name,source:"pos",saleId:id};
     Object.assign(sale,{customerId:c.id,customerName:c.name,customerPhone:c.phone||"",txnId:txn.id});
-    b.set(db.collection("txns").doc(txn.id),txn);
     const a=activityDoc("add","debt",{customerName:c.name,amount:pay.debt,detail:`فاتورة كاشير #${no}`});
-    b.set(db.collection("activity").doc(a.id),a);
+    core.push(["txns",txn.id,txn],["activity",a.id,a]);
     S.txns.set(txn.id,txn);
   }
   // Stock: each tracked item goes down by what was sold, in base units (a carton of 24 = 24).
   for(const [pid,q] of stockMoves(items))b.update(db.collection("products").doc(pid),{stock:firebase.firestore.FieldValue.increment(-q)});
-  if(sale.approvalId)b.update(db.collection("approvals").doc(sale.approvalId),{status:"used",saleId:id,usedAt:now});
-  b.set(db.collection("sales").doc(id),sale);
+  if(sale.approvalId)core.push(["approvals",sale.approvalId,{status:"used",saleId:id,usedAt:now},"update"]);
+  core.push(["sales",id,sale]);
+  for(const op of core)addOp(b,op);
   S.sales.set(id,sale);
-  b.commit().catch(e=>{writeFail(e);S.sales.delete(id);if(sale.txnId)S.txns.delete(sale.txnId);refresh("sales")});
+  b.commit().catch(e=>{console.warn(e);
+    // The goods are gone and the money is in the drawer, so the invoice must not be lost: try again without the stock
+    // updates (an item deleted on another device fails the whole save), and if that fails too keep it on this device.
+    const b2=db.batch();for(const op of core)addOp(b2,op);
+    b2.commit().then(()=>toast(`انحفظت فاتورة #${no}، بس مخزون موادها ما تحدّث. راجعه من المواد.`,6000))
+      .catch(e2=>{console.warn(e2);S.sales.delete(id);if(sale.txnId)S.txns.delete(sale.txnId);unsentAdd({no,at:now,total:sale.total,core,err:e2&&e2.code||""});refresh("sales")});
+  });
   S.cart=[];S.discount=0;S.whole=false;S.approval=null;saveCart();document.body.classList.remove("show-cart");refresh("cart");
   return sale;
 }
+/* Invoices the server refused stay on this device (localStorage) until they are sent: retried on every start, when the
+   internet comes back, and from the red bar under the header. */
+const UNSENT_KEY="shahm-pos-unsent";
+function addOp(b,[coll,id,data,kind]){const ref=db.collection(coll).doc(id);if(kind==="update")b.update(ref,data);else b.set(ref,data)}
+function unsentList(){try{const l=JSON.parse(localStorage.getItem(UNSENT_KEY)||"[]");return Array.isArray(l)?l:[]}catch(e){return []}}
+function unsentKeep(l){try{if(l.length)localStorage.setItem(UNSENT_KEY,JSON.stringify(l));else localStorage.removeItem(UNSENT_KEY)}catch(e){}renderUnsent()}
+function unsentAdd(x){unsentKeep([...unsentList(),x]);toast(`فاتورة #${x.no} ما انحفظت بالسيرفر. بقت محفوظة على هذا الجهاز وتنرسل لما يصير ممكن.`,7000)}
+function renderUnsent(){
+  const box=$("#unsent");if(!box)return;const l=unsentList();box.hidden=!l.length;if(!l.length){box.innerHTML="";return}
+  const why=l.some(x=>x.err==="permission-denied")?"قاعدة البيانات رفضتها (صلاحية الحساب أو القواعد).":l.some(x=>x.err==="resource-exhausted")?"خلص حد الكتابة اليومي المجاني.":"تعذّر الاتصال.";
+  box.innerHTML=`<span>${l.length===1?"فاتورة وحدة":`<span class="num">${l.length}</span> فواتير`} ما انحفظت بالسيرفر (${l.length===1?"رقم":"أرقامها"} ${l.map(x=>`<span class="num">${esc(x.no)}</span>`).join("، ")}، المجموع <b class="num">${fmt(l.reduce((a,x)=>a+(Number(x.total)||0),0))}</b> ${CUR}). ${why} محفوظة على هذا الجهاز، لا تمسح بيانات المتصفح.</span>
+    <button class="btn sm" type="button" data-act="unsentRetry">إعادة الإرسال</button>`;
+}
+let unsentBusy=false;
+async function unsentRetry(manual){
+  if(unsentBusy||!S.me||!canSell())return;const l=unsentList();if(!l.length)return;unsentBusy=true;
+  const left=[];
+  for(const x of l){
+    const b=db.batch();for(const op of x.core||[])addOp(b,op);
+    // The write is queued offline and never resolves without the internet, so give up on this round after 20 seconds.
+    const r=await Promise.race([b.commit().then(()=>true,e=>e),new Promise(ok=>setTimeout(()=>ok({code:"unavailable"}),20000))]);
+    if(r!==true){left.push({...x,err:r&&r.code||""});console.warn(r)}
+  }
+  unsentBusy=false;unsentKeep(left);
+  const sent=l.length-left.length;
+  if(sent)toast(`انرسلت ${sent===1?"الفاتورة":sent+" فواتير"} اللي ما انحفظت.`,4000);else if(manual)toast("بعدها ما انرسلت. تحقق من الإنترنت أو راجع المدير.",4500);
+}
+addEventListener("online",()=>unsentRetry(false));
 function stockMoves(items){
   const m=new Map();
   for(const i of items){const p=i.pid&&S.products.get(i.pid);if(!tracked(p))continue;m.set(i.pid,round3((m.get(i.pid)||0)+Number(i.qty)*(Number(i.n)||1)))}
@@ -4109,6 +4146,7 @@ document.addEventListener("click",e=>{
     case "clear":if(confirm("تفريغ الفاتورة؟"))clearCart();break;
     case "discount":discountForm();break;
     case "checkout":checkout();break;
+    case "unsentRetry":unsentRetry(true);break;
     case "quickcash":quickCash();break;
     case "soldok":nextInvoice();break;
     case "rprint":if(S.lastSale)printReceipt(S.lastSale,{ask:true});break;
