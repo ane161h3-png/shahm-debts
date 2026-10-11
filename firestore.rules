@@ -18,13 +18,36 @@ service cloud.firestore {
     // An editor the owner trusted with the items (users/{uid}.items, set only by the owner) manages items and prices.
     function itemsMgr() { return isOwner() || (active() && prof().role == 'editor' && prof().get('items', false) == true); }
 
-    match /customers/{id} { allow read: if active(); allow write: if writer(); }
-    match /txns/{id}      { allow read: if active(); allow write: if writer(); }
+    // Shape checks on what the apps write. The owner is exempt (restoring a backup writes old records as they are);
+    // everyone else can only write records the apps themselves would write.
+    function d() { return request.resource.data; }
+    function str(v, max) { return v is string && v.size() <= max; }
+    function amountOk(v) { return v is number && v > 0 && v < 10000000000; }
+    function nameOk(v) { return str(v, 100) && v.size() > 0; }
+    function imageOk(v) { return v is string && v.size() < 1048000 && v.matches('data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+'); }
+    // Written by this person (their profile name, as the apps put it), not dated in the future.
+    function selfSigned(x) { return (x.by == prof().get('name', x.by) || prof().get('name', '') == '') && x.at is number && x.at < request.time.toMillis() + 86400000; }
+
+    match /customers/{id} {
+      allow read: if active();
+      allow create, update: if writer() && (isOwner() || (d().id == id && nameOk(d().name)));
+      allow delete: if writer();
+    }
+    match /txns/{id} {
+      allow read: if active();
+      allow create, update: if writer() && (isOwner() || (d().id == id && d().customerId is string
+        && d().type in ['debt', 'pay'] && amountOk(d().amount)));
+      allow delete: if writer();
+    }
     // Invoice photos (one compressed JPEG per document), linked from txns.photos.
-    match /photos/{id}    { allow read: if active(); allow write: if writer(); }
+    match /photos/{id} {
+      allow read: if active();
+      allow create, update: if writer() && (isOwner() || (d().id == id && imageOk(d().data)));
+      allow delete: if writer();
+    }
     match /activity/{id} {
       allow read: if active();
-      allow create: if writer() || (active() && request.resource.data.kind == 'remind');
+      allow create: if isOwner() || (d().id == id && selfSigned(d()) && (writer() || (active() && d().kind == 'remind')));
       allow update, delete: if isOwner();
     }
     match /settings/{id}  {
@@ -38,10 +61,14 @@ service cloud.firestore {
     match /products/{id}  {
       allow read: if active();
       allow write: if itemsMgr();
-      allow update: if writer() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']);
+      allow update: if writer() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']) && d().stock is number;
     }
     // One small photo per item (id = the item's id): everyone signed in sees them, whoever manages the items changes them.
-    match /itemPhotos/{id} { allow read: if active(); allow write: if itemsMgr(); }
+    match /itemPhotos/{id} {
+      allow read: if active();
+      allow create, update: if itemsMgr() && (isOwner() || imageOk(d().data));
+      allow delete: if itemsMgr();
+    }
     // An editor's sale with a discount needs a discount the owner approved for exactly this invoice total,
     // and the same write marks that approval used, so it cannot be spent twice.
     function apPath(aid) { return /databases/$(database)/documents/approvals/$(aid); }
@@ -56,7 +83,8 @@ service cloud.firestore {
     }
     match /sales/{id} {
       allow read: if active();
-      allow create: if writer() && discountOk(request.resource.data);
+      allow create: if writer() && discountOk(request.resource.data) && (isOwner() || (d().id == id && d().status == 'done'
+        && d().date is string && d().date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}') && d().total is number && d().total >= 0));
       allow update, delete: if isOwner();
     }
     // Discount requests: an editor asks, the owner approves or refuses; the editor can only withdraw a pending
@@ -70,11 +98,15 @@ service cloud.firestore {
           || (resource.data.status == 'approved' && request.resource.data.status == 'used')));
       allow delete: if isOwner();
     }
-    // Shifts: whoever sells opens and closes them; a closed shift is final (only the owner can delete one).
+    // Shifts: whoever sells opens and closes them (the next cashier may close someone else's shift, under their own
+    // name); how it was opened never changes, and a closed shift is final (only the owner can delete one).
     match /shifts/{id} {
       allow read: if active();
-      allow create: if writer() && request.resource.data.status == 'open';
-      allow update: if writer() && resource.data.status == 'open';
+      allow create: if writer() && d().status == 'open' && (isOwner() || d().openedById == request.auth.uid);
+      allow update: if writer() && resource.data.status == 'open' && (isOwner() || (
+        d().diff(resource.data).affectedKeys().hasOnly(['noSale', 'status', 'closedAt', 'closedBy', 'closedById', 'counted', 'expected',
+          'diff', 'note', 'z', 'usdExpected', 'usdCounted', 'usdDiff'])
+        && (d().status == 'open' || (d().status == 'closed' && d().closedById == request.auth.uid))));
       allow delete: if isOwner();
     }
     // Stocktakes: whoever manages the items saves a count of the shelves; everyone who can read the cashier can see the record.
@@ -97,9 +129,11 @@ service cloud.firestore {
     }
     match /users/{uid} {
       allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
+      // Signing up: a pending viewer with only the fields the sign-up form writes.
       allow create: if isOwner() || (signedIn() && request.auth.uid == uid
-        && request.resource.data.status == 'pending' && request.resource.data.role == 'viewer'
-        && !('items' in request.resource.data));
+        && d().keys().hasOnly(['id', 'name', 'username', 'role', 'status', 'createdAt'])
+        && d().id == uid && nameOk(d().name) && str(d().username, 40)
+        && d().status == 'pending' && d().role == 'viewer');
       allow update, delete: if isOwner();
     }
   }
