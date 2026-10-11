@@ -494,6 +494,10 @@ const PLUG={};const plugin=n=>PLUG[n]||(PLUG[n]=window.Capacitor.registerPlugin(
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// Photos come from Firestore, where any editor can write: only a real base64 JPEG/PNG/WebP is ever put in a page.
+const safeImg=u=>typeof u==="string"&&/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(u)?u:"";
+// What to tell people when a read fails: the free plan's daily read quota runs out until 07:00 UTC (10 AM Baghdad).
+const readErrMsg=e=>e&&e.code==="resource-exhausted"?"خلص حد القراءة اليومي المجاني. البيانات من الجهاز، ويرجع طبيعي الساعة 10 الصبح.":"تعذّر قراءة حسابك. تحقق من الإنترنت.";
 const fmt=n=>Math.round(Number(n)||0).toLocaleString("en-US");
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 const todayISO=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
@@ -818,10 +822,11 @@ function showRegister(){
     });
   }});
 }
-function showWaiting(msg,kind){
+function showWaiting(msg,kind,retry){
   gateCard({sub:"",body:`<div class="banner ${kind||"warn"}">${esc(msg)}</div>
+    ${retry?`<button class="btn primary block" type="button" id="wRetry">إعادة المحاولة</button>`:""}
     <button class="btn block" type="button" id="wOut">تسجيل الخروج</button>`,
-    mount:g=>{g.querySelector("#wOut").onclick=()=>signOut()}});
+    mount:g=>{g.querySelector("#wOut").onclick=()=>signOut();const r=g.querySelector("#wRetry");if(r)r.onclick=()=>location.reload()}});
 }
 function validateAccount(name,username,pw,selfId){
   name=String(name||"").trim();username=normDigits(username).trim().toLowerCase();
@@ -841,7 +846,7 @@ function stopData(){
 }
 function startData(){
   if(dataOn)return;dataOn=true;
-  const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied")toast("ما عندك صلاحية لقراءة البيانات. راجع المدير.")};
+  const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied")toast("ما عندك صلاحية لقراءة البيانات. راجع المدير.");else if(e&&e.code==="resource-exhausted")toast(readErrMsg(e))};
   unsubs.push(db.collection("customers").onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.c=true;render()},fail));
   unsubs.push(db.collection("txns").onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.t=true;render()},fail));
   unsubs.push(db.collection("activity").orderBy("at","desc").limit(200).onSnapshot(s=>{S.activity=s.docs.map(d=>d.data());render()},fail));
@@ -1808,7 +1813,7 @@ const PHOTO_MAX=3;
 function photoFail(e){console.warn(e);toast(e&&e.code==="permission-denied"?"الصورة ما انحفظت: لازم تحديث قواعد Firebase.":"تعذّر حفظ الصورة. تحقق من الإنترنت.")}
 const photoCache=new Map();
 async function loadPhoto(id){if(photoCache.has(id))return photoCache.get(id);
-  const d=await db.collection("photos").doc(id).get();const url=d.exists?d.data().data:"";if(url)photoCache.set(id,url);return url}
+  const d=await db.collection("photos").doc(id).get();const url=d.exists?safeImg(d.data().data):"";if(url)photoCache.set(id,url);return url}
 function savePhotos(list,t){for(const ph of list){photoCache.set(ph.id,ph.url);
   try{db.collection("photos").doc(ph.id).set({id:ph.id,data:ph.url,txnId:t.id,customerId:t.customerId,at:Date.now(),by:S.me.name}).catch(photoFail)}catch(e){photoFail(e)}}}
 function dropPhotos(ids){for(const id of ids||[]){photoCache.delete(id);try{db.collection("photos").doc(id).delete().catch(()=>{})}catch(e){}}}
@@ -1818,7 +1823,7 @@ function viewPhotos(t){
     <div class="foot"><button class="btn" type="button" data-close>إغلاق</button></div>`,async m=>{
     m.classList.add("wide");const box=m.querySelector("#pv");
     try{const urls=await Promise.all((t.photos||[]).map(loadPhoto));
-      box.innerHTML=urls.filter(Boolean).map((u,i)=>`<a href="${u}" target="_blank" rel="noopener" data-pic="${i}"><img src="${u}" alt="صورة القائمة"></a>`).join("")||`<p class="hint">الصورة غير موجودة.</p>`;
+      box.innerHTML=urls.filter(Boolean).map((u,i)=>`<a href="${esc(u)}" target="_blank" rel="noopener" data-pic="${i}"><img src="${esc(u)}" alt="صورة القائمة"></a>`).join("")||`<p class="hint">الصورة غير موجودة.</p>`;
       box.querySelectorAll("[data-pic]").forEach(a=>a.addEventListener("click",e=>{e.preventDefault();const u=a.querySelector("img").src;
         fetch(u).then(r=>r.blob()).then(b=>{const w=window.open(URL.createObjectURL(b),"_blank");if(!w)toast("افتح الصورة من زر المشاركة.")})}))}
     catch(e){console.warn(e);box.innerHTML=`<p class="err">${e&&e.code==="permission-denied"?"لازم تحديث قواعد Firebase حتى تنعرض الصور.":"تعذّر تحميل الصورة. تحقق من الإنترنت."}</p>`}
@@ -1858,7 +1863,7 @@ function viewListPhotos(c,date){
     <div class="foot"><button class="btn" type="button" data-close>إغلاق</button></div>`,async m=>{
     m.classList.add("wide");const box=m.querySelector("#pv");
     try{const urls=await Promise.all(arr.map(x=>loadPhoto(x.id)));
-      box.innerHTML=arr.map((x,i)=>urls[i]?`<figure class="list-pic"><a href="#" data-pic="${i}"><img src="${urls[i]}" alt="صورة القائمة"></a>
+      box.innerHTML=arr.map((x,i)=>urls[i]?`<figure class="list-pic"><a href="#" data-pic="${i}"><img src="${esc(urls[i])}" alt="صورة القائمة"></a>
         <figcaption><span>${esc(hm12(x.at))}${x.by?" · "+esc(x.by):""}</span>${w?`<button class="btn sm ghost danger-text" type="button" data-ldel="${esc(x.id)}">${I.trash}حذف</button>`:""}</figcaption></figure>`:"").join("")||`<p class="hint">الصورة غير موجودة.</p>`;
       box.querySelectorAll("[data-pic]").forEach(a=>a.addEventListener("click",e=>{e.preventDefault();const u=a.querySelector("img").src;
         fetch(u).then(r=>r.blob()).then(b=>{const win=window.open(URL.createObjectURL(b),"_blank");if(!win)toast("افتح الصورة من زر المشاركة.")})}));
@@ -2380,6 +2385,8 @@ if(NATIVE){
   try{db.settings({ignoreUndefinedProperties:true,merge:true})}catch(e){}
   if(window.FIREBASE_EMULATOR){auth.useEmulator("http://127.0.0.1:9099",{disableWarnings:true});db.useEmulator("127.0.0.1",8080)}
   try{await db.enablePersistence({synchronizeTabs:true})}catch(e){console.warn("offline cache off",e&&e.code)}
+  // Ask the browser to keep the login and offline copy when space runs low.
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
   let profUnsub=null;
   let authSeq=0;
   auth.onAuthStateChanged(async u=>{
@@ -2416,7 +2423,10 @@ if(NATIVE){
       S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:p.username||uname};
       rememberLogin(S.me.username,u.email);
       startData();if(first||$("#app").hidden)showApp();else render();
-    },e=>{console.warn(e);showWaiting("تعذّر قراءة حسابك. تحقق من الإنترنت.","bad")});
+    },e=>{console.warn(e);
+      // Already open from the device's copy: keep working and say why it isn't updating, rather than locking people out.
+      if(S.me&&!$("#app").hidden){toast(readErrMsg(e));return}
+      showWaiting(readErrMsg(e),"bad",true)});
   });
 })();
 })();
