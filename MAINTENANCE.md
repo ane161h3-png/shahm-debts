@@ -47,7 +47,7 @@
 |---|---|---|
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | نشر السيرفر | سوّي توكن جديد من Cloudflare ← My Profile ← API Tokens (قالب Edit Cloudflare Workers) |
 | `GEMINI_API_KEY` | قراءة الصور | مفتاح جديد من AI Studio |
-| `DISPATCH_TOKEN` | **يشغّل تقرير الـ5 ساعات** | **ينتهي!** إذا وقف التقرير، هذا السبب الأغلب (القسم 8) |
+| `DISPATCH_TOKEN` | **يشغّل تقرير الـ5 ساعات** | **ينتهي!** نسخة الساعة 2 تنبهك بالتلگرام قبل أسبوعين من انتهائه، وتنبهك إذا التقارير وقفت. الحل بالقسم 8 |
 | `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` | إرسال التقارير | توكن جديد من @BotFather |
 | `BACKUP_PASSWORD` | كلمة مرور حساب `backup` (مشاهد فقط) اللي يقرأ البيانات | لازم تطابق كلمة مرور المستخدم `backup` بالبرنامج |
 | `ANTHROPIC_API_KEY` (اختياري) | يحوّل قراءة الصور لـ Claude بدل Gemini | غير مطلوب |
@@ -132,7 +132,7 @@ python3 -m http.server 8000
 
 | المشكلة | الحل |
 |---|---|
-| ما وصلني تقرير 2 بالليل | GitHub ← Actions ← Daily backup: اقرأ سبب الفشل. غالباً سر منتهي. شغّله يدوياً (Run workflow ← daily). التوقيت يتأخر ~13 دقيقة طبيعي |
+| ما وصلني تقرير 2 بالليل | GitHub ← Actions ← Daily backup: اقرأ سبب الفشل. غالباً سر منتهي. شغّله يدوياً (Run workflow ← daily). التوقيت يتأخر ~13 دقيقة طبيعي. إذا GitHub تخطاه، تقرير الساعة 7 الصبح يشغّله وحده ويخبرك |
 | وقف تقرير الـ5 ساعات | غالباً `DISPATCH_TOKEN` انتهى: سوّي توكن جديد (GitHub ← Settings ← Developer settings ← Fine-grained tokens، على المستودع فقط، صلاحية Actions Read and write)، حطه كسر `DISPATCH_TOKEN`، وشغّل AI worker |
 | «التحديث ما وصل» بعد النشر | انتظر 10 دقائق وأعد فتح الصفحة. إذا بقي: تأكد أنك رفعت `CACHE` |
 | الأندرويد ما تحدث | التطبيق يفتح الموقع، فيتحدث مع الموقع. يحتاج APK جديد فقط إذا تغيرت أذونات أو `capacitor.config.json` |
