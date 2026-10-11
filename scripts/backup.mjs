@@ -25,6 +25,7 @@ const cfg = sandbox.window.FIREBASE_CONFIG;
 const AUTH_URL = process.env.AUTH_URL || "https://identitytoolkit.googleapis.com";
 const DB_URL = process.env.FIRESTORE_URL || "https://firestore.googleapis.com";
 const TG_URL = process.env.TELEGRAM_URL || "https://api.telegram.org";
+const GH_URL = process.env.GITHUB_API_URL || "https://api.github.com";
 const USER = process.env.BACKUP_USER || "backup";
 
 async function signIn() {
@@ -380,8 +381,64 @@ async function periodic(token) {
       subText: "كل حركات اليوم لحد هسه", timeText: `لحد ${hm(rep.end)}` });
     if (file) await sendFile(file.name, file.data, file.type, `📄 كل حركات اليوم ${bizDay(rep.end - 1)} لحد ${hm(rep.end)}`);
   }
+  if (!manual && end - dayStart === SLOT) {
+    const note = await startMissedBackup(now).catch(e => (console.warn("Backup check failed:", e.message), null));
+    if (note) await tg("sendMessage", { chat_id: chat, text: note });
+  }
   const reads = txns.length + 1 + activity.length + promised.length + promiseTxns + customers.length - due.length;
   console.log(`Sent periodic report (${rep.changed ? "with" : "no"} changes): about ${reads} reads (${txns.length} transactions today, ${activity.length} activity, ${customers.length} customers, ${due.length} promises).`);
+}
+
+/* Health checks, so the reports never stop without anyone noticing:
+   - daily run: the token the Cloudflare cron uses to start the 5-hour reports (DISPATCH_TOKEN) has expired or soon will,
+     or no 5-hour report has run for a day (whatever broke on the way);
+   - first 5-hour report of the day (7 AM): the 2 AM backup did not run (GitHub sometimes skips its schedule), so it starts it.
+   A failed check never stops the backup or the report. */
+const TOKEN_WARN_DAYS = 14;
+const TOKEN_FIX = "الحل: سوّي توكن جديد (دليل الصيانة، القسم 8)، حطه بمكان DISPATCH_TOKEN، وشغّل AI worker.";
+const gh = (path, token, init = {}) => fetch(`${GH_URL}${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json",
+  "User-Agent": "shahm-backup", "X-GitHub-Api-Version": "2022-11-28", ...(init.body ? { "Content-Type": "application/json" } : {}) } });
+// "2026-12-01 10:00:00 UTC" or "2026-12-01 10:00:00 +0300" → ms, or NaN.
+const ghTime = s => Date.parse(String(s).trim().replace(" ", "T").replace(/ UTC$/, "Z").replace(/ ([+-]\d{2})(\d{2})$/, "$1:$2"));
+async function dispatchTokenWarning(now) {
+  const tok = (process.env.DISPATCH_TOKEN || "").trim(), repo = process.env.GITHUB_REPOSITORY;
+  if (!repo) return null;
+  if (!tok) return `⚠️ ماكو DISPATCH_TOKEN، فتقارير الـ5 ساعات ما تشتغل.\n${TOKEN_FIX}`;
+  const r = await gh(`/repos/${repo}`, tok);
+  if (r.status === 401) return `⚠️ توكن تقارير الـ5 ساعات (DISPATCH_TOKEN) انتهى أو انحذف، فالتقارير وقفت.\n${TOKEN_FIX}`;
+  if (!r.ok) return null;
+  const exp = r.headers.get("github-authentication-token-expiration");
+  const at = exp ? ghTime(exp) : NaN;
+  if (!Number.isFinite(at)) return null;
+  const days = Math.ceil((at - now.getTime()) / 864e5);
+  if (days > TOKEN_WARN_DAYS) return null;
+  return `⏳ توكن تقارير الـ5 ساعات (DISPATCH_TOKEN) ينتهي ${days <= 0 ? "اليوم" : `بعد ${days} يوم`} (${isoDay(at)}). لما ينتهي، التقارير توقف.\n${TOKEN_FIX}`;
+}
+// Runs of this workflow started by `event` since `since` (ms), or null if GitHub can't be asked.
+async function runsSince(event, since) {
+  const tok = process.env.GH_TOKEN, repo = process.env.GITHUB_REPOSITORY;
+  if (!tok || !repo) return null;
+  const r = await gh(`/repos/${repo}/actions/workflows/backup.yml/runs?event=${event}&created=${encodeURIComponent(">=" + new Date(since).toISOString())}&per_page=1`, tok);
+  if (!r.ok) { console.warn(`Run list failed: ${r.status}`); return null; }
+  return (await r.json()).total_count;
+}
+async function dailyChecks(now) {
+  const notes = [];
+  const tokenNote = await dispatchTokenWarning(now).catch(e => (console.warn("Token check failed:", e.message), null));
+  if (tokenNote) notes.push(tokenNote);
+  // The cron starts four reports a day; none in 24 hours means the chain is broken somewhere (token, Cloudflare, GitHub).
+  const n = await runsSince("workflow_dispatch", now.getTime() - 24 * 3600e3).catch(() => null);
+  if (n === 0 && !tokenNote) notes.push("⚠️ تقارير الـ5 ساعات ما اشتغلت من 24 ساعة. شوف دليل الصيانة، القسم 8 (أغلب الأحيان DISPATCH_TOKEN، أو حساب Cloudflare).");
+  return notes;
+}
+async function startMissedBackup(now) {
+  // The 2 AM run starts about 02:15 Baghdad; this check runs at 7 AM, so 8 hours back covers it.
+  const n = await runsSince("schedule", now.getTime() - 8 * 3600e3);
+  if (n !== 0) return null;
+  const r = await gh(`/repos/${process.env.GITHUB_REPOSITORY}/actions/workflows/backup.yml/dispatches`, process.env.GH_TOKEN,
+    { method: "POST", body: JSON.stringify({ ref: "main", inputs: { mode: "daily" } }) });
+  return r.ok ? "ℹ️ النسخة الاحتياطية الليلية ما اشتغلت (GitHub تخطاها)، فشغلتها هسه. توصلك بعد دقائق."
+    : `⚠️ النسخة الاحتياطية الليلية ما اشتغلت، وما گدرت أشغلها (${r.status}). شغّلها يدوياً: GitHub ← Actions ← Daily backup ← Run workflow.`;
 }
 
 async function main() {
@@ -427,6 +484,9 @@ async function main() {
   await sendFile(`ديون-الزبائن-${day}.xlsx`, xlsx(sh.all), XLSX_TYPE, `📗 ${day} - ديون الزبائن (${sh.owing} زبون)`);
   await sendFile(`لم-يسددوا-منذ-شهر-${day}.xlsx`, xlsx(sh.late), XLSX_TYPE, `📕 ${day} - الزبائن اللي ما سددوا من شهر: ${sh.lateCount} زبون، ${fmt(sh.lateTotal)} د.ع`);
   console.log(`Sent spreadsheets: ${sh.owing} owing, ${sh.lateCount} late.`);
+
+  const notes = await dailyChecks(now);
+  if (notes.length) { await tg("sendMessage", { chat_id: chat, text: notes.join("\n\n") }); console.log("Sent health notes:", notes.length); }
 }
 
 main().catch(async e => {
