@@ -849,7 +849,7 @@ function startData(){
   const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied")toast("ما عندك صلاحية لقراءة البيانات. راجع المدير.");else if(e&&e.code==="resource-exhausted")toast(readErrMsg(e))};
   unsubs.push(db.collection("customers").onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.c=true;render()},fail));
   unsubs.push(db.collection("txns").onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.t=true;render()},fail));
-  unsubs.push(db.collection("activity").orderBy("at","desc").limit(200).onSnapshot(s=>{S.activity=s.docs.map(d=>d.data());render()},fail));
+  unsubs.push(db.collection("activity").orderBy("at","desc").limit(100).onSnapshot(s=>{S.activity=s.docs.map(d=>d.data());render()},fail));
   unsubs.push(db.doc("settings/main").onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};if(S.me&&S.me.role==="owner")S.me.name=S.settings.ownerName||"المدير";S.ready.s=true;render()},fail));
   if(S.isOwner){
     unsubs.push(db.collection("users").onSnapshot(s=>{S.accounts=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));S.ready.a=true;render()},fail));
