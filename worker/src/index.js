@@ -383,10 +383,10 @@ async function sendWhatsApp(request, env, cors) {
   return json({ ok: true }, 200, cors);
 }
 
-// GitHub often skips its own scheduled runs, so Cloudflare's cron (wrangler.toml [triggers]) starts the 2-hour Telegram report
+// GitHub often skips its own scheduled runs, so Cloudflare's cron (wrangler.toml [triggers]) starts the periodic (5-hour) Telegram report
 // by dispatching .github/workflows/backup.yml. Needs the GH_DISPATCH_TOKEN secret (a GitHub token with Actions read/write on the repo).
 async function dispatchReport(env) {
-  if (!env.GH_DISPATCH_TOKEN) { console.log("GH_DISPATCH_TOKEN not set; skipping the 2-hour report."); return; }
+  if (!env.GH_DISPATCH_TOKEN) { console.log("GH_DISPATCH_TOKEN not set; skipping the periodic report."); return; }
   const r = await fetch(`https://api.github.com/repos/${env.GH_REPO}/actions/workflows/backup.yml/dispatches`, {
     method: "POST",
     headers: { Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`, Accept: "application/vnd.github+json", "User-Agent": "shahm-ai-cron", "X-GitHub-Api-Version": "2022-11-28" },

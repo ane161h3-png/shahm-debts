@@ -1,6 +1,6 @@
 // Telegram reports: signs in to Firebase as the read-only `backup` account, reads every collection the app
 // uses, and sends backups in the same format as the app's «حفظ نسخة» (so «استعادة» accepts them).
-//   MODE=periodic (every 2 hours): what changed in the last two hours, what is still pending, and a PDF of all of today's
+//   MODE=periodic (every 5 hours from 2 AM Baghdad: 7 AM, noon, 5 PM, 10 PM): what changed in the debts app in the last five hours, what is still pending, and a PDF of all of today's
 //   transactions so far. It reads little on purpose (see periodic()); the backup file comes with the daily run.
 //   MODE=daily (02:00 Baghdad): backup, end-of-day summary, a PDF with every transaction of the day, and Excel files of
 //   who owes and who has not paid for a month.
@@ -80,17 +80,34 @@ async function readDoc(token, path) {
   return fields(j.fields || {});
 }
 
-// Only the documents whose numeric `field` is at or after `from`. The 2-hour report uses this for activity and sales:
-// Firestore's free plan allows 50,000 reads a day and every document read counts, so it must not re-read the whole history each time.
-async function readSince(token, coll, field, from) {
+// A Firestore query (runQuery) with one filter: the periodic report reads only the documents it shows, because the free plan
+// allows 50,000 reads a day and every document read counts, so it must not re-read the whole history each time.
+async function query(token, coll, field, op, value) {
   const r = await fetch(`${DB_URL}/v1/projects/${cfg.projectId}/databases/(default)/documents:runQuery`, {
     method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: coll }], where: { fieldFilter: { field: { fieldPath: field }, op: "GREATER_THAN_OR_EQUAL", value: { integerValue: String(Math.floor(from)) } } } } }),
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: coll }], where: { fieldFilter: { field: { fieldPath: field }, op, value } } } }),
   });
   const j = await r.json();
   if (r.status === 403) throw new Error(`Reading ${coll} was refused (rules).`);
   if (!r.ok) throw new Error(`Reading ${coll} failed: ${(Array.isArray(j) ? j[0] : j).error?.message}`);
   return j.filter(x => x.document).map(x => ({ id: x.document.name.split("/").pop(), ...fields(x.document.fields || {}) }));
+}
+// Only the documents whose numeric `field` is at or after `from`.
+const readSince = (token, coll, field, from) => query(token, coll, field, "GREATER_THAN_OR_EQUAL", { integerValue: String(Math.floor(from)) });
+
+// Just the listed documents of a collection (one read each); missing ones are left out.
+async function readIds(token, coll, ids) {
+  const base = `projects/${cfg.projectId}/databases/(default)/documents`, out = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const r = await fetch(`${DB_URL}/v1/${base}:batchGet`, {
+      method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ documents: ids.slice(i, i + 100).map(id => `${base}/${coll}/${id}`) }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(`Reading ${coll} failed: ${(Array.isArray(j) ? j[0] : j).error?.message}`);
+    for (const x of j) if (x.found) out.push({ id: x.found.name.split("/").pop(), ...fields(x.found.fields || {}) });
+  }
+  return out;
 }
 
 // The cashier's collections are newer than the backup account's rules may be: until firestore.rules is published
@@ -231,24 +248,35 @@ function actText(a) {
     default: return a.detail || "";
   }
 }
+// Cashier log lines (items, shifts, the drawer, discounts, its settings) stay out of the periodic report; a credit sale still
+// shows, since it adds a debt to the customer's account.
+const cashierOnly = a => ["product", "shift", "drawer", "discount"].includes(a.what) || (a.source === "pos" && !["debt", "pay", "customer"].includes(a.what));
 const ICON = { add: "➕", edit: "✏️", delete: "🗑", remind: "💬" };
 
-// Two-hour report. The window is the two-hour slot that just closed (even UTC hours), so a late GitHub run
-// neither skips nor repeats entries; a manual run reports the last two hours.
-function periodicReport(customers, txns, activity, settings, now, manual, sales = []) {
-  const end = manual ? now.getTime() : Math.floor(now.getTime() / 7200e3) * 7200e3, start = end - 7200e3;
+// The periodic report covers five-hour slots of the working day (2 AM, 7 AM, noon, 5 PM, 10 PM Baghdad); the daily run
+// at 2 AM covers the rest of the night. A scheduled run reports the slot that just closed, so a late run neither skips nor
+// repeats entries; a manual run reports the last five hours.
+const SLOT = 5 * 3600e3, SLOTS = 4;
+function slotEnd(now, manual) {
+  if (manual) return now.getTime();
+  const day = bizDayStart(bizDay(now.getTime()));
+  return day + Math.min(Math.floor((now.getTime() - day) / SLOT), SLOTS) * SLOT;
+}
+
+// Periodic report, debts app only (cashier sales come with the daily run).
+// `customers` and `txns` need only cover today's transactions and the promised customers; `bal` holds those customers' balances.
+function periodicReport(customers, txns, activity, settings, now, manual, bal) {
+  const end = slotEnd(now, manual), start = end - SLOT;
   const byId = new Map(customers.map(c => [c.id, c]));
   const inWin = ms => ms >= start && ms < end;
-  const acts = activity.filter(a => a.kind !== "login" && inWin(Number(a.at) || 0)).sort((a, b) => a.at - b.at);
+  const acts = activity.filter(a => a.kind !== "login" && !cashierOnly(a) && inWin(Number(a.at) || 0)).sort((a, b) => a.at - b.at);
   const made = txns.filter(t => inWin(Number(t.createdAt) || 0));
   const sum = (type, sup) => made.filter(t => t.type === type && isSup(byId, t.customerId) === sup).reduce((a, t) => ({ n: a.n + 1, v: a.v + (Number(t.amount) || 0) }), { n: 0, v: 0 });
   const debt = sum("debt", false), pay = sum("pay", false), buy = sum("debt", true), paySup = sum("pay", true);
   const shop = settings.shopName || "ماركت الشهم";
   const lines = [`🕑 تحديث ${shop}: من ${hm(start)} إلى ${hm(end)}`, ""];
-  const pos = salesSummary(sales, inWin);
-  if (pos.n) lines.push(salesLine(pos));
-  if (!acts.length && !made.length && !pos.n) lines.push("ما صار شي بهالساعتين.");
-  else if (acts.length || made.length) {
+  if (!acts.length && !made.length) lines.push("ما صار شي بهالفترة.");
+  else {
     if (debt.n) lines.push(`🔴 ديون: ${fmt(debt.v)} د.ع (${debt.n})`);
     if (pay.n) lines.push(`🟢 واصل: ${fmt(pay.v)} د.ع (${pay.n})`);
     if (buy.n || paySup.n) lines.push(`🚚 الموردين: مشتريات ${fmt(buy.v)} · دفعات ${fmt(paySup.v)}`);
@@ -261,12 +289,10 @@ function periodicReport(customers, txns, activity, settings, now, manual, sales 
   }
   // Still pending: promises due today (or overdue) that have not been paid yet.
   const today = isoDay(now.getTime());
-  const bal = new Map();
-  for (const t of txns) bal.set(t.customerId, (bal.get(t.customerId) || 0) + (t.type === "debt" ? t.amount : -t.amount));
   const waiting = customers.filter(c => c.kind !== "supplier" && c.promise && c.promise.date && c.promise.date <= today && (bal.get(c.id) || 0) > 0)
     .map(c => `  • ${c.name}${c.promise.amount ? ": " + fmt(c.promise.amount) : ""}${c.promise.date < today ? " (فات موعده)" : ""}`);
   if (waiting.length) lines.push("", "🤝 ما صار بعد: وعدوا يدفعون وما دفعوا", ...waiting.slice(0, 20), ...(waiting.length > 20 ? [`  … و ${waiting.length - 20} غيرهم`] : []));
-  return { text: lines.join("\n").slice(0, 4000), changed: acts.length > 0 || made.length > 0 || pos.n > 0, start, end, stamp: `${today}-${hm(end).replace(/[:\s]/g, "")}` };
+  return { text: lines.join("\n").slice(0, 4000), changed: acts.length > 0 || made.length > 0, start, end, stamp: `${today}-${hm(end).replace(/[:\s]/g, "")}` };
 }
 
 // Two spreadsheets for the daily run, like the shop's old app sent: every customer who owes, and those who have not
@@ -319,21 +345,33 @@ async function sendFile(name, data, type, caption, quiet) {
   await tg("sendDocument", form);
 }
 
-// The 2-hour report reads only what it shows: every customer and transaction (for balances) plus the activity and sales of
-// today. The full backup file (which needs every collection) comes with the daily run, so a day of reports stays far
-// below the free read quota.
+// The periodic report reads only what it shows: today's transactions and activity, the customers they name, and the customers
+// with a promise due (with their transactions, for the balance). The full backup file and the cashier sales come with the
+// daily run, so a day of reports costs a few hundred reads instead of the whole database twelve times.
+const MAX_PROMISES = 40;
 async function periodic(token) {
   const now = new Date();
   const manual = process.env.MANUAL === "true";
-  const end = manual ? now.getTime() : Math.floor(now.getTime() / 7200e3) * 7200e3;
+  const end = slotEnd(now, manual);
   const dayStart = bizDayStart(bizDay(end - 1));
-  const from = Math.min(end - 7200e3, dayStart);
-  const [customers, txns, settings, activity, sales] = await Promise.all([
-    readAll(token, "customers"), readAll(token, "txns"), readDoc(token, "settings/main"),
-    readSince(token, "activity", "at", from), readSince(token, "sales", "at", from).catch(e => { console.warn(`Skipping sales: ${e.message}`); return []; }),
+  const from = Math.min(end - SLOT, dayStart);
+  const today = isoDay(now.getTime());
+  const [txns, settings, activity, promised] = await Promise.all([
+    readSince(token, "txns", "createdAt", from), readDoc(token, "settings/main"), readSince(token, "activity", "at", from),
+    query(token, "customers", "promise.date", "LESS_THAN_OR_EQUAL", { stringValue: today }),
   ]);
+  const due = promised.filter(c => c.kind !== "supplier").slice(0, MAX_PROMISES);
+  const bal = new Map();
+  let promiseTxns = 0;
+  await Promise.all(due.map(async c => {
+    const list = await query(token, "txns", "customerId", "EQUAL", { stringValue: c.id });
+    promiseTxns += list.length;
+    bal.set(c.id, list.reduce((a, t) => a + (t.type === "debt" ? 1 : -1) * (Number(t.amount) || 0), 0));
+  }));
+  const known = new Set(due.map(c => c.id));
+  const customers = [...due, ...await readIds(token, "customers", [...new Set(txns.map(t => t.customerId).filter(id => id && !known.has(id)))])];
   const chat = env("TELEGRAM_CHAT_ID");
-  const rep = periodicReport(customers, txns, activity, settings, now, manual, sales);
+  const rep = periodicReport(customers, txns, activity, settings, now, manual, bal);
   // Quiet slots (usually at night) get a silent one-line message.
   await tg("sendMessage", { chat_id: chat, text: rep.text, ...(rep.changed ? {} : { disable_notification: true }) });
   if (rep.changed) {
@@ -342,7 +380,8 @@ async function periodic(token) {
       subText: "كل حركات اليوم لحد هسه", timeText: `لحد ${hm(rep.end)}` });
     if (file) await sendFile(file.name, file.data, file.type, `📄 كل حركات اليوم ${bizDay(rep.end - 1)} لحد ${hm(rep.end)}`);
   }
-  console.log(`Sent 2-hour report (${rep.changed ? "with" : "no"} changes): read ${customers.length} customers, ${txns.length} transactions, ${activity.length} activity, ${sales.length} sales.`);
+  const reads = txns.length + 1 + activity.length + promised.length + promiseTxns + customers.length - due.length;
+  console.log(`Sent periodic report (${rep.changed ? "with" : "no"} changes): about ${reads} reads (${txns.length} transactions today, ${activity.length} activity, ${customers.length} customers, ${due.length} promises).`);
 }
 
 async function main() {
@@ -395,7 +434,7 @@ main().catch(async e => {
   // Tell the owner on Telegram too, so a broken backup does not go unnoticed.
   const tok = process.env.TELEGRAM_TOKEN, chat = process.env.TELEGRAM_CHAT_ID;
   if (tok && chat) {
-    try { await fetch(`${TG_URL}/bot${tok}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: chat, text: (process.env.MODE === "periodic" ? "⚠️ فشل تقرير الساعتين: " : "⚠️ فشلت النسخة الاحتياطية اليومية: ") + e.message }) }); } catch {}
+    try { await fetch(`${TG_URL}/bot${tok}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: chat, text: (process.env.MODE === "periodic" ? "⚠️ فشل تقرير الـ5 ساعات: " : "⚠️ فشلت النسخة الاحتياطية اليومية: ") + e.message }) }); } catch {}
   }
   process.exit(1);
 });

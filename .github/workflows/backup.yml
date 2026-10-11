@@ -1,5 +1,5 @@
 # Telegram reports for the debt book:
-# - every 2 hours (7 minutes past even UTC hours, started by the Cloudflare worker's cron because GitHub kept skipping its own schedule): what happened in the last 2 hours, what is still pending, plus, if anything changed, a PDF of all of the day's transactions so far. It reads only today's data (the free Firestore plan allows 50,000 reads a day); the full backup file comes with the daily run.
+# - every 5 hours (7 AM, noon, 5 PM, 10 PM Baghdad, started by the Cloudflare worker's cron because GitHub kept skipping its own schedule): what happened in the debts app in the last 5 hours, what is still pending, plus, if anything changed, a PDF of all of the day's transactions so far. It reads only today's data (the free Firestore plan allows 50,000 reads a day); the full backup file comes with the daily run.
 # - every day at 2am Baghdad time (23:00 UTC): full backup, end-of-day summary, a PDF with all of the previous day's transactions, and Excel lists of who owes.
 # Secrets (Settings > Secrets and variables > Actions): BACKUP_PASSWORD, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
 name: Daily backup
@@ -9,12 +9,12 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "periodic = تقرير الساعتين، daily = النسخة اليومية وملف حركات اليوم"
+        description: "periodic = تقرير الـ5 ساعات، daily = النسخة اليومية وملف حركات اليوم"
         type: choice
         options: [daily, periodic]
         default: daily
       scheduled:
-        description: "Set by the Cloudflare cron: report the last full 2-hour slot"
+        description: "Set by the Cloudflare cron: report the last full 5-hour slot"
         type: boolean
         default: false
 concurrency:

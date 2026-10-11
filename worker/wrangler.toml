@@ -14,6 +14,7 @@ OWNER_EMAIL = "admin@shahm-debts.app"
 ALLOWED_ORIGINS = "https://ane161h3-png.github.io,https://localhost,capacitor://localhost"
 GH_REPO = "ane161h3-png/shahm-debts"
 
-# Starts the 2-hour Telegram report (7 minutes past every even UTC hour). See dispatchReport() in src/index.js.
+# Starts the periodic Telegram report every 5 hours of the working day: 7 AM, noon, 5 PM and 10 PM Baghdad
+# (UTC+3), 7 minutes past. The 2 AM daily report covers the night. See dispatchReport() in src/index.js.
 [triggers]
-crons = ["7 */2 * * *"]
+crons = ["7 4,9,14,19 * * *"]
