@@ -595,7 +595,8 @@ function custScore(c,q){
   if(digits.length>=3&&digits.length===fq.replace(/\s/g,"").length){const ph=normDigits(c.phone).replace(/\D/g,"");return ph.includes(digits)||ph.includes(digits.replace(/^0/,""))?3:0}
   return matchScore(c.name,q,(c.note||"")+" "+(c.aliases||[]).join(" "));
 }
-function balanceOf(id){let b=0;for(const t of S.txns.values())if(t.customerId===id)b+=t.type==="debt"?Number(t.amount)||0:-(Number(t.amount)||0);return b}
+// null until that customer's records have loaded (watchTxns starts loading them).
+function balanceOf(id){watchTxns(id);if(!txnLoaded.has(id))return null;let b=0;for(const t of S.txns.values())if(t.customerId===id)b+=t.type==="debt"?Number(t.amount)||0:-(Number(t.amount)||0);return b}
 const I={
   home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10M10 20v-6h4v6"/></svg>',
   cart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11h10.2L20 7H6.3"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>',
@@ -703,14 +704,12 @@ function readFail(e){console.warn(e);if(e&&e.code==="resource-exhausted"&&!quota
   if(e&&e.code==="permission-denied"&&!deniedShown){deniedShown=true;
   toast(isAdmin()?"قاعدة البيانات رفضت القراءة. انشر قواعد firestore.rules الجديدة من Firebase console.":"ما عندك صلاحية لقراءة بيانات الكاشير. راجع المدير.",7000)}}
 function stopData(){
-  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];if(salesUnsub){salesUnsub();salesUnsub=null}dataOn=false;
+  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];if(salesUnsub){salesUnsub();salesUnsub=null}dataOn=false;custOn=custReady=false;txnWatch.clear();txnLoaded.clear();
   S.products=new Map();S.customers=new Map();S.txns=new Map();S.sales=new Map();S.settings={};S.repCache=new Map();S.shift=null;S.shiftLog=null;S.approvals=new Map();S.ready={p:false,s:false,sh:false};S.pos={};S.takes=null;S.recvs=null;S.prices=null;PW.clear();deniedShown=false;renderApprovals();
 }
 function startData(){
   if(dataOn)return;dataOn=true;
   unsubs.push(db.collection("products").onSnapshot(s=>{priceWatch(s);S.products=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.p=true;refresh()},readFail));
-  unsubs.push(db.collection("customers").onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));refresh("cust")},readFail));
-  unsubs.push(db.collection("txns").onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,d.data()]));refresh("cust")},readFail));
   unsubs.push(db.doc("settings/main").onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};if(S.me&&S.isOwner)S.me.name=S.settings.ownerName||"المدير";refresh()},readFail));
   // Cashier settings (the dollar rate) live next to the debt book's settings, in their own document.
   watchPrices();
@@ -721,6 +720,20 @@ function startData(){
   if(isAdmin())unsubs.push(db.collection("approvals").where("status","==","pending").onSnapshot(s=>{
     S.approvals=new Map(s.docs.map(d=>[d.id,d.data()]));renderApprovals()},readFail));
   watchToday();
+}
+/* Customers load only when needed (a sale on credit, suppliers, a receipt), and debt records only for the customer in hand.
+   Reading every customer and every record on each open was most of the daily free Firestore reads. */
+let custOn=false,custReady=false;const txnWatch=new Set(),txnLoaded=new Set();
+function needCust(){
+  if(custOn||!dataOn)return;custOn=true;
+  unsubs.push(db.collection("customers").onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));custReady=true;refresh("cust")},e=>{custOn=false;readFail(e)}));
+}
+function watchTxns(id){
+  if(!id||txnWatch.has(id)||!dataOn)return;txnWatch.add(id);
+  unsubs.push(db.collection("txns").where("customerId","==",id).onSnapshot(s=>{
+    for(const [k,t] of S.txns)if(t.customerId===id)S.txns.delete(k);
+    for(const d of s.docs)S.txns.set(d.id,d.data());
+    txnLoaded.add(id);refresh("cust")},e=>{txnWatch.delete(id);readFail(e)}));
 }
 // Today's sales stay live (the cashier's own report); other days are read once when opened.
 function watchToday(){
@@ -1419,16 +1432,21 @@ function checkout(resume){
       if(cash){cash.addEventListener("input",()=>{st.cashPart=Math.max(0,Math.round(parseAmt(cash.value))||0);split()});setTimeout(()=>cash.focus(),20)}
       const drawCust=()=>{
         const box=body.querySelector("#coCust");if(!box)return;
+        needCust();
         if(st.cust){const c=S.customers.get(st.cust.id)||st.cust;const bal=balanceOf(c.id),debt=t.total-(st.mode==="part"?st.cashPart:0);
-          const over=Number(c.limit)>0&&bal+debt>Number(c.limit);
-          box.innerHTML=`<div class="picked"><span class="avatar">${initial(c.name)}</span><div class="m"><b>${esc(c.name)}</b><span>رصيده الحالي <span class="num">${fmt(bal)}</span> ← يصير <span class="num">${fmt(bal+Math.max(0,debt))}</span> ${CUR}</span></div><button class="btn sm" type="button" id="coChg">تغيير</button></div>
+          const over=bal!=null&&Number(c.limit)>0&&bal+debt>Number(c.limit);
+          box.innerHTML=`<div class="picked"><span class="avatar">${initial(c.name)}</span><div class="m"><b>${esc(c.name)}</b><span>${bal==null?"جارِ قراءة رصيده…":`رصيده الحالي <span class="num">${fmt(bal)}</span> ← يصير <span class="num">${fmt(bal+Math.max(0,debt))}</span> ${CUR}`}</span></div><button class="btn sm" type="button" id="coChg">تغيير</button></div>
             ${over?`<div class="banner warn" style="margin-top:8px">ينتبه: يتجاوز سقف الدين (<span class="num">${fmt(c.limit)}</span> ${CUR}).</div>`:""}`;
-          box.querySelector("#coChg").onclick=()=>{st.cust=null;drawCust()};return}
+          box.querySelector("#coChg").onclick=()=>{st.cust=null;drawCust()};
+          refreshPicker=()=>{if(document.body.contains(box)&&st.cust)drawCust()};return}
         box.innerHTML=`<label class="search">${I.search}<input id="coQ" type="search" placeholder="ابحث باسم الزبون أو رقمه" autocomplete="off" value="${esc(st.q)}"></label><ul class="pick-list" id="coList" style="margin-top:6px"></ul>`;
         const q=box.querySelector("#coQ"),list=box.querySelector("#coList");
         const fill=()=>{st.q=q.value;
+          // Until the list arrives, adding a new name could duplicate an existing customer.
+          if(!custReady){list.innerHTML=`<li class="empty">جارِ تحميل الزبائن…</li>`;return}
           const arr=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,s:custScore(c,q.value)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s||a.c.name.localeCompare(b.c.name,"ar")).slice(0,40);
-          list.innerHTML=arr.map(({c})=>{const b=balanceOf(c.id);return `<li><button type="button" data-cid="${esc(c.id)}"><span>${esc(c.name)}</span><span class="chip ${b>0?"debt":"zero"} num">${fmt(b)}</span></button></li>`}).join("")
+          // The balance shows once a customer is picked: reading every listed customer's records would cost too many reads.
+          list.innerHTML=arr.map(({c})=>`<li><button type="button" data-cid="${esc(c.id)}"><span>${esc(c.name)}</span>${c.phone?`<span class="hint num" dir="ltr">${esc(c.phone)}</span>`:""}</button></li>`).join("")
             +(q.value.trim()?`<li><button type="button" class="new" data-newc="1">+ زبون جديد: ${esc(q.value.trim())}</button></li>`:"")
             +(!arr.length&&!q.value.trim()?`<li class="empty">ماكو زبائن بعد. اكتب اسم الزبون حتى تضيفه.</li>`:"")};
         q.addEventListener("input",fill);fill();
@@ -1567,7 +1585,7 @@ function receiptText(sale){
   if(sale.discount)L.push(`المجموع: ${fmt(sale.subtotal)}`,`الخصم: ${fmt(sale.discount)}`);
   L.push(`*المطلوب: ${fmt(sale.total)} ${CUR}*`);
   if(sale.debt>0){if(sale.cash>0)L.push(`واصل كاش: ${fmt(sale.cash)}`);L.push(`على الحساب (دين): ${fmt(sale.debt)}`);
-    if(sale.customerId&&S.customers.has(sale.customerId))L.push(`رصيدك الحالي: ${fmt(balanceOf(sale.customerId))} ${CUR}`)}
+    const bal=sale.customerId?balanceOf(sale.customerId):null;if(bal!=null)L.push(`رصيدك الحالي: ${fmt(bal)} ${CUR}`)}
   else L.push(sale.usd?`الدفع: ${usdPaidText(sale)}`:"الدفع: كاش");
   if(sale.change>0)L.push(`الباقي: ${fmt(sale.change)} ${CUR}`);
   if(sale.status==="void")L.push("","(هذه الفاتورة ملغية)");
@@ -1646,7 +1664,7 @@ async function receiptCanvas(sale,o){
   lr("المطلوب",fmt(sale.total)+" IQD",{w:700,s:26,c:C.green,w2:800});y+=40;
   if(sale.debt>0){if(sale.cash>0){lr("واصل كاش",fmt(sale.cash),{c:C.paid});y+=30}
     lr("دين على "+(sale.customerName||""),fmt(sale.debt),{c:C.debt});y+=30;
-    if(c){lr("رصيد الحساب الآن",fmt(balanceOf(c.id)),{c:C.debt,s:18});y+=30}}
+    const bal=sale.customerId?balanceOf(sale.customerId):null;if(bal!=null){lr("رصيد الحساب الآن",fmt(bal),{c:C.debt,s:18});y+=30}}
   else{lr("الدفع","كاش",{f2:PDF_F});y+=30;if(sale.received){lr("المستلم",fmt(sale.received),{s:18});y+=28}
     if(sale.usd){lr("المستلم بالدولار",usdFmt(sale.usd)+" = "+fmt(sale.usdIqd),{s:18});y+=28;if(sale.topUp){lr("والباقي بالدينار",fmt(sale.topUp),{s:18});y+=28}}}
   if(sale.change>0){lr("الباقي للزبون",fmt(sale.change),{s:18});y+=30}
@@ -1974,24 +1992,47 @@ const repList=()=>S.repMode==="month"?monthSalesSync(S.repMonth||monthOf(todayIS
    The shop at a glance: the last 30 days (total, invoices, average, debt), today live, this month and last month,
    and the last 14 days one row each (tap a day to open it in «المبيعات»). Profit shows to the owner only, like in the reports. */
 const HOME_DAYS=30;
-function last30Sync(){
-  const today=todayISO(),d=new Date(today+"T12:00:00");d.setDate(d.getDate()-(HOME_DAYS-1));const from=isoOf(d);
-  const list=fetchSales("r30:"+from,db.collection("sales").where("date",">=",from).where("date","<=",today));
-  if(!list||!S.ready.s)return null;
-  return {from,list:[...list.filter(x=>x.date!==S.day),...S.sales.values()]};
+/* Totals of past days {n,total,debt,voids,at} stay on this device, so opening the home screen reads only days it hasn't seen
+   (normally just yesterday, once) instead of two months of invoices every time. A day counts as final once it was read
+   3 hours after it ended (late offline sales have synced by then); voiding an old invoice here, or «تحديث», reads it again. */
+const DAYS_KEY="shahm-pos-days",DAY_FINAL=27*3600e3;
+let dayStore=null,daysBusy=false;
+function dayTotals(){if(!dayStore){try{dayStore=JSON.parse(localStorage.getItem(DAYS_KEY)||"{}")||{}}catch(e){dayStore={}}}return dayStore}
+function daysSave(){try{localStorage.setItem(DAYS_KEY,JSON.stringify(dayStore||{}))}catch(e){}}
+function dayForget(iso){const m=dayTotals();if(iso){delete m[iso]}else for(const k of Object.keys(m))delete m[k];daysSave()}
+const dayDone=(iso,x)=>!!x&&x.at>=new Date(iso+"T00:00:00").getTime()+DAY_FINAL;
+const homeFrom=today=>{const d=new Date(today+"T12:00:00");d.setDate(d.getDate()-(HOME_DAYS-1));const a=isoOf(d),b=shiftMonth(monthOf(today),-1)+"-01";return a<b?a:b};
+// Past days from the first of last month (or 30 days back) to yesterday; null while missing days are being read.
+function pastDays(){
+  const today=todayISO(),from=homeFrom(today),m=dayTotals(),all=[];
+  for(let d=new Date(from+"T12:00:00");isoOf(d)<today;d.setDate(d.getDate()+1))all.push(isoOf(d));
+  const miss=all.filter(iso=>!dayDone(iso,m[iso]));
+  if(!miss.length)return m;
+  if(!daysBusy){daysBusy=true;const a=miss[0],b=all[all.length-1],at=Date.now();
+    db.collection("sales").where("date",">=",a).where("date","<=",b).get().then(snap=>{
+      const got={};for(const d of snap.docs){const x=d.data();const g=got[x.date]||(got[x.date]={n:0,total:0,debt:0,voids:0});
+        if(x.status==="void")g.voids++;else{g.n++;g.total+=Number(x.total)||0;g.debt+=Number(x.debt)||0}}
+      for(const iso of all)if(iso>=a)m[iso]={...(got[iso]||{n:0,total:0,debt:0,voids:0}),at};
+      for(const k of Object.keys(m))if(k<from)delete m[k];
+      daysSave();daysBusy=false;if(S.view==="home")renderHome();
+    }).catch(e=>{daysBusy=false;readFail(e)});
+  }
+  return null;
 }
-const sumOk=list=>{const ok=(list||[]).filter(s=>s.status!=="void");return {n:ok.length,total:ok.reduce((a,s)=>a+(Number(s.total)||0),0)}};
 function homeStat(k,v,sub,cls){return `<div class="stat${cls?" "+cls:""}"><div class="k">${k}</div><div class="v">${v}</div>${sub?`<div class="sub">${sub}</div>`:""}</div>`}
 const money=v=>`<span class="num">${fmt(v)}</span><small>د.ع</small>`;
 function renderHome(){
   const v=$("#view");if(!v)return;
   const admin=isAdmin(),today=todayISO(),ym=monthOf(today),prev=shiftMonth(ym,-1);
   const tl=S.ready.s?[...S.sales.values()]:null,t=tl?summarize(tl):null;
-  const cur=monthSalesSync(ym),old=monthSalesSync(prev),mc=cur&&sumOk(cur),mp=old&&sumOk(old);
-  const r=last30Sync(),all=r&&summarize(r.list);
-  // The last 14 days: from this month and last month's lists (today from the live listener).
-  const byDay=new Map();for(const s of [...(cur||[]),...(old||[])])if(s.status!=="void"){const x=byDay.get(s.date)||{n:0,total:0};x.n++;x.total+=Number(s.total)||0;byDay.set(s.date,x)}
-  const days=[];for(let i=0;i<14;i++){const d=new Date(today+"T12:00:00");d.setDate(d.getDate()-i);const iso=isoOf(d);days.push([iso,byDay.get(iso)||{n:0,total:0}])}
+  // Past days from the totals kept on this device, today from the live listener.
+  const past=pastDays(),ready=!!(past&&t);
+  const dayOf=iso=>iso===today?(t?{n:t.n,total:t.total,debt:t.debt,voids:t.voids}:null):past&&past[iso];
+  const addUp=(from,to)=>{const a={n:0,total:0,debt:0,voids:0};for(let d=new Date(from+"T12:00:00");isoOf(d)<=to;d.setDate(d.getDate()+1)){const x=dayOf(isoOf(d));if(x){a.n+=x.n;a.total+=x.total;a.debt+=x.debt;a.voids+=x.voids}}return a};
+  const r30=new Date(today+"T12:00:00");r30.setDate(r30.getDate()-(HOME_DAYS-1));
+  const r=ready?{from:isoOf(r30)}:null,all=ready&&addUp(r.from,today);
+  const mc=ready&&addUp(ym+"-01",today),mp=ready&&addUp(prev+"-01",shiftDay(ym+"-01",-1));
+  const days=[];for(let i=0;i<14;i++){const d=new Date(today+"T12:00:00");d.setDate(d.getDate()-i);const iso=isoOf(d);days.push([iso,(ready&&dayOf(iso))||{n:0,total:0}])}
   const max=Math.max(1,...days.map(([,x])=>x.total));
   const wait=`<span class="muted">…</span>`;
   v.innerHTML=`<section class="pane home">
@@ -2008,7 +2049,7 @@ function renderHome(){
     <div class="stats">${homeStat(esc(monthName(ym)),mc?money(mc.total):wait,mc?`<span class="num">${fmt(mc.n)}</span> فاتورة`:"","main")}${homeStat(esc(monthName(prev)),mp?money(mp.total):wait,mp?`<span class="num">${fmt(mp.n)}</span> فاتورة`:"")}</div>
   </section>
   <section class="pane home"><div class="home-head"><h2>البيع اليومي</h2><span class="hint">آخر ١٤ يوم · اضغط اليوم حتى تشوف فواتيره</span></div>
-    ${cur&&old?`<ul class="rows hd-list">${days.map(([d,x])=>`<li><button class="hd-row" type="button" data-hday="${d}" aria-label="${esc(dayName(d))}: ${x.n} فاتورة، ${fmt(x.total)} دينار">
+    ${ready?`<ul class="rows hd-list">${days.map(([d,x])=>`<li><button class="hd-row" type="button" data-hday="${d}" aria-label="${esc(dayName(d))}: ${x.n} فاتورة، ${fmt(x.total)} دينار">
       <span class="hd-d">${esc(dayName(d))}</span><span class="hd-bar" aria-hidden="true"><i style="width:${x.total?Math.max(2,Math.round(x.total/max*100)):0}%"></i></span>
       <span class="hd-n"><span class="num">${fmt(x.n)}</span> فاتورة</span><b class="num">${fmt(x.total)}</b></button></li>`).join("")}</ul>`:`<div class="empty"><div class="spinner" aria-hidden="true"></div></div>`}
   </section>`;
@@ -2086,6 +2127,8 @@ function renderSales(){
 }
 function saleDetail(id){
   const list=repList()||[];const sale=list.find(s=>s.id===id)||S.sales.get(id);if(!sale)return;
+  // So a reprinted receipt can show the customer's phone and balance.
+  if(sale.customerId){needCust();watchTxns(sale.customerId)}
   openModal(`<h3>فاتورة #<span class="num">${esc(sale.no)}</span> ${sale.status==="void"?`<span class="chip zero">ملغية</span>`:""}</h3>
     <p class="hint">${esc(sale.date)} · ${hm12(sale.at)} · ${esc(sale.by||"")}${sale.wholesale?" · بسعر الجملة":""}</p>
     <div class="rcpt">${(sale.items||[]).map(i=>`<div class="ln"><span>${esc(itemName(i))} <small style="color:var(--muted)">${i.w?kgHtml(Number(i.qty)||0):`<span class="num">${qtyText(i.qty)}</span>`} × <span class="num">${fmt(i.price)}</span></small>${itemOffer(i)?` <span class="of">${esc(itemOffer(i))}</span>`:""}</span><span class="num">${fmt(i.total)}</span></div>`).join("")}
@@ -2117,6 +2160,7 @@ function voidSale(sale){
       b.commit().catch(writeFail);
       Object.assign(sale,upd);
       for(const cached of S.repCache.values()){if(!cached)continue;const i=cached.findIndex(s=>s.id===sale.id);if(i>=0)cached[i]={...cached[i],...upd}}
+      if(sale.date&&sale.date!==todayISO())dayForget(sale.date);
       closeModal();renderSales();toast("انلغت الفاتورة");
     };
   });
@@ -3208,8 +3252,8 @@ function recvModal(x){
 
 /* Suppliers are the debt book's own (customers with kind "supplier"), so a supplier added here shows in the debt book with its
    number and note, and one added there can be picked here. */
-const sups=()=>[...S.customers.values()].filter(isSup);
-const rvSup=()=>{const c=S.rv&&S.rv.supId?S.customers.get(S.rv.supId):null;return isSup(c)?c:null};
+const sups=()=>{needCust();return [...S.customers.values()].filter(isSup)};
+const rvSup=()=>{needCust();const c=S.rv&&S.rv.supId?S.customers.get(S.rv.supId):null;return isSup(c)?c:null};
 function rvSupHtml(){
   const s=rvSup();
   const g=S.rv&&S.rv.guess;
@@ -4044,7 +4088,7 @@ document.addEventListener("click",e=>{
   const rm=t.closest("[data-rmode]");if(rm){S.repMode=rm.dataset.rmode;renderSales();return}
   const mo=t.closest("[data-month]");if(mo&&!mo.disabled){S.repMonth=mo.dataset.month;renderSales();return}
   const hd=t.closest("[data-hday]");if(hd){S.repMode="day";S.repDay=hd.dataset.hday;go("sales");return}
-  if(t.closest('[data-act="homeRefresh"]')){for(const k of [...S.repCache.keys()])if(/^(r30|m):/.test(k))S.repCache.delete(k);renderHome();toast("جارِ تحديث الأرقام…",1500);return}
+  if(t.closest('[data-act="homeRefresh"]')){if(daysBusy){toast("جارِ تحديث الأرقام…",1500);return}dayForget();for(const k of [...S.repCache.keys()])if(/^m:/.test(k))S.repCache.delete(k);renderHome();toast("جارِ تحديث الأرقام…",1500);return}
   const od=t.closest("[data-openday]");if(od){S.repMode="day";S.repDay=od.dataset.openday;renderSales();window.scrollTo(0,0);return}
   const ap=t.closest("[data-apv]");if(ap){decideApproval(ap.dataset.apv,ap.dataset.ok==="1");return}
   const shl=t.closest("[data-shift]");if(shl){const x=(S.shiftLog||[]).find(z=>z.id===shl.dataset.shift);if(x)zModal(x);return}
