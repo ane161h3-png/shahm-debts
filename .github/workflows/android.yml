@@ -71,13 +71,28 @@ jobs:
         run: |
           sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
           grep -E "versionCode|versionName" android/app/build.gradle
-      # Same key on every build, so a new APK installs over the old one without losing anything.
+      # Release build signed with the shop's own key, kept only in the repo secrets (ANDROID_KEYSTORE = the .p12 file in
+      # base64, ANDROID_KEYSTORE_PASSWORD). Same key on every build, so a new APK installs over the old one; nobody else
+      # can make an APK that installs over it. A copy of the key is on the owner's flash (MAINTENANCE.md, section on keys).
       - name: Signing key
-        run: mkdir -p ~/.android && cp signing/debug.keystore ~/.android/debug.keystore
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then echo "::error::Secret ANDROID_KEYSTORE is missing (see MAINTENANCE.md)"; exit 1; fi
+          printf %s "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/shahm.p12"
       - name: Build APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
-      - run: cp android/app/build/outputs/apk/debug/app-debug.apk ${{ matrix.apk }}
+        env:
+          KEY_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/shahm.p12" -Pandroid.injected.signing.store.password="$KEY_PW" \
+            -Pandroid.injected.signing.key.alias=shahm -Pandroid.injected.signing.key.password="$KEY_PW"
+      - name: Check signature
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME"/build-tools/$(ls "$ANDROID_HOME"/build-tools | sort -V | tail -1)/apksigner verify --print-certs "$APK" | grep -i "SHA-256"
+          cp "$APK" ${{ matrix.apk }}
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -87,4 +102,4 @@ jobs:
           gh release create ${{ matrix.tag }} ${{ matrix.apk }} --target "${{ github.sha }}" \
             ${{ matrix.app == 'debts' && '--latest' || '--latest=false' }} \
             --title "${{ matrix.title }} 1.0.${{ github.run_number }}" \
-            --notes "حمّل ${{ matrix.apk }} وثبّته على موبايل الأندرويد. للتحديث ثبّته فوق النسخة القديمة."
+            --notes "حمّل ${{ matrix.apk }} وثبّته على موبايل الأندرويد. للتحديث ثبّته فوق النسخة القديمة. إذا رفض التنصيب (التطبيق المنصّب من قبل 12 تشرين الأول 2026 موقّع بمفتاح قديم): احذف القديم أولاً ثم ثبّت هذا وسجّل دخول."
