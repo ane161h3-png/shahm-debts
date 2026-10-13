@@ -16,5 +16,12 @@ GH_REPO = "ane161h3-png/shahm-debts"
 
 # Starts the periodic Telegram report every 5 hours of the working day: 7 AM, noon, 5 PM and 10 PM Baghdad
 # (UTC+3), 7 minutes past. The 2 AM daily report covers the night. See dispatchReport() in src/index.js.
+# At most 10 photo readings a minute per person (Cloudflare's free rate limiter, used in src/index.js), so a stolen or
+# misused login can't burn the AI quota.
+[[ratelimits]]
+name = "AI_LIMIT"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
+
 [triggers]
 crons = ["7 4,9,14,19 * * *"]
