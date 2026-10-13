@@ -1,6 +1,8 @@
 # Builds the two Android apps (Capacitor wrapping web/) as separate APKs with their own package, name and icon:
-# - debt book: release app-latest, downloadable at releases/latest/download/shahm-debts.apk
-# - cashier (web/pos/): release pos-latest, downloadable at releases/download/pos-latest/shahm-pos.apk
+# - debt book: release app-latest, file shahm-debts.apk
+# - cashier (web/pos/): release pos-latest, file shahm-pos.apk
+# The website workflow then copies both onto the site: https://shahm-debts.app/dl/shahm-debts.apk and /dl/shahm-pos.apk
+# (release files of a private repository can't be downloaded without a GitHub login).
 name: Android APK
 on:
   push:
@@ -8,6 +10,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: android
   cancel-in-progress: true
@@ -46,7 +49,7 @@ jobs:
       - name: Cashier app settings
         if: matrix.app == 'pos'
         run: |
-          echo '{"appId":"com.shahm.pos","appName":"كاشير الشهم","webDir":"web","server":{"url":"https://ane161h3-png.github.io/shahm-debts/pos/","errorPath":"pos/index.html"},"android":{"adjustMarginsForEdgeToEdge":"force"}}' > capacitor.config.json
+          echo '{"appId":"com.shahm.pos","appName":"كاشير الشهم","webDir":"web","server":{"url":"https://shahm-debts.app/pos/","errorPath":"pos/index.html"},"android":{"adjustMarginsForEdgeToEdge":"force"}}' > capacitor.config.json
           cat capacitor.config.json
       - name: Create Android project
         run: |
@@ -103,3 +106,15 @@ jobs:
             ${{ matrix.app == 'debts' && '--latest' || '--latest=false' }} \
             --title "${{ matrix.title }} 1.0.${{ github.run_number }}" \
             --notes "حمّل ${{ matrix.apk }} وثبّته على موبايل الأندرويد. للتحديث ثبّته فوق النسخة القديمة. إذا رفض التنصيب (التطبيق المنصّب من قبل 12 تشرين الأول 2026 موقّع بمفتاح قديم): احذف القديم أولاً ثم ثبّت هذا وسجّل دخول."
+      # Put the new APK on the website (its /dl/ folder).
+      - name: Publish on the website
+        if: matrix.app == 'debts'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Both apps build side by side; wait for the cashier's release so one website run carries both files.
+          for i in $(seq 1 40); do
+            [ "$(gh release view pos-latest --json targetCommitish -q .targetCommitish 2>/dev/null)" = "${{ github.sha }}" ] && break
+            sleep 30
+          done
+          gh workflow run pages.yml --ref main

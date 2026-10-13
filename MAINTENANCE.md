@@ -14,11 +14,11 @@
 
 | الشي | وين | ملاحظة |
 |---|---|---|
-| الكود كله (ديون + كاشير + سيرفر + تقارير) | مستودع GitHub: `ane161h3-png/shahm-debts` | عام (Public) حتى يشتغل Pages وActions مجاناً |
+| الكود كله (ديون + كاشير + سيرفر + تقارير) | مستودع GitHub: `ane161h3-png/shahm-debts` | يتحول خاص (Private) بعد النقل لـ shahm-debts.app، حتى ما ينسخه أحد |
 | برنامج الديون | `web/index.html` | صفحة وحدة، الكود داخل IIFE |
 | كاشير الشهم | `web/pos/index.html` | يشارك نفس الحسابات والزبائن |
-| الموقع | https://ane161h3-png.github.io/shahm-debts/ (الكاشير بـ `/pos/`) | ينتشر من `web/` |
-| تطبيقات أندرويد | Releases بالمستودع: `shahm-debts.apk` و`shahm-pos.apk` | تنبني تلقائياً مع كل نشر |
+| الموقع | https://shahm-debts.app (الكاشير بـ `/pos/`) | Cloudflare Pages، مشروع `shahm-debts`، ينتشر من `web/` |
+| تطبيقات أندرويد | https://shahm-debts.app/dl/shahm-debts.apk و`/dl/shahm-pos.apk` (ونسخة بـ Releases) | تنبني تلقائياً مع كل نشر |
 | قاعدة البيانات والحسابات | Firebase، مشروع `shahm-debts-a080e` | على جيميلك الشخصي |
 | قراءة صور اليوميات والمواد | Cloudflare Worker: `shahm-ai.hydrzyd83.workers.dev` (كود بـ `worker/`) | يستخدم Gemini المجاني |
 | نسخة احتياطية وتقارير تلكرام | `.github/workflows/backup.yml` + `scripts/` | كل يوم 2 بالليل وكل 5 ساعات (7 الصبح و12 و5 و10 الليل) |
@@ -148,8 +148,8 @@ python3 -m http.server 8000
 ## 9. إذا ضاع GitHub أو تريد النقل
 
 من الملف المضغوط تكدر ترجع كل شي:
-1. حساب GitHub جديد ← مستودع عام جديد ← ارفع محتوى `shahm-debts-source.zip` (أو `git clone shahm-debts-history.bundle` ثم `git remote add` وادفع) حتى تحتفظ بالسجل.
-2. Settings ← Pages ← Source = **GitHub Actions**.
+1. حساب GitHub جديد ← مستودع جديد (خاص) ← ارفع محتوى `shahm-debts-source.zip` (أو `git clone shahm-debts-history.bundle` ثم `git remote add` وادفع) حتى تحتفظ بالسجل.
+2. الموقع ينتشر على Cloudflare Pages بـ `pages.yml`: توكن Cloudflare يحتاج صلاحية «Cloudflare Pages: Edit»، والنطاق ينضاف مرة من لوحة Cloudflare (Workers & Pages ← shahm-debts ← Custom domains).
 3. أضف الأسرار (القسم 3).
 4. Firebase ← Authentication ← Settings ← Authorized domains: أضف النطاق الجديد (`اسمك.github.io`).
 5. بدّل العنوان القديم بـ: `capacitor.config.json` (`server.url`)، `worker/wrangler.toml` (`ALLOWED_ORIGINS` و`GH_REPO`)، `README.md`، وأي مكان ذكر `ane161h3-png.github.io`. **التطبيقين المنصّبين على الأندرويد يفتحون العنوان القديم**، فيحتاجون APK جديد.

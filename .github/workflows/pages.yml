@@ -1,4 +1,8 @@
-# Publishes web/ to GitHub Pages: the laptop / iPhone version and the install link.
+# Publishes web/ (the laptop / iPhone version, the APK downloads and the install links).
+# - Cloudflare Pages, project shahm-debts, served at https://shahm-debts.app (custom domain set once in the Cloudflare
+#   dashboard). Secrets: CLOUDFLARE_API_TOKEN (needs the "Cloudflare Pages: Edit" permission) and CLOUDFLARE_ACCOUNT_ID.
+# - GitHub Pages, the old address https://ane161h3-png.github.io/shahm-debts/, only while the repository is public:
+#   it keeps old installs working until every phone has the new app. It stops by itself once the repository is private.
 name: Website
 on:
   push:
@@ -12,7 +16,30 @@ concurrency:
   group: pages
   cancel-in-progress: true
 jobs:
-  deploy:
+  cloudflare:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The latest APKs (built by the Android workflow, which runs this one again when they are ready).
+      - name: APK downloads
+        run: |
+          mkdir -p web/dl
+          gh release download app-latest -p shahm-debts.apk -D web/dl --clobber || echo "::warning::debt book APK not found"
+          gh release download pos-latest -p shahm-pos.apk -D web/dl --clobber || echo "::warning::cashier APK not found"
+          ls -la web/dl
+      - name: Deploy
+        run: |
+          npx --yes wrangler@4 pages project create shahm-debts --production-branch main 2>/dev/null || true
+          npx --yes wrangler@4 pages deploy web --project-name shahm-debts --branch main --commit-dirty=true
+  github:
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
