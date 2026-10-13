@@ -415,6 +415,8 @@ export default {
     try {
       const auth = await authorize(request, env);
       if (auth.error) return json({ error: auth.error }, auth.status, cors);
+      if (env.AI_LIMIT && !(await env.AI_LIMIT.limit({ key: auth.user.localId })).success)
+        return json({ error: "قراءات كثيرة ورا بعض. انتظر دقيقة وحاول." }, 429, cors);
       const input = readBody(await request.json().catch(() => null));
       if (input.error) return json({ error: input.error }, 400, cors);
       // Only the owner adds items in the cashier app.

@@ -2,6 +2,9 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
+<!-- Where the page may load from and talk to: itself, Firebase (Google) and the photo-reading worker. Anything else, such as a
+     script planted in a customer name sending the data elsewhere, is blocked by the browser. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://shahm-ai.hydrzyd83.workers.dev; frame-src https://*.firebaseapp.com https://*.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>كاشير ماركت الشهم</title>
 <meta name="description" content="كاشير ماركت الشهم: بيع كاش أو بالدين على حساب الزبون بدفتر الديون، وتقرير مبيعات يومي.">
@@ -699,7 +702,25 @@ function showWaiting(msg,kind,retry){
   gateCard({sub:"",body:`<div class="banner ${kind||"warn"}">${esc(msg)}</div>${retry?`<button class="btn primary block" type="button" id="wRetry">إعادة المحاولة</button>`:""}<button class="btn block" type="button" id="wOut">تسجيل الخروج</button>`,
     mount:g=>{g.querySelector("#wOut").onclick=()=>signOut();const r=g.querySelector("#wRetry");if(r)r.onclick=()=>location.reload()}});
 }
-function signOut(){stopData();S.me=null;auth.signOut()}
+// Signing out also wipes this device's offline copy of the data, so a shared laptop keeps nothing for the next person; but only
+// once every change made here has reached the server: offline, the copy stays so nothing is lost. True when it was wiped (the
+// database connection is closed then, so the page has to start afresh).
+async function wipeLocal(){
+  try{
+    const sent=await Promise.race([db.waitForPendingWrites().then(()=>true),new Promise(ok=>setTimeout(()=>ok(false),5000))]);
+    if(!sent)return false;
+    await db.terminate();
+  }catch(e){console.warn("offline copy kept",e&&e.code);return false}
+  try{await db.clearPersistence()}catch(e){console.warn("offline copy kept",e&&e.code)}
+  return true;
+}
+function signOut(){
+  stopData();S.me=null;
+  // Day totals kept for the home page belong to this shop's data too. Invoices not yet sent stay (they would be lost).
+  try{localStorage.removeItem(DAYS_KEY)}catch(e){}
+  gateCard({sub:"جارِ تسجيل الخروج…",body:`<div class="spinner" aria-hidden="true"></div>`});
+  wipeLocal().then(async wiped=>{try{await auth.signOut()}catch(e){}if(wiped)location.reload()});
+}
 
 /* ---------- live data ---------- */
 function readFail(e){console.warn(e);if(e&&e.code==="resource-exhausted"&&!quotaShown){quotaShown=true;toast(readErrMsg(e),7000)}

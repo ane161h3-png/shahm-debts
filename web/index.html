@@ -2,6 +2,9 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
+<!-- Where the page may load from and talk to: itself, Firebase (Google) and the photo-reading worker. Anything else, such as a
+     script planted in a customer name sending the data elsewhere, is blocked by the browser. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://shahm-ai.hydrzyd83.workers.dev; frame-src https://*.firebaseapp.com https://*.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>دفتر ديون ماركت الشهم</title>
 <meta name="description" content="دفتر ديون ماركت الشهم: ديون الزبائن والموردين، كشوف حساب PDF، وتذكير واتساب.">
@@ -737,7 +740,8 @@ async function log(kind,what,info){
 }
 async function saveSettings(patch){
   S.settings={...S.settings,...patch};render();
-  try{db.doc("settings/main").set(S.settings).catch(writeFail);return true}catch(e){writeFail(e);return false}
+  // Only the changed fields: writing the whole object from this device's copy could undo what another device just saved.
+  try{db.doc("settings/main").set(patch,{merge:true}).catch(writeFail);return true}catch(e){writeFail(e);return false}
 }
 
 /* ---------- gate ---------- */
@@ -837,7 +841,31 @@ function validateAccount(name,username,pw,selfId){
   return {name,username,pw};
 }
 function wirePw(root){root.querySelectorAll("[data-showpw]").forEach(b=>b.addEventListener("click",()=>{const i=document.getElementById(b.dataset.showpw);const s=i.type==="password";i.type=s?"text":"password";b.textContent=s?"إخفاء":"إظهار"}))}
-function signOut(msg,kind){flash=msg?{msg,kind}:null;stopData();S.me=null;auth.signOut()}
+// Signing out also wipes this device's offline copy of the data, so a shared laptop keeps nothing for the next person; but only
+// once every change made here has reached the server: offline, the copy stays so nothing is lost. True when it was wiped (the
+// database connection is closed then, so the page has to start afresh).
+async function wipeLocal(){
+  try{
+    const sent=await Promise.race([db.waitForPendingWrites().then(()=>true),new Promise(ok=>setTimeout(()=>ok(false),5000))]);
+    if(!sent)return false;
+    await db.terminate();
+  }catch(e){console.warn("offline copy kept",e&&e.code);return false}
+  try{await db.clearPersistence()}catch(e){console.warn("offline copy kept",e&&e.code)}
+  return true;
+}
+const FLASH_KEY="shahm-flash";
+function signOut(msg,kind){
+  flash=msg?{msg,kind}:null;
+  stopData();S.me=null;
+  gateCard({sub:"جارِ تسجيل الخروج…",body:`<div class="spinner" aria-hidden="true"></div>`});
+  wipeLocal().then(async wiped=>{
+    if(wiped)try{if(msg)sessionStorage.setItem(FLASH_KEY,JSON.stringify(flash))}catch(e){}
+    try{await auth.signOut()}catch(e){}
+    if(wiped)location.reload();
+  });
+}
+// The message to show on the login screen after signing out (the page reloads in between).
+try{flash=JSON.parse(sessionStorage.getItem(FLASH_KEY)||"null");sessionStorage.removeItem(FLASH_KEY)}catch(e){}
 
 /* ---------- live data ---------- */
 function stopData(){
@@ -2183,9 +2211,13 @@ function restorePreview(text){
   const cs=d.customers.filter(c=>c&&c.id&&c.name),ts=d.txns.filter(t=>t&&t.id&&t.customerId&&(t.type==="debt"||t.type==="pay")&&Number(t.amount)>0);
   const acts=(d.activity||[]).filter(a=>a&&a.id&&a.at);
   const sups=cs.filter(isSup).length;
+  // The cashier's items, sales and stocktakes (in the daily Telegram backup): put back as they are; a full replace leaves other
+  // cashier records alone. Shifts stay out: the rules let nobody write a closed shift back.
+  const pos=[["products","مادة"],["sales","فاتورة كاشير"],["stocktakes","جرد"]]
+    .map(([k,label])=>[k,label,(Array.isArray(d[k])?d[k]:[]).filter(x=>x&&typeof x==="object"&&x.id)]).filter(x=>x[2].length);
   openModal(`<h3>استعادة النسخة</h3>
     <p class="hint">${d.exportedAt?"تاريخ النسخة: "+esc(timeAgo(Date.parse(d.exportedAt))):""}</p>
-    <div class="banner info">بداخلها: <b class="num">${cs.length-sups}</b> زبون، <b class="num">${sups}</b> مورد، <b class="num">${ts.length}</b> حركة${d.settings?"، ومعلومات المتجر والقوالب":""}.</div>
+    <div class="banner info">بداخلها: <b class="num">${cs.length-sups}</b> زبون، <b class="num">${sups}</b> مورد، <b class="num">${ts.length}</b> حركة${pos.map(([,label,l])=>`، <b class="num">${l.length}</b> ${label}`).join("")}${d.settings?"، ومعلومات المتجر والقوالب":""}.</div>
     <div class="field"><label>طريقة الاستعادة</label>
       <label style="display:flex;gap:8px;align-items:flex-start;font-size:14px;color:var(--ink)"><input type="radio" name="rmode" value="merge" checked style="width:auto;margin-top:5px"> <span><b>دمج</b>: يرجّع كل ما في النسخة ويبقي الإضافات الجديدة الموجودة الآن. (مستحسن)</span></label>
       <label style="display:flex;gap:8px;align-items:flex-start;font-size:14px;color:var(--ink)"><input type="radio" name="rmode" value="replace" style="width:auto;margin-top:5px"> <span><b>استبدال كامل</b>: يحذف البيانات الحالية ويضع النسخة مكانها.</span></label></div>
@@ -2207,6 +2239,7 @@ function restorePreview(text){
       for(const c of cs)ops.push(["set","customers",c.id,c]);
       for(const t of ts)ops.push(["set","txns",t.id,{...t,amount:Number(t.amount)}]);
       for(const a of acts)ops.push(["set","activity",a.id,a]);
+      for(const [k,,l] of pos)for(const x of l)ops.push(["set",k,String(x.id),x]);
       if(d.settings&&typeof d.settings==="object")ops.push(["set","settings","main",{...S.settings,...d.settings,lastBackupAt:S.settings.lastBackupAt||d.settings.lastBackupAt||null}]);
       try{
         for(let i=0;i<ops.length;i+=400){
