@@ -4,9 +4,9 @@
 يشتغل على اللابتوب والموبايل، وبدون إنترنت، والبيانات تتزامن بين كل الأجهزة.
 
 ## التحميل
-- **أندرويد (APK):** https://github.com/ane161h3-png/shahm-debts/releases/latest/download/shahm-debts.apk
-- **أندرويد، الكاشير (APK منفصل):** https://github.com/ane161h3-png/shahm-debts/releases/download/pos-latest/shahm-pos.apk
-- **لابتوب / آيفون:** https://ane161h3-png.github.io/shahm-debts/ ثم «تثبيت» من المتصفح.
+- **أندرويد (APK):** https://shahm-debts.app/dl/shahm-debts.apk
+- **أندرويد، الكاشير (APK منفصل):** https://shahm-debts.app/dl/shahm-pos.apk
+- **لابتوب / آيفون:** https://shahm-debts.app/ ثم «تثبيت» من المتصفح.
 
 ## كيف مبني
 - `web/` البرنامج نفسه (صفحة واحدة) + PWA (`manifest.webmanifest`, `sw.js`) للتثبيت والعمل بدون إنترنت.
@@ -16,10 +16,10 @@
   المدير ينعرف بـ `settings/owner {uid}`: البرنامج يكتبه أول ما يدخل المدير، والقواعد والسيرفر يعتمدون عليه، وقبل ما ينكتب يبقى `admin@shahm-debts.app` هو المدير. لهذا ربط إيميل المدير ينفتح بس بعد نشر `firestore.rules` الجديدة (البرنامج يفحص `meta/rules-v2`). إذا انقفل حساب المدير وما عنده إيميل: من Firebase احذف `settings/owner` وحساب `admin@`، وسجّل `admin` من جديد.
 - `web/config.js` مفاتيح مشروع Firebase (عامة بطبيعتها؛ الحماية من القواعد وتسجيل الدخول).
 - Android عبر Capacitor: `.github/workflows/android.yml` يبني APK للديون وAPK منفصل للكاشير (com.shahm.pos، أيقونته في `assets-pos/`) مع كل تحديث وينشرهم في Releases. التطبيقين يفتحون الموقع نفسه (`server.url` بـ Capacitor)، فأي تحديث على main يوصل للموبايلات بدون APK جديد؛ بدون إنترنت يشتغلون من نسخة الـservice worker، وإذا ماكو نسخة محفوظة تنفتح النسخة اللي داخل الـAPK (`server.errorPath`). نزّل APK جديد بس إذا تغيرت أذونات أو إعدادات أندرويد.
-- `.github/workflows/pages.yml` ينشر `web/` على GitHub Pages.
+- `.github/workflows/pages.yml` ينشر `web/` على Cloudflare Pages (مشروع `shahm-debts`، النطاق `shahm-debts.app`) ويحط آخر APK بمجلد `dl/`. ينشر أيضاً على GitHub Pages (العنوان القديم) بس ما دام المستودع عام.
 
 ## كاشير الشهم (`web/pos/`)
-تطبيق ثاني بأيقونة لحاله: https://ane161h3-png.github.io/shahm-debts/pos/ ثم «تثبيت» من المتصفح (لابتوب أو موبايل).
+تطبيق ثاني بأيقونة لحاله: https://shahm-debts.app/pos/ ثم «تثبيت» من المتصفح (لابتوب أو موبايل).
 للمانيفست `id` خاص (`shahm-pos`) حتى المتصفح ما يعتبره نفس تطبيق الدفتر. افتح الرابط بتبويب عادي (مو داخل نافذة الدفتر المثبّت) ثم ثبّته.
 نفس قاعدة البيانات ونفس الحسابات: المدير يضيف المواد ويعدل الأسعار، المحرر يبيع بس، والمشاهد يشوف المبيعات.
 - **البيع:** فاتورة بالمواد والكمية والخصم، والدفع كاش أو دين أو جزء كاش والباقي دين. البحث بالاسم، والباركود بسكانر USB أو بكاميرا الموبايل (Chrome على أندرويد).

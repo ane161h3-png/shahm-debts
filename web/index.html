@@ -491,8 +491,8 @@ async function ownerCheck(u){
   }catch(e){if(e&&e.code==="permission-denied")return {owner:false,known:true}}
   return {owner:cached?cached===u.uid:orig,known:!!cached}; // offline: last owner this device saw
 }
-const WEB_URL="https://ane161h3-png.github.io/shahm-debts/";
-const APK_URL="https://github.com/ane161h3-png/shahm-debts/releases/latest/download/shahm-debts.apk";
+const WEB_URL="https://shahm-debts.app/";
+const APK_URL="https://shahm-debts.app/dl/shahm-debts.apk";
 const PLUG={};const plugin=n=>PLUG[n]||(PLUG[n]=window.Capacitor.registerPlugin(n));
 
 /* ---------- helpers ---------- */
@@ -2004,7 +2004,7 @@ function viewListPhotos(c,date){
     }catch(e){console.warn(e);box.innerHTML=`<p class="err">${e&&e.code==="permission-denied"?"لازم تحديث قواعد Firebase حتى تنعرض الصور.":"تعذّر تحميل الصورة. تحقق من الإنترنت."}</p>`}
   });
 }
-const SHEET_URL="https://ane161h3-png.github.io/shahm-debts/daily-sheet.pdf";
+const SHEET_URL=WEB_URL+"daily-sheet.pdf";
 function scanStart(){
   if(!window.AI_URL){openModal(`<h3>تصوير ورقة اليوميات</h3><p class="hint">هذي الخاصية بعدها ما مفعّلة. تحتاج ربط خدمة الذكاء الاصطناعي أول مرة.</p><div class="foot"><button class="btn" type="button" data-close>تمام</button></div>`);return}
   openModal(`<h3>تصوير ورقة اليوميات</h3>
@@ -2575,6 +2575,16 @@ if(NATIVE){
       if(S.me&&!$("#app").hidden){toast(readErrMsg(e));return}
       showWaiting(readErrMsg(e),"bad",true)});
   });
+// The site moved from GitHub Pages to shahm-debts.app (the old address stops once the code repository goes private).
+// Whoever still opens the old address, or an app installed before the move, is told where to go.
+if(/\.github\.io$/.test(location.hostname)){
+  const mv=document.createElement("div");mv.className="banner warn";mv.setAttribute("role","alert");
+  mv.style.cssText="position:fixed;top:8px;inset-inline:8px;z-index:9999;display:flex;gap:8px;align-items:center;flex-wrap:wrap;box-shadow:var(--shadow-fab)";
+  mv.innerHTML=NATIVE?`<span style="flex:1;min-width:180px">البرنامج انتقل لعنوان جديد وهذا التطبيق راح يوقف. احذفه وثبّت النسخة الجديدة، وبعدها سجّل دخول.</span><button class="btn sm" type="button" data-moved="${APK_URL}">تحميل التطبيق الجديد</button>`
+    :`<span style="flex:1;min-width:180px">البرنامج انتقل لعنوان جديد وهذا العنوان راح يوقف: <b dir="ltr">shahm-debts.app</b>. افتحه من هناك وثبّته من جديد.</span><a class="btn sm" href="${WEB_URL}">فتح العنوان الجديد</a>`;
+  mv.addEventListener("click",e=>{const x=e.target.closest("[data-moved]");if(x)openExternal(x.dataset.moved)});
+  document.body.appendChild(mv);
+}
 })();
 })();
 </script>

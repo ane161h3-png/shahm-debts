@@ -4344,6 +4344,16 @@ if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceW
       if(S.me&&!$("#app").hidden){toast(readErrMsg(e),7000);return}
       showWaiting(readErrMsg(e),"bad",true)});
   });
+// The site moved from GitHub Pages to shahm-debts.app (the old address stops once the code repository goes private).
+// Whoever still opens the old address, or an app installed before the move, is told where to go.
+if(/\.github\.io$/.test(location.hostname)){
+  const mv=document.createElement("div");mv.className="banner warn";mv.setAttribute("role","alert");
+  mv.style.cssText="position:fixed;top:8px;inset-inline:8px;z-index:9999;display:flex;gap:8px;align-items:center;flex-wrap:wrap;box-shadow:var(--shadow-fab)";
+  mv.innerHTML=NATIVE?`<span style="flex:1;min-width:180px">البرنامج انتقل لعنوان جديد وهذا التطبيق راح يوقف. احذفه وثبّت النسخة الجديدة، وبعدها سجّل دخول.</span><button class="btn sm" type="button" data-moved="https://shahm-debts.app/dl/shahm-pos.apk">تحميل التطبيق الجديد</button>`
+    :`<span style="flex:1;min-width:180px">البرنامج انتقل لعنوان جديد وهذا العنوان راح يوقف: <b dir="ltr">shahm-debts.app</b>. افتحه من هناك وثبّته من جديد.</span><a class="btn sm" href="https://shahm-debts.app/pos/">فتح العنوان الجديد</a>`;
+  mv.addEventListener("click",e=>{const x=e.target.closest("[data-moved]");if(x)openExternal(x.dataset.moved)});
+  document.body.appendChild(mv);
+}
 })();
 })();
 </script>

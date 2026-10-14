@@ -11,7 +11,7 @@ account_id = "08cdcd54bf3baea5c7e88e21b4aa6743"
 FIREBASE_API_KEY = "AIzaSyA8ZcghTnu-k3iQ01JuBeXPl44Pj0pwDDg"
 FIREBASE_PROJECT = "shahm-debts-a080e"
 OWNER_EMAIL = "admin@shahm-debts.app"
-ALLOWED_ORIGINS = "https://ane161h3-png.github.io,https://localhost,capacitor://localhost"
+ALLOWED_ORIGINS = "https://shahm-debts.app,https://ane161h3-png.github.io,https://localhost,capacitor://localhost"
 GH_REPO = "ane161h3-png/shahm-debts"
 
 # Starts the periodic Telegram report every 5 hours of the working day: 7 AM, noon, 5 PM and 10 PM Baghdad
