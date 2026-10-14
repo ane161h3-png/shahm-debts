@@ -57,6 +57,7 @@ h1,h2,h3{text-wrap:balance}
 .gate-head p{margin:0;color:var(--muted)}
 .banner{border-radius:12px;padding:10px 14px;font-size:14px}
 .banner.bad{background:var(--debt-soft);color:var(--debt)}
+.lk{font-style:normal}.lk svg{width:18px;height:18px;vertical-align:-3px}
 .banner.ok{background:var(--paid-soft);color:var(--paid)}
 .banner.info{background:var(--accent-soft);color:var(--accent)}
 .banner.warn{background:var(--warn-soft);color:var(--warn)}
@@ -573,6 +574,7 @@ function fillTpl(kind,c,extra){
   return tpl.replace(/\{([^}]+)\}/g,(m,k)=>k in map?map[k]:m);
 }
 const I={
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
   camera:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/></svg>',
   home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
   users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2a5 5 0 0 1 5.5 5.8"/></svg>',
@@ -626,6 +628,58 @@ function lateInfo(){
     const from=lastPay.get(c.id)||firstDebt.get(c.id);if(!from)continue;
     const days=Math.round((today-new Date(from+"T12:00:00"))/864e5);
     out.set(c.id,{days,paid:lastPay.has(c.id),late:days>=LATE_DAYS})}
+  return out;
+}
+/* Account lock (Settings > قفل الحسابات). A customer who still owes lockDays after the debt that opened the current balance
+   (the first debt since the account was last at zero) can't take new debts, here or at the cashier, until it is paid off or
+   the owner (or someone with the unlock code) opens it, which starts the period again from that day. Payments always go through.
+   The code stops a mistake or a quick favour at the counter; it is not a security barrier against a writer of the book. */
+const lockDays=()=>{const n=Number(S.settings.lockDays);return n>0?n:0};
+function lockOf(c,rows,n){
+  if(!n||!c||isSup(c)||c.noLock)return null;
+  let bal=0,since=null;
+  for(const t of rows){bal+=t.type==="debt"?Number(t.amount)||0:-(Number(t.amount)||0);if(bal<=0)since=null;else if(!since)since=t.date}
+  if(!since)return null;
+  const start=c.lockReset&&c.lockReset>since?c.lockReset:since;
+  const left=n-daysBetween(start,todayISO());
+  return {locked:left<=0,left,since,start};
+}
+async function lockHash(code,salt){
+  const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(salt+":"+normDigits(code).trim()));
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+let lockTries=0,lockWait=0;
+// The lock window: the owner opens it with one press; others type the code. After unlocking, `then` carries on (e.g. the debt form).
+function lockGate(c,L,then){
+  const lc=S.settings.lockCode,owner=LOCK_OWNER();
+  openModal(`<h3><i class="lk">${I.lock}</i> حساب ${esc(c.name)} مقفول</h3>
+    <p class="hint">عليه دين من ${esc(shortDate(L.since))} وما تسدد الحساب كامل خلال <b class="num">${lockDays()}</b> يوم${L.start!==L.since?" من آخر فتح":""}. ما ينكتب عليه دين جديد حتى يسدد${owner?"، أو تفتح الحساب":lc?"، أو ينفتح بالرمز":"، أو يفتحه المدير"}. التسديد مفتوح.</p>
+    ${!owner&&lc?`<form id="lkForm" class="field" style="gap:8px" novalidate><label for="lkCode">رمز الفتح</label><input id="lkCode" type="password" inputmode="numeric" autocomplete="off" maxlength="12" style="direction:ltr;text-align:right"><p class="err" id="lkErr"></p></form>`:""}
+    <div class="foot">${owner?`<button class="btn primary" type="button" id="lkOpen">${I.lock}فتح القفل</button>`:lc?`<button class="btn primary" type="submit" form="lkForm">فتح بالرمز</button>`:""}<button class="btn" type="button" data-close>${owner||lc?"إلغاء":"تمام"}</button></div>
+    <p class="ro-note" style="margin:0">الفتح يعطيه ${lockDays()} يوم جديدة من اليوم.</p>`,m=>{
+    const done=how=>{closeModal();lockOpen(c,how);then&&then()};
+    const ob=m.querySelector("#lkOpen");if(ob)ob.addEventListener("click",()=>done(""));
+    const f=m.querySelector("#lkForm");if(f)f.addEventListener("submit",async e=>{e.preventDefault();const er=m.querySelector("#lkErr");
+      if(Date.now()<lockWait){er.textContent="محاولات كثيرة. انتظر دقيقة.";return}
+      const v=m.querySelector("#lkCode").value;if(!normDigits(v).trim()){er.textContent="اكتب الرمز.";return}
+      let ok=false;try{ok=await lockHash(v,lc.salt)===lc.hash}catch(x){er.textContent="المتصفح ما يدعم فحص الرمز.";return}
+      if(ok){lockTries=0;done("بالرمز");return}
+      if(++lockTries>=5){lockTries=0;lockWait=Date.now()+60000}
+      er.textContent="الرمز غلط.";m.querySelector("#lkCode").select()});
+  });
+}
+const LOCK_OWNER=()=>isAdmin();
+function lockOpen(c,how){
+  put("customers",{...c,lockReset:todayISO()});log("edit","lock",{customerName:c.name,detail:`فتح قفل حساب ${c.name}${how?" "+how:""}`});toast("انفتح حساب "+c.name);
+}
+const lockState=c=>lockOf(c,txnsOf(c.id),lockDays());
+// Every customer's lock in one pass over the records (lists and counts); n overrides the setting (the settings preview).
+function lockMap(n){
+  n=n===undefined?lockDays():n;const out=new Map();if(!n)return out;
+  const by=new Map();for(const t of S.txns.values()){if(!by.has(t.customerId))by.set(t.customerId,[]);by.get(t.customerId).push(t)}
+  for(const c of S.customers.values()){const rows=by.get(c.id);if(!rows)continue;
+    rows.sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:(a.createdAt||0)-(b.createdAt||0)));
+    const L=lockOf(c,rows,n);if(L)out.set(c.id,L)}
   return out;
 }
 const lateText=x=>x?(x.paid?`آخر دفعة قبل ${x.days} يوم`:`ما دافع من أول دين (${x.days} يوم)`):"";
@@ -957,6 +1011,7 @@ function homeView(){
           return `<div class="banner info" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>🤝 وعود دفع: ${today?`<b class="num">${today}</b> موعدهم اليوم`:""}${today&&past?" و ":""}${past?`<b class="num">${past}</b> فات موعدهم`:""}</span><button class="btn sm" type="button" data-go="reminders" data-remf="promise">${I.bell}عرضهم</button></div>`})()}
         ${(()=>{if(monthEndLeft()>=MONTH_END_DAYS)return "";const n=[...S.customers.values()].filter(c=>!isSup(c)&&balanceOf(c.id)>0).length;if(!n)return "";const left=monthEndLeft();
           return `<div class="banner info" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>📅 ${left?`باقي <b class="num">${left+1}</b> أيام على نهاية الشهر`:"اليوم آخر يوم بالشهر"}: ذكّر المدينين (<b class="num">${n}</b>) بتسديد حساباتهم.</span><button class="btn sm" type="button" data-go="reminders" data-remf="month">${I.bell}إرسال التذكير</button></div>`})()}
+        ${(()=>{const n=lockDays()?[...lockMap().values()].filter(x=>x.locked).length:0;return n?`<div class="banner bad" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><i class="lk">${I.lock}</i> <b class="num">${n}</b> حساب مقفول (ما سددوا كامل خلال ${lockDays()} يوم).</span><button class="btn sm" type="button" data-act="golocked">عرضهم</button></div>`:""})()}
         ${(()=>{const n=[...lateInfo().values()].filter(x=>x.late).length;return n?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${n}</b> زبون ما دافع من أكثر من ${LATE_DAYS} يوم.</span><button class="btn sm" type="button" data-go="reminders" data-remf="late">${I.bell}عرضهم</button></div>`:""})()}
         ${(()=>{const {due,visits}=supplierAlerts();let h="";
           if(visits.length)h+=`<div class="banner info"><b>اليوم يزورك:</b> ${visits.map(v=>`<button class="linkish" type="button" data-open="${esc(v.c.id)}">${esc(v.c.name)}</button>${v.bal>0?` (علينا له ${shown("sup",`<span class="num">${fmt(v.bal)}</span>`)})`:""}`).join("، ")}</div>`;
@@ -992,7 +1047,7 @@ function customersView(){
         <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="q" type="search" placeholder="ابحث بالاسم أو رقم الهاتف" autocomplete="off" value="${esc(S.q)}"></div>
         <div class="row-tools">
-          <div class="seg" role="group" aria-label="تصفية">${[["all","الكل"],["owe",S.kind==="supplier"?"علينا لهم":"عليهم دين"],["clear","مسددين"],...(S.kind==="supplier"?[["due","فواتير مستحقة"]]:[]),["nophone",`بدون رقم (${[...S.customers.values()].filter(c=>kindOf(c)===S.kind&&!normDigits(c.phone).replace(/\D/g,"")).length})`]].map(([k,l])=>`<button type="button" data-f="${k}" aria-pressed="${S.filter===k}">${l}</button>`).join("")}</div>
+          <div class="seg" role="group" aria-label="تصفية">${[["all","الكل"],["owe",S.kind==="supplier"?"علينا لهم":"عليهم دين"],["clear","مسددين"],...(S.kind==="supplier"?[["due","فواتير مستحقة"]]:[]),...(S.kind!=="supplier"&&lockDays()?[["locked",`مقفولة (${[...lockMap().values()].filter(x=>x.locked).length})`]]:[]),["nophone",`بدون رقم (${[...S.customers.values()].filter(c=>kindOf(c)===S.kind&&!normDigits(c.phone).replace(/\D/g,"")).length})`]].map(([k,l])=>`<button type="button" data-f="${k}" aria-pressed="${S.filter===k}">${l}</button>`).join("")}</div>
           <select class="sort" id="sort" aria-label="ترتيب">${[["bal","الأعلى ديناً"],["recent","آخر حركة"],["name","الاسم"]].map(([k,l])=>`<option value="${k}" ${S.sort===k?"selected":""}>${l}</option>`).join("")}</select>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn primary" type="button" data-act="newcust" style="flex:1">${I.plus}${S.kind==="supplier"?"إضافة مورد":"إضافة زبون"}</button>`:""}<button class="btn" type="button" data-act="listpdf">${I.pdf}تقرير PDF</button></div>
@@ -1006,6 +1061,7 @@ function renderList(){
   const ul=$("#list");if(!ul)return;const per=stats();const q=normDigits(S.q).trim().toLowerCase();
   const dueMap=new Map();if(S.kind==="supplier")for(const x of supplierAlerts().due){const p=dueMap.get(x.c.id);if(!p||x.left<p)dueMap.set(x.c.id,x.left)}
   const dueIds=new Set(dueMap.keys());if(S.filter==="due"&&S.kind!=="supplier")S.filter="all";
+  const locks=S.kind==="supplier"?new Map():lockMap();if(S.filter==="locked"&&!lockDays())S.filter="all";
   let arr=[...S.customers.values()].filter(c=>{
     if(kindOf(c)!==S.kind)return false;
     const p=per.get(c.id);
@@ -1013,6 +1069,7 @@ function renderList(){
     if(S.filter==="clear"&&p.bal>0)return false;
     if(S.filter==="nophone"&&normDigits(c.phone).replace(/\D/g,""))return false;
     if(S.filter==="due"&&!dueIds.has(c.id))return false;
+    if(S.filter==="locked"&&!(locks.get(c.id)||{}).locked)return false;
     if(!q)return true;
     return custScore(c,q)>0;
   });
@@ -1026,10 +1083,10 @@ function renderList(){
     const p=per.get(c.id);const cls=p.bal>0?"debt":p.bal<0?"paid":"zero";
     const label=p.bal>0?fmt(p.bal):p.bal<0?"له "+fmt(-p.bal):"مسدد";
     const sub=[c.phone,p.count?p.count+" حركة":"بدون حركات"].filter(Boolean).join(" · ");
-    const over=c.limit>0&&p.bal>c.limit;
+    const over=c.limit>0&&p.bal>c.limit;const lk=locks.get(c.id);
     return `<li class="cust-row"><button class="cust" type="button" data-open="${esc(c.id)}" aria-current="${S.selected===c.id}">
       <span class="avatar" aria-hidden="true">${initial(c.name)}</span>
-      <span class="meta"><span class="name">${esc(c.name)}${over?' <span class="chip warn" style="font-size:11px;padding:0 6px">تجاوز الحد</span>':""}</span><span class="sub">${esc(sub)}${dueMap.has(c.id)?` <span class="chip ${dueMap.get(c.id)<0?"debt":"warn"}" style="font-size:11px;padding:0 6px">${dueText(dueMap.get(c.id))}</span>`:""}</span></span>
+      <span class="meta"><span class="name">${esc(c.name)}${over?' <span class="chip warn" style="font-size:11px;padding:0 6px">تجاوز الحد</span>':""}${lk&&lk.locked?' <span class="chip debt" style="font-size:11px;padding:0 6px">مقفول</span>':""}</span><span class="sub">${esc(sub)}${dueMap.has(c.id)?` <span class="chip ${dueMap.get(c.id)<0?"debt":"warn"}" style="font-size:11px;padding:0 6px">${dueText(dueMap.get(c.id))}</span>`:""}</span></span>
       <span class="chip ${cls}"><span class="num">${esc(label)}</span></span></button>
       ${canWrite()?`<span class="row-q"><button type="button" class="q-pay" data-qpay="${esc(c.id)}" aria-label="دفعة من ${esc(c.name)}" title="دفعة">${I.minus}</button><button type="button" class="q-debt" data-qdebt="${esc(c.id)}" aria-label="دين على ${esc(c.name)}" title="دين">${I.plus}</button></span>`:""}</li>`;
   }).join("");
@@ -1074,9 +1131,13 @@ function renderDetail(){
     </div>
     <div class="balance-card ${balCls}">
       <div><div class="lbl">${balLbl}</div><div class="amt"><span class="num">${fmt(Math.abs(per.bal))}</span><small>${CUR}</small></div>
-        <div class="limit-row">${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
+        <div class="limit-row">${!sup&&lockDays()&&isAdmin()?`${c.noLock?'<span class="chip zero">مستثنى من القفل</span>':""}<button class="linkish" type="button" data-act="nolock">${c.noLock?"إرجاعه للقفل":"استثناء من القفل"}</button>`:""}${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
       ${w?`<div class="actions"><button class="btn debt" type="button" data-act="debt" title="اختصار: +">${I.plus}${sup?"فاتورة شراء":"دين"}</button><button class="btn paid" type="button" data-act="pay" title="اختصار: −">${I.minus}${sup?"دفعة للمورد":"دفعة"}</button>${per.bal!==0?`<button class="btn zero" type="button" data-act="zero">${I.zero}تصفير</button>`:""}</div>`:""}
     </div>
+    ${(()=>{const L=sup?null:lockState(c);if(!L||(!L.locked&&L.left>7))return "";
+      if(!L.locked)return `<div class="banner warn"><i class="lk">${I.lock}</i> ينقفل الحساب ${L.left?`بعد <b class="num">${L.left}</b> يوم`:"اليوم"} إذا ما تسدد كامل (عليه دين من ${esc(shortDate(L.since))}).</div>`;
+      return `<div class="banner bad promise-row"><span><i class="lk">${I.lock}</i> <b>الحساب مقفول:</b> عليه دين من ${esc(shortDate(L.since))} وما تسدد كامل خلال <b class="num">${lockDays()}</b> يوم. ما ينكتب عليه دين جديد حتى يسدد.</span>
+        ${w&&(isAdmin()||S.settings.lockCode)?`<span class="ops"><button class="btn sm" type="button" data-act="unlock">${isAdmin()?"فتح القفل":"فتح بالرمز"}</button></span>`:""}</div>`})()}
     ${!sup&&(c.promise||(per.bal>0&&w))?(()=>{const left=promiseLeft(c),pr=c.promise;
       if(!pr)return `<button class="btn block" type="button" data-act="promise">${I.bell}+ موعد وعد بالدفع</button>`;
       const pl=c.phone?waLink(c.phone,fillTpl("promise",c)):"";
@@ -1480,7 +1541,7 @@ async function bizExport(share){
 }
 
 /* ---------- settings ---------- */
-const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["cats","أصناف المواد",I.edit,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
+const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 function settingsView(){
   const pages=SET_PAGES.filter(p=>!p[3]||isAdmin());
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
@@ -1542,6 +1603,14 @@ function setPage(k){
       ${box("debt","إضافة دين جديد","ترسل بعد تسجيل دين")}${box("pay","إضافة دفعة","ترسل بعد تسجيل تسديد")}${box("remind","تذكير بالرصيد","زر «تذكير واتساب» في صفحة الزبون")}${box("promise","تذكير بموعد الدفع","يوم الوعد بالدفع. {الموعد} و{مبلغ الوعد} تتبدل تلقائياً")}${box("monthend","تذكير نهاية الشهر","لكل المدينين قبل نهاية الشهر: التذكيرات ← «نهاية الشهر». {نهاية الشهر} يتبدل بآخر يوم بالشهر")}
       <div><button class="btn primary" type="button" data-act="savetpl">حفظ القوالب</button></div>`;
   }
+  if(k==="lock"){const n=lockDays(),cnt=d=>[...lockMap(d).values()].filter(x=>x.locked).length,ex=[...S.customers.values()].filter(c=>!isSup(c)&&c.noLock);
+    return `<h2>قفل الحسابات</h2><p class="lead">الزبون اللي عليه دين وما سدد الحساب كامل خلال المدة ينقفل حسابه: ما ينكتب عليه دين جديد (لا بالدفتر ولا بالكاشير) حتى يسدد، أو تفتحه أنت، أو واحد عنده رمز الفتح. التسديد يبقى مفتوح دائماً.</p>
+    <div class="tpl"><h3>${I.lock}المدة</h3><span class="ro-note">تنحسب من أول دين بعد آخر مرة صار حسابه صفر. الفتح يعطيه نفس المدة من يوم الفتح.</span>
+      <div class="seg" role="group" aria-label="مدة القفل" style="align-self:flex-start;flex-wrap:wrap">${[[0,"بدون قفل"],[30,"شهر"],[60,"شهرين"]].map(([d,l])=>`<button type="button" data-lockdays="${d}" aria-pressed="${n===d}">${l}${d?` (ينقفل <span class="num">${cnt(d)}</span>)`:""}</button>`).join("")}</div></div>
+    <div class="tpl"><h3>رمز الفتح</h3><span class="ro-note">${st.lockCode?"الرمز محفوظ. ":"ماكو رمز: بس أنت تفتح الحسابات. "}اعطِ الرمز لمن تريده يفتح الحسابات المقفولة (مثلاً أخوك). ينحفظ مشفّر، فإذا نسيته سوّ رمز جديد.</span>
+      <form id="lockCodeForm" class="note-row" novalidate><input id="lcCode" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="${st.lockCode?"رمز جديد":"4 أرقام أو أكثر"}" style="direction:ltr;text-align:right" aria-label="رمز الفتح"><button class="btn primary" type="submit" style="flex:none">${st.lockCode?"تغيير الرمز":"حفظ الرمز"}</button></form>
+      ${st.lockCode?`<div><button class="btn ghost sm danger-text" type="button" data-act="lockcodedel">حذف الرمز</button></div>`:""}</div>
+    ${ex.length?`<div class="tpl"><h3>مستثنين من القفل (${ex.length})</h3><span class="ro-note">${ex.map(c=>esc(c.name)).join("، ")}. تلغي الاستثناء من صفحة الزبون.</span></div>`:""}`}
   if(k==="cats")return `<h2>أصناف المواد</h2><p class="lead">تطلع بقائمة «الأصناف» بنافذة الدين الجديد. اكتب كل صنف بسطر.</p>
     <div class="field"><textarea id="catsTa" aria-label="الأصناف" style="min-height:260px">${esc(cats().join("\n"))}</textarea></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="savecats">حفظ الأصناف</button><button class="btn ghost" type="button" data-act="resetcats">رجوع للقائمة الافتراضية</button></div>`;
@@ -1691,6 +1760,7 @@ function phoneForm(c){
 function txnForm(type,existing){
   const c=S.customers.get(existing?existing.customerId:S.selected);if(!c)return;
   const isDebt=(existing?existing.type:type)==="debt";const bal=balanceOf(c.id);
+  if(isDebt&&!existing){const L=lockState(c);if(L&&L.locked){lockGate(c,L,()=>txnForm(type));return}}
   const sup=isSup(c);
   const quick=sup?[10000,25000,50000,100000,250000]:isDebt?[250,500,1000,2000,5000,10000,25000]:[1000,5000,10000,25000];
   const title=sup?(existing?(isDebt?"تعديل فاتورة ":"تعديل دفعة "):(isDebt?"فاتورة شراء من ":"دفعة إلى ")):(existing?(isDebt?"تعديل دين ":"تعديل تسديد "):(isDebt?"تسجيل دين على ":"تسديد من "));
@@ -1948,7 +2018,8 @@ function scanReview(rows,pics){
   // Arabic-tolerant search: ignore hamza forms, ة/ه, ى/ي, diacritics and spaces ("عبدالله" finds "عبد الله").
   const fold=x=>normDigits(x).toLowerCase().replace(/[أإآٱ]/g,"ا").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/[\u064B-\u0652\u0640]/g,"").replace(/\s+/g," ").trim();
   const F=custs.map(c=>{const f=fold(c.name);return {c,f,n:f.replace(/ /g,"")}});
-  const custLabel=r=>r.cust==="new"?`+ زبون جديد: ${esc(r.written_name.trim())}`:r.cust&&S.customers.get(r.cust)?esc(S.customers.get(r.cust).name):"— اختر الزبون —";
+  const locks=lockMap();
+  const custLabel=r=>r.cust==="new"?`+ زبون جديد: ${esc(r.written_name.trim())}`:r.cust&&S.customers.get(r.cust)?esc(S.customers.get(r.cust).name)+((locks.get(r.cust)||{}).locked?' <span class="chip debt" style="font-size:11px;padding:0 6px">مقفول</span>':""):"— اختر الزبون —";
   const custBtn=r=>`<button type="button" class="sr-cust ${r.cust?"":"empty"}" data-cpick aria-label="الزبون"><span>${custLabel(r)}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>`;
   const findCust=(q,written)=>{
     q=fold(q);
@@ -2269,6 +2340,9 @@ document.addEventListener("click",e=>{
   const af=t.closest("[data-actf]");if(af){S.actFilter=af.dataset.actf;render();return}
   const f=t.closest("[data-f]");if(f){S.filter=f.dataset.f;document.querySelectorAll("[data-f]").forEach(x=>x.setAttribute("aria-pressed",x===f));renderList();return}
   const bs=t.closest("[data-bizstyle]");if(bs){S.bizDraft={...(S.bizDraft||{}),style:bs.dataset.bizstyle};bs.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===bs));bizRedraw();return}
+  const ld=t.closest("[data-lockdays]");if(ld&&isAdmin()){const d=Number(ld.dataset.lockdays);const go=()=>saveSettings({lockDays:d}).then(ok=>{if(ok){log("edit","lock",{detail:d?`قفل الحسابات بعد ${d} يوم`:"إيقاف قفل الحسابات"});toast(d?"تم تشغيل القفل":"انطفى القفل")}});
+    const n=d?[...lockMap(d).values()].filter(x=>x.locked).length:0;
+    if(n&&d!==lockDays())confirmBox("تشغيل قفل الحسابات",`${n} زبون راح ينقفل حسابه هسه لأنه ما سدد كامل خلال ${d} يوم. تكدر تفتح أي واحد منهم من صفحته.`,"تشغيل",go);else go();return}
   const sp=t.closest("[data-set]");if(sp){S.setPage=sp.dataset.set||null;render();window.scrollTo(0,0);return}
   const hd=t.closest("[data-hide]");if(hd){const k=hd.dataset.hide,h=hiddenNums().filter(x=>x!==k);if(hd.dataset.v==="1")h.push(k);setHidden(h);render();return}
   const ha=t.closest("[data-hideall]");if(ha){setHidden(ha.dataset.hideall==="1"?HIDE_ITEMS.map(x=>x[0]):[]);S.reveal=false;render();return}
@@ -2286,6 +2360,10 @@ document.addEventListener("click",e=>{
     case "newcustq":{const nm=($("#hq")||{}).value||"";S.kind="customer";customerForm(null,id=>openCustomer(id));setTimeout(()=>{const i=$("#cName");if(i&&!i.value)i.value=nm.trim()},0);break}
     case "monthrep":monthReport();break;
     case "reveal":S.reveal=!S.reveal;render();break;
+    case "unlock":if(c&&canWrite()){const L=lockState(c);if(L&&L.locked)lockGate(c,L)}break;
+    case "nolock":if(c&&isAdmin()){put("customers",{...c,noLock:!c.noLock});log("edit","lock",{customerName:c.name,detail:c.noLock?`رجّع ${c.name} للقفل`:`استثنى ${c.name} من القفل`});toast(c.noLock?"رجع للقفل":"صار مستثنى من القفل")}break;
+    case "golocked":S.view="customers";S.kind="customer";S.filter="locked";S.selected=null;render();window.scrollTo(0,0);break;
+    case "lockcodedel":if(isAdmin())confirmBox("حذف رمز الفتح","بعد الحذف بس أنت تكدر تفتح الحسابات المقفولة.","حذف",()=>saveSettings({lockCode:null}).then(ok=>ok&&toast("انحذف الرمز")));break;
     case "bizshare":bizExport(true);break;
     case "bizsave":bizExport(false);break;
     case "promise":if(canWrite()&&c)promiseForm(c);break;
@@ -2379,6 +2457,9 @@ document.addEventListener("submit",e=>{
   if(e.target.id==="mailForm"){e.preventDefault();linkEmail();return}
   if(e.target.id==="bizForm"){e.preventDefault();if(!isAdmin())return;const b=bizData();S.bizDraft=null;
     saveSettings({shopName:b.name.trim()||"ماركت الشهم",phone:b.phone.trim(),address:b.address.trim(),card:{desc:b.desc.trim(),manager:b.manager.trim(),social:b.social.trim(),style:b.style}}).then(ok=>{if(ok)toast("انحفظت البطاقة")});return}
+  if(e.target.id==="lockCodeForm"){e.preventDefault();if(!isAdmin())return;const v=normDigits($("#lcCode").value).trim();
+    if(v.length<4){toast("الرمز لازم 4 أرقام أو حروف أو أكثر.");return}
+    const salt=uid();lockHash(v,salt).then(hash=>saveSettings({lockCode:{salt,hash}})).then(ok=>{if(ok){log("edit","lock",{detail:"غيّر رمز فتح الحسابات"});toast("انحفظ الرمز")}},()=>toast("المتصفح ما يدعم حفظ الرمز."));return}
   if(e.target.id==="shopForm"){e.preventDefault();saveSettings({shopName:$("#sName").value.trim()||"ماركت الشهم",ownerName:$("#sOwner").value.trim()||"المدير",phone:$("#sPhone").value.trim(),address:$("#sAddr").value.trim()}).then(ok=>{if(ok){S.me.name=S.settings.ownerName;render();toast("تم الحفظ")}})}
 });
 document.addEventListener("click",e=>{if(e.target.id==="exportBtn"&&isAdmin())exportData()});
