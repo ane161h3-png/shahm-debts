@@ -757,15 +757,17 @@ function needCust(){
 /* Account lock, set in the debt book (Settings > قفل الحسابات); same rule as there. A customer who still owes lockDays after the
    debt that opened the current balance takes no credit sale until it is paid off, or the owner (or the unlock code) opens it. */
 const lockDays=()=>{const n=Number(S.settings.lockDays);return n>0?n:0};
+// The customer's own period (c.lockDays: 0 = never) wins over the general one.
+function lockDaysOf(c){if(!c||isSup(c)||c.noLock)return 0;const n=Number(c.lockDays!=null?c.lockDays:lockDays());return n>0?n:0}
 const daysBetween=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5);
 function lockOf(c,rows,n){
-  if(!n||!c||isSup(c)||c.noLock)return null;
+  if(!n||!c||isSup(c))return null;
   let bal=0,since=null;
   for(const t of rows){bal+=t.type==="debt"?Number(t.amount)||0:-(Number(t.amount)||0);if(bal<=0)since=null;else if(!since)since=t.date}
   if(!since)return null;
   const start=c.lockReset&&c.lockReset>since?c.lockReset:since;
   const left=n-daysBetween(start,todayISO());
-  return {locked:left<=0,left,since,start};
+  return {locked:left<=0,left,since,start,n};
 }
 async function lockHash(code,salt){
   const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(salt+":"+normDigits(code).trim()));
@@ -773,7 +775,7 @@ async function lockHash(code,salt){
 }
 let lockTries=0,lockWait=0;
 // undefined while the customer's records are still loading.
-function custLock(c){const n=lockDays();if(!n)return null;if(balanceOf(c.id)==null)return undefined;
+function custLock(c){const n=lockDaysOf(S.customers.get(c.id)||c);if(!n)return null;if(balanceOf(c.id)==null)return undefined;
   return lockOf(S.customers.get(c.id)||c,[...S.txns.values()].filter(t=>t.customerId===c.id).sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:(a.createdAt||0)-(b.createdAt||0))),n)}
 function unlockCust(c,how){
   const day=todayISO();S.customers.set(c.id,{...(S.customers.get(c.id)||c),lockReset:day});
@@ -1489,7 +1491,7 @@ function checkout(resume){
           const over=bal!=null&&Number(c.limit)>0&&bal+debt>Number(c.limit);const L=custLock(c),lc=S.settings.lockCode;
           box.innerHTML=`<div class="picked"><span class="avatar">${initial(c.name)}</span><div class="m"><b>${esc(c.name)}</b><span>${bal==null?"جارِ قراءة رصيده…":`رصيده الحالي <span class="num">${fmt(bal)}</span> ← يصير <span class="num">${fmt(bal+Math.max(0,debt))}</span> ${CUR}`}</span></div><button class="btn sm" type="button" id="coChg">تغيير</button></div>
             ${over?`<div class="banner warn" style="margin-top:8px">ينتبه: يتجاوز سقف الدين (<span class="num">${fmt(c.limit)}</span> ${CUR}).</div>`:""}
-            ${L&&L.locked?`<div class="banner bad" style="margin-top:8px;display:flex;flex-direction:column;gap:8px"><span><i class="lk">${I.lock}</i> <b>الحساب مقفول:</b> عليه دين من ${esc(dayName(L.since))} وما تسدد كامل خلال <b class="num">${lockDays()}</b> يوم. ما ينكتب عليه دين حتى يسدد${S.isOwner||lc?"":"، أو يفتحه المدير"}.</span>
+            ${L&&L.locked?`<div class="banner bad" style="margin-top:8px;display:flex;flex-direction:column;gap:8px"><span><i class="lk">${I.lock}</i> <b>الحساب مقفول:</b> عليه دين من ${esc(dayName(L.since))} وما تسدد كامل خلال <b class="num">${L.n}</b> يوم. ما ينكتب عليه دين حتى يسدد${S.isOwner||lc?"":"، أو يفتحه المدير"}.</span>
               ${S.isOwner?`<button class="btn sm" type="button" id="coUnlock" style="align-self:flex-start">فتح القفل</button>`:lc?`<div style="display:flex;gap:8px"><input id="coLk" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="رمز الفتح" aria-label="رمز الفتح" style="flex:1;min-width:0;direction:ltr;text-align:right"><button class="btn sm" type="button" id="coUnlock">فتح</button></div><span id="coLkErr"></span>`:""}</div>`:""}`;
           box.querySelector("#coChg").onclick=()=>{st.cust=null;drawCust()};
           const ub=box.querySelector("#coUnlock");if(ub)ub.onclick=async()=>{
