@@ -59,6 +59,7 @@ h1,h2,h3{text-wrap:balance}
 .gate-head p{margin:0;color:var(--muted)}
 .banner{border-radius:12px;padding:10px 14px;font-size:14px}
 .banner.bad{background:var(--debt-soft);color:var(--debt)}
+.lk{font-style:normal}.lk svg{width:18px;height:18px;vertical-align:-3px}
 .unsent{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 14px 0}.unsent>span{flex:1;min-width:180px}
 .banner.ok{background:var(--paid-soft);color:var(--paid)}
 .banner.info{background:var(--accent-soft);color:var(--accent)}
@@ -603,6 +604,7 @@ function custScore(c,q){
 // null until that customer's records have loaded (watchTxns starts loading them).
 function balanceOf(id){watchTxns(id);if(!txnLoaded.has(id))return null;let b=0;for(const t of S.txns.values())if(t.customerId===id)b+=t.type==="debt"?Number(t.amount)||0:-(Number(t.amount)||0);return b}
 const I={
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
   home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10M10 20v-6h4v6"/></svg>',
   cart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11h10.2L20 7H6.3"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>',
   chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
@@ -751,6 +753,32 @@ let custOn=false,custReady=false;const txnWatch=new Set(),txnLoaded=new Set();
 function needCust(){
   if(custOn||!dataOn)return;custOn=true;
   unsubs.push(db.collection("customers").onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));custReady=true;refresh("cust")},e=>{custOn=false;readFail(e)}));
+}
+/* Account lock, set in the debt book (Settings > قفل الحسابات); same rule as there. A customer who still owes lockDays after the
+   debt that opened the current balance takes no credit sale until it is paid off, or the owner (or the unlock code) opens it. */
+const lockDays=()=>{const n=Number(S.settings.lockDays);return n>0?n:0};
+const daysBetween=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5);
+function lockOf(c,rows,n){
+  if(!n||!c||isSup(c)||c.noLock)return null;
+  let bal=0,since=null;
+  for(const t of rows){bal+=t.type==="debt"?Number(t.amount)||0:-(Number(t.amount)||0);if(bal<=0)since=null;else if(!since)since=t.date}
+  if(!since)return null;
+  const start=c.lockReset&&c.lockReset>since?c.lockReset:since;
+  const left=n-daysBetween(start,todayISO());
+  return {locked:left<=0,left,since,start};
+}
+async function lockHash(code,salt){
+  const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(salt+":"+normDigits(code).trim()));
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+let lockTries=0,lockWait=0;
+// undefined while the customer's records are still loading.
+function custLock(c){const n=lockDays();if(!n)return null;if(balanceOf(c.id)==null)return undefined;
+  return lockOf(S.customers.get(c.id)||c,[...S.txns.values()].filter(t=>t.customerId===c.id).sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:(a.createdAt||0)-(b.createdAt||0))),n)}
+function unlockCust(c,how){
+  const day=todayISO();S.customers.set(c.id,{...(S.customers.get(c.id)||c),lockReset:day});
+  try{db.collection("customers").doc(c.id).set({lockReset:day},{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
+  log("edit","lock",{customerName:c.name,detail:`فتح قفل حساب ${c.name}${how?" "+how:""}`});toast("انفتح حساب "+c.name);
 }
 function watchTxns(id){
   if(!id||txnWatch.has(id)||!dataOn)return;txnWatch.add(id);
@@ -1458,10 +1486,20 @@ function checkout(resume){
         const box=body.querySelector("#coCust");if(!box)return;
         needCust();
         if(st.cust){const c=S.customers.get(st.cust.id)||st.cust;const bal=balanceOf(c.id),debt=t.total-(st.mode==="part"?st.cashPart:0);
-          const over=bal!=null&&Number(c.limit)>0&&bal+debt>Number(c.limit);
+          const over=bal!=null&&Number(c.limit)>0&&bal+debt>Number(c.limit);const L=custLock(c),lc=S.settings.lockCode;
           box.innerHTML=`<div class="picked"><span class="avatar">${initial(c.name)}</span><div class="m"><b>${esc(c.name)}</b><span>${bal==null?"جارِ قراءة رصيده…":`رصيده الحالي <span class="num">${fmt(bal)}</span> ← يصير <span class="num">${fmt(bal+Math.max(0,debt))}</span> ${CUR}`}</span></div><button class="btn sm" type="button" id="coChg">تغيير</button></div>
-            ${over?`<div class="banner warn" style="margin-top:8px">ينتبه: يتجاوز سقف الدين (<span class="num">${fmt(c.limit)}</span> ${CUR}).</div>`:""}`;
+            ${over?`<div class="banner warn" style="margin-top:8px">ينتبه: يتجاوز سقف الدين (<span class="num">${fmt(c.limit)}</span> ${CUR}).</div>`:""}
+            ${L&&L.locked?`<div class="banner bad" style="margin-top:8px;display:flex;flex-direction:column;gap:8px"><span><i class="lk">${I.lock}</i> <b>الحساب مقفول:</b> عليه دين من ${esc(dayName(L.since))} وما تسدد كامل خلال <b class="num">${lockDays()}</b> يوم. ما ينكتب عليه دين حتى يسدد${S.isOwner||lc?"":"، أو يفتحه المدير"}.</span>
+              ${S.isOwner?`<button class="btn sm" type="button" id="coUnlock" style="align-self:flex-start">فتح القفل</button>`:lc?`<div style="display:flex;gap:8px"><input id="coLk" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="رمز الفتح" aria-label="رمز الفتح" style="flex:1;min-width:0;direction:ltr;text-align:right"><button class="btn sm" type="button" id="coUnlock">فتح</button></div><span id="coLkErr"></span>`:""}</div>`:""}`;
           box.querySelector("#coChg").onclick=()=>{st.cust=null;drawCust()};
+          const ub=box.querySelector("#coUnlock");if(ub)ub.onclick=async()=>{
+            if(S.isOwner){unlockCust(c,"");drawCust();return}
+            const er=box.querySelector("#coLkErr");if(Date.now()<lockWait){er.textContent="محاولات كثيرة. انتظر دقيقة.";return}
+            const v=box.querySelector("#coLk").value;if(!normDigits(v).trim()){er.textContent="اكتب الرمز.";return}
+            let ok=false;try{ok=await lockHash(v,lc.salt)===lc.hash}catch(x){}
+            if(ok){lockTries=0;unlockCust(c,"بالرمز");drawCust();return}
+            if(++lockTries>=5){lockTries=0;lockWait=Date.now()+60000}
+            er.textContent="الرمز غلط."};
           refreshPicker=()=>{if(document.body.contains(box)&&st.cust)drawCust()};return}
         box.innerHTML=`<label class="search">${I.search}<input id="coQ" type="search" placeholder="ابحث باسم الزبون أو رقمه" autocomplete="off" value="${esc(st.q)}"></label><ul class="pick-list" id="coList" style="margin-top:6px"></ul>`;
         const q=box.querySelector("#coQ"),list=box.querySelector("#coList");
@@ -1492,7 +1530,8 @@ function checkout(resume){
       if(e.repeat){e.preventDefault();return}
       const t=e.target;
       if(t.id==="coQ"&&t.value.trim()){e.preventDefault();const b=m.querySelectorAll("#coList [data-cid]");if(b.length===1)b[0].click();else if(!b.length){const n=m.querySelector("[data-newc]");if(n)n.click()}return}
-      if(t.closest&&t.closest("#coList,[data-close],[data-cur],#coRate,#coChg"))return;
+      if(t.id==="coLk"){e.preventDefault();const u=m.querySelector("#coUnlock");if(u)u.click();return}
+      if(t.closest&&t.closest("#coList,[data-close],[data-cur],#coRate,#coChg,#coUnlock"))return;
       e.preventDefault();const go=m.querySelector("#coGo");if(go&&!go.disabled)go.click()};
     document.addEventListener("keydown",onKey);modalCleanup=()=>document.removeEventListener("keydown",onKey);
     m.querySelector("#coGo").onclick=()=>{
@@ -1502,6 +1541,9 @@ function checkout(resume){
         if(!(cash>0)){err.textContent="اكتب الكاش اللي دفعه، أو اختار «دين» إذا كله دين.";return}
         if(debt<=0){err.textContent="الكاش يغطي المطلوب كله. اختار «كاش».";return}}
       if(debt>0&&!st.cust){err.textContent="اختار الزبون اللي ينكتب عليه الدين.";return}
+      if(debt>0){const L=custLock(st.cust);
+        if(L===undefined){err.textContent="جارِ قراءة حساب الزبون، ثواني وأعد.";return}
+        if(L&&L.locked){err.textContent="حساب الزبون مقفول: افتحه، أو خلّ البيع كاش.";return}}
       const r=usdRate(),usd=st.mode==="cash"&&st.cur==="usd"&&r>0;
       if(usd&&!(st.usd>0)){err.textContent="اكتب الدولار اللي استلمته.";return}
       if(!usd&&st.mode==="cash"&&st.received>0&&st.received<t.total){err.textContent="المبلغ المستلم أقل من المطلوب.";return}
