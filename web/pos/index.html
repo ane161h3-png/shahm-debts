@@ -760,8 +760,11 @@ const lockDays=()=>{const n=Number(S.settings.lockDays);return n>0?n:0};
 // The customer's own period (c.lockDays: 0 = never) wins over the general one.
 function lockDaysOf(c){if(!c||isSup(c)||c.noLock)return 0;const n=Number(c.lockDays!=null?c.lockDays:lockDays());return n>0?n:0}
 const daysBetween=(a,b)=>Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5);
+// c.lockNow (a date): the owner locked the account by hand; it stays locked, paid or not, until opened.
 function lockOf(c,rows,n){
-  if(!n||!c||isSup(c))return null;
+  if(!c||isSup(c))return null;
+  if(c.lockNow)return {locked:true,left:0,since:c.lockNow,start:c.lockNow,n,manual:true};
+  if(!n)return null;
   let bal=0,since=null;
   for(const t of rows){bal+=t.type==="debt"?Number(t.amount)||0:-(Number(t.amount)||0);if(bal<=0)since=null;else if(!since)since=t.date}
   if(!since)return null;
@@ -775,11 +778,11 @@ async function lockHash(code,salt){
 }
 let lockTries=0,lockWait=0;
 // undefined while the customer's records are still loading.
-function custLock(c){const n=lockDaysOf(S.customers.get(c.id)||c);if(!n)return null;if(balanceOf(c.id)==null)return undefined;
+function custLock(c){const cc=S.customers.get(c.id)||c;if(cc.lockNow)return lockOf(cc,[],0);const n=lockDaysOf(cc);if(!n)return null;if(balanceOf(c.id)==null)return undefined;
   return lockOf(S.customers.get(c.id)||c,[...S.txns.values()].filter(t=>t.customerId===c.id).sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:(a.createdAt||0)-(b.createdAt||0))),n)}
 function unlockCust(c,how){
-  const day=todayISO();S.customers.set(c.id,{...(S.customers.get(c.id)||c),lockReset:day});
-  try{db.collection("customers").doc(c.id).set({lockReset:day},{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
+  const day=todayISO(),{lockNow,...rest}=S.customers.get(c.id)||c;S.customers.set(c.id,{...rest,lockReset:day});
+  try{db.collection("customers").doc(c.id).set({lockReset:day,lockNow:firebase.firestore.FieldValue.delete()},{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
   log("edit","lock",{customerName:c.name,detail:`فتح قفل حساب ${c.name}${how?" "+how:""}`});toast("انفتح حساب "+c.name);
 }
 function watchTxns(id){
@@ -1491,7 +1494,7 @@ function checkout(resume){
           const over=bal!=null&&Number(c.limit)>0&&bal+debt>Number(c.limit);const L=custLock(c),lc=S.settings.lockCode;
           box.innerHTML=`<div class="picked"><span class="avatar">${initial(c.name)}</span><div class="m"><b>${esc(c.name)}</b><span>${bal==null?"جارِ قراءة رصيده…":`رصيده الحالي <span class="num">${fmt(bal)}</span> ← يصير <span class="num">${fmt(bal+Math.max(0,debt))}</span> ${CUR}`}</span></div><button class="btn sm" type="button" id="coChg">تغيير</button></div>
             ${over?`<div class="banner warn" style="margin-top:8px">ينتبه: يتجاوز سقف الدين (<span class="num">${fmt(c.limit)}</span> ${CUR}).</div>`:""}
-            ${L&&L.locked?`<div class="banner bad" style="margin-top:8px;display:flex;flex-direction:column;gap:8px"><span><i class="lk">${I.lock}</i> <b>الحساب مقفول:</b> عليه دين من ${esc(dayName(L.since))} وما تسدد كامل خلال <b class="num">${L.n}</b> يوم. ما ينكتب عليه دين حتى يسدد${S.isOwner||lc?"":"، أو يفتحه المدير"}.</span>
+            ${L&&L.locked?`<div class="banner bad" style="margin-top:8px;display:flex;flex-direction:column;gap:8px"><span><i class="lk">${I.lock}</i> <b>الحساب مقفول:</b> ${L.manual?`قفله المدير من ${esc(dayName(L.since))}. ما ينكتب عليه دين حتى ينفتح`:`عليه دين من ${esc(dayName(L.since))} وما تسدد كامل خلال <b class="num">${L.n}</b> يوم. ما ينكتب عليه دين حتى يسدد${S.isOwner||lc?"":"، أو يفتحه المدير"}`}.</span>
               ${S.isOwner?`<button class="btn sm" type="button" id="coUnlock" style="align-self:flex-start">فتح القفل</button>`:lc?`<div style="display:flex;gap:8px"><input id="coLk" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="رمز الفتح" aria-label="رمز الفتح" style="flex:1;min-width:0;direction:ltr;text-align:right"><button class="btn sm" type="button" id="coUnlock">فتح</button></div><span id="coLkErr"></span>`:""}</div>`:""}`;
           box.querySelector("#coChg").onclick=()=>{st.cust=null;drawCust()};
           const ub=box.querySelector("#coUnlock");if(ub)ub.onclick=async()=>{
