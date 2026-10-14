@@ -638,10 +638,14 @@ const lockDays=()=>{const n=Number(S.settings.lockDays);return n>0?n:0};
 // A customer's own period (c.lockDays: 0 = never, 30/60) wins over the general one (def). The old c.noLock means never.
 const ownLock=c=>c&&!isSup(c)&&(c.noLock||c.lockDays!=null);
 function lockDaysOf(c,def){if(!c||isSup(c)||c.noLock)return 0;const n=Number(c.lockDays!=null?c.lockDays:def===undefined?lockDays():def);return n>0?n:0}
-const anyLock=()=>lockDays()>0||[...S.customers.values()].some(c=>ownLock(c)&&lockDaysOf(c)>0);
+const anyLock=()=>lockDays()>0||[...S.customers.values()].some(c=>!isSup(c)&&(c.lockNow||ownLock(c)&&lockDaysOf(c)>0));
+const lockWhy=L=>L.manual?`قفله المدير من ${esc(shortDate(L.since))}`:`عليه دين من ${esc(shortDate(L.since))} وما تسدد الحساب كامل خلال <b class="num">${L.n}</b> يوم`;
 const lockName=n=>n===30?"شهر":n===60?"شهرين":n?n+" يوم":"بدون قفل";
+// c.lockNow (a date): the owner locked the account by hand; it stays locked, paid or not, until opened.
 function lockOf(c,rows,n){
-  if(!n||!c||isSup(c))return null;
+  if(!c||isSup(c))return null;
+  if(c.lockNow)return {locked:true,left:0,since:c.lockNow,start:c.lockNow,n,manual:true};
+  if(!n)return null;
   let bal=0,since=null;
   for(const t of rows){bal+=t.type==="debt"?Number(t.amount)||0:-(Number(t.amount)||0);if(bal<=0)since=null;else if(!since)since=t.date}
   if(!since)return null;
@@ -658,10 +662,10 @@ let lockTries=0,lockWait=0;
 function lockGate(c,L,then){
   const lc=S.settings.lockCode,owner=LOCK_OWNER();
   openModal(`<h3><i class="lk">${I.lock}</i> حساب ${esc(c.name)} مقفول</h3>
-    <p class="hint">عليه دين من ${esc(shortDate(L.since))} وما تسدد الحساب كامل خلال <b class="num">${L.n}</b> يوم${L.start!==L.since?" من آخر فتح":""}. ما ينكتب عليه دين جديد حتى يسدد${owner?"، أو تفتح الحساب":lc?"، أو ينفتح بالرمز":"، أو يفتحه المدير"}. التسديد مفتوح.</p>
+    <p class="hint">${lockWhy(L)}${!L.manual&&L.start!==L.since?" من آخر فتح":""}. ما ينكتب عليه دين جديد حتى ${L.manual?"":"يسدد، أو "}${owner?"تفتح الحساب":lc?"ينفتح بالرمز":"يفتحه المدير"}. التسديد مفتوح.</p>
     ${!owner&&lc?`<form id="lkForm" class="field" style="gap:8px" novalidate><label for="lkCode">رمز الفتح</label><input id="lkCode" type="password" inputmode="numeric" autocomplete="off" maxlength="12" style="direction:ltr;text-align:right"><p class="err" id="lkErr"></p></form>`:""}
     <div class="foot">${owner?`<button class="btn primary" type="button" id="lkOpen">${I.lock}فتح القفل</button>`:lc?`<button class="btn primary" type="submit" form="lkForm">فتح بالرمز</button>`:""}<button class="btn" type="button" data-close>${owner||lc?"إلغاء":"تمام"}</button></div>
-    <p class="ro-note" style="margin:0">الفتح يعطيه ${L.n} يوم جديدة من اليوم.</p>`,m=>{
+    <p class="ro-note" style="margin:0">${L.manual?"الفتح يرفع القفل.":`الفتح يعطيه ${L.n} يوم جديدة من اليوم.`}</p>`,m=>{
     const done=how=>{closeModal();lockOpen(c,how);then&&then()};
     const ob=m.querySelector("#lkOpen");if(ob)ob.addEventListener("click",()=>done(""));
     const f=m.querySelector("#lkForm");if(f)f.addEventListener("submit",async e=>{e.preventDefault();const er=m.querySelector("#lkErr");
@@ -676,14 +680,19 @@ function lockGate(c,L,then){
 const LOCK_OWNER=()=>isAdmin();
 // The owner picks this customer's own lock period, or puts them back on the general one.
 function lockSetForm(c){
-  const g=lockDays(),rows=txnsOf(c.id),cur=ownLock(c)?String(lockDaysOf(c)):"g";
+  const g=lockDays(),rows=txnsOf(c.id),cur=ownLock(c)?String(lockDaysOf(c)):"g",base={...c,lockNow:null};
   const opts=[["g",`مثل العام (${lockName(g)})`,g],["0","بدون قفل",0],["30","شهر",30],["60","شهرين",60]];
   openModal(`<h3><i class="lk">${I.lock}</i> قفل حساب ${esc(c.name)}</h3>
     <p class="hint">إذا عليه دين وما سدد الحساب كامل خلال المدة ينقفل: ما ينكتب عليه دين جديد (بالدفتر ولا بالكاشير) حتى يسدد أو تفتحه. التسديد يبقى مفتوح.</p>
-    <div class="seg" role="group" aria-label="مدة القفل" style="flex-direction:column;align-items:stretch">${opts.map(([k,l,n])=>{const L=lockOf(c,rows,n);
+    <div class="banner ${c.lockNow?"bad":"warn"}" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${c.lockNow?`<b>مقفول هسه</b> من ${esc(shortDate(c.lockNow))}. يبقى مقفول حتى لو سدد، لحد ما ترفع القفل.`:"<b>قفل هسه:</b> يوقف الدين عليه من اليوم لحد ما تفتحه."}</span>
+      <button class="btn sm ${c.lockNow?"":"debt"}" type="button" data-lk="${c.lockNow?"open":"now"}">${I.lock}${c.lockNow?"رفع القفل":"قفل هسه"}</button></div>
+    <p class="ro-note" style="margin:0">أو قفل تلقائي إذا ما سدد كامل خلال مدة:</p>
+    <div class="seg" role="group" aria-label="مدة القفل" style="flex-direction:column;align-items:stretch">${opts.map(([k,l,n])=>{const L=lockOf(base,rows,n);
       return `<button type="button" data-lk="${k}" aria-pressed="${cur===k}">${l}${L&&L.locked?' <span class="chip debt">ينقفل هسه</span>':""}</button>`}).join("")}</div>
     <div class="foot"><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
     m.addEventListener("click",e=>{const b=e.target.closest("[data-lk]");if(!b)return;const k=b.dataset.lk;
+      if(k==="open"){closeModal();lockOpen(c,"");return}
+      if(k==="now"){closeModal();put("customers",{...c,lockNow:todayISO()});log("edit","lock",{customerName:c.name,detail:`قفل حساب ${c.name} هسه`});toast("انقفل حساب "+c.name);return}
       const {noLock,lockDays:_,...rest}=c,nc=k==="g"?rest:{...rest,lockDays:Number(k)};
       closeModal();if(k===cur)return;put("customers",nc);
       const txt=k==="g"?`رجّع ${c.name} للقفل العام`:`قفل ${c.name}: ${lockName(Number(k))}`;
@@ -691,14 +700,14 @@ function lockSetForm(c){
   });
 }
 function lockOpen(c,how){
-  put("customers",{...c,lockReset:todayISO()});log("edit","lock",{customerName:c.name,detail:`فتح قفل حساب ${c.name}${how?" "+how:""}`});toast("انفتح حساب "+c.name);
+  const {lockNow,...rest}=c;put("customers",{...rest,lockReset:todayISO()});log("edit","lock",{customerName:c.name,detail:`فتح قفل حساب ${c.name}${how?" "+how:""}`});toast("انفتح حساب "+c.name);
 }
 const lockState=c=>lockOf(c,txnsOf(c.id),lockDaysOf(c));
 // Every customer's lock in one pass over the records (lists and counts); def overrides the general setting (the settings preview).
 function lockMap(def){
   def=def===undefined?lockDays():def;const out=new Map();if(!def&&!anyLock())return out;
   const by=new Map();for(const t of S.txns.values()){if(!by.has(t.customerId))by.set(t.customerId,[]);by.get(t.customerId).push(t)}
-  for(const c of S.customers.values()){const rows=by.get(c.id);if(!rows)continue;
+  for(const c of S.customers.values()){const rows=by.get(c.id)||[];if(!rows.length&&!c.lockNow)continue;
     rows.sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:(a.createdAt||0)-(b.createdAt||0)));
     const L=lockOf(c,rows,lockDaysOf(c,def));if(L)out.set(c.id,L)}
   return out;
@@ -1032,7 +1041,7 @@ function homeView(){
           return `<div class="banner info" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>🤝 وعود دفع: ${today?`<b class="num">${today}</b> موعدهم اليوم`:""}${today&&past?" و ":""}${past?`<b class="num">${past}</b> فات موعدهم`:""}</span><button class="btn sm" type="button" data-go="reminders" data-remf="promise">${I.bell}عرضهم</button></div>`})()}
         ${(()=>{if(monthEndLeft()>=MONTH_END_DAYS)return "";const n=[...S.customers.values()].filter(c=>!isSup(c)&&balanceOf(c.id)>0).length;if(!n)return "";const left=monthEndLeft();
           return `<div class="banner info" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>📅 ${left?`باقي <b class="num">${left+1}</b> أيام على نهاية الشهر`:"اليوم آخر يوم بالشهر"}: ذكّر المدينين (<b class="num">${n}</b>) بتسديد حساباتهم.</span><button class="btn sm" type="button" data-go="reminders" data-remf="month">${I.bell}إرسال التذكير</button></div>`})()}
-        ${(()=>{const n=anyLock()?[...lockMap().values()].filter(x=>x.locked).length:0;return n?`<div class="banner bad" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><i class="lk">${I.lock}</i> <b class="num">${n}</b> حساب مقفول (ما سددوا كامل خلال مدة القفل).</span><button class="btn sm" type="button" data-act="golocked">عرضهم</button></div>`:""})()}
+        ${(()=>{const n=anyLock()?[...lockMap().values()].filter(x=>x.locked).length:0;return n?`<div class="banner bad" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><i class="lk">${I.lock}</i> <b class="num">${n}</b> حساب مقفول (ما ينكتب عليهم دين).</span><button class="btn sm" type="button" data-act="golocked">عرضهم</button></div>`:""})()}
         ${(()=>{const n=[...lateInfo().values()].filter(x=>x.late).length;return n?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${n}</b> زبون ما دافع من أكثر من ${LATE_DAYS} يوم.</span><button class="btn sm" type="button" data-go="reminders" data-remf="late">${I.bell}عرضهم</button></div>`:""})()}
         ${(()=>{const {due,visits}=supplierAlerts();let h="";
           if(visits.length)h+=`<div class="banner info"><b>اليوم يزورك:</b> ${visits.map(v=>`<button class="linkish" type="button" data-open="${esc(v.c.id)}">${esc(v.c.name)}</button>${v.bal>0?` (علينا له ${shown("sup",`<span class="num">${fmt(v.bal)}</span>`)})`:""}`).join("، ")}</div>`;
@@ -1153,12 +1162,13 @@ function renderDetail(){
     <div class="balance-card ${balCls}">
       <div><div class="lbl">${balLbl}</div><div class="amt"><span class="num">${fmt(Math.abs(per.bal))}</span><small>${CUR}</small></div>
         <div class="limit-row">${sup?"":(()=>{const n=lockDaysOf(c),own=ownLock(c);if(!n&&!own&&!isAdmin())return "";
+          if(c.lockNow)return `<span class="chip debt"><i class="lk">${I.lock}</i> مقفول هسه</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">تغيير القفل</button>`:""}`;
           return `<span class="chip ${n?"warn":"zero"}"><i class="lk">${I.lock}</i> ${n?"قفل بعد "+lockName(n):"بدون قفل"}${own?"":" (عام)"}</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">${n||own?"تغيير القفل":"+ قفل الحساب"}</button>`:""}`})()}${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
       ${w?`<div class="actions"><button class="btn debt" type="button" data-act="debt" title="اختصار: +">${I.plus}${sup?"فاتورة شراء":"دين"}</button><button class="btn paid" type="button" data-act="pay" title="اختصار: −">${I.minus}${sup?"دفعة للمورد":"دفعة"}</button>${per.bal!==0?`<button class="btn zero" type="button" data-act="zero">${I.zero}تصفير</button>`:""}</div>`:""}
     </div>
     ${(()=>{const L=sup?null:lockState(c);if(!L||(!L.locked&&L.left>7))return "";
       if(!L.locked)return `<div class="banner warn"><i class="lk">${I.lock}</i> ينقفل الحساب ${L.left?`بعد <b class="num">${L.left}</b> يوم`:"اليوم"} إذا ما تسدد كامل (عليه دين من ${esc(shortDate(L.since))}).</div>`;
-      return `<div class="banner bad promise-row"><span><i class="lk">${I.lock}</i> <b>الحساب مقفول:</b> عليه دين من ${esc(shortDate(L.since))} وما تسدد كامل خلال <b class="num">${L.n}</b> يوم. ما ينكتب عليه دين جديد حتى يسدد.</span>
+      return `<div class="banner bad promise-row"><span><i class="lk">${I.lock}</i> <b>الحساب مقفول:</b> ${lockWhy(L)}. ما ينكتب عليه دين جديد حتى ${L.manual?"ينفتح":"يسدد"}.</span>
         ${w&&(isAdmin()||S.settings.lockCode)?`<span class="ops"><button class="btn sm" type="button" data-act="unlock">${isAdmin()?"فتح القفل":"فتح بالرمز"}</button></span>`:""}</div>`})()}
     ${!sup&&(c.promise||(per.bal>0&&w))?(()=>{const left=promiseLeft(c),pr=c.promise;
       if(!pr)return `<button class="btn block" type="button" data-act="promise">${I.bell}+ موعد وعد بالدفع</button>`;
@@ -1625,14 +1635,15 @@ function setPage(k){
       ${box("debt","إضافة دين جديد","ترسل بعد تسجيل دين")}${box("pay","إضافة دفعة","ترسل بعد تسجيل تسديد")}${box("remind","تذكير بالرصيد","زر «تذكير واتساب» في صفحة الزبون")}${box("promise","تذكير بموعد الدفع","يوم الوعد بالدفع. {الموعد} و{مبلغ الوعد} تتبدل تلقائياً")}${box("monthend","تذكير نهاية الشهر","لكل المدينين قبل نهاية الشهر: التذكيرات ← «نهاية الشهر». {نهاية الشهر} يتبدل بآخر يوم بالشهر")}
       <div><button class="btn primary" type="button" data-act="savetpl">حفظ القوالب</button></div>`;
   }
-  if(k==="lock"){const n=lockDays(),cnt=d=>[...lockMap(d).values()].filter(x=>x.locked).length,ex=[...S.customers.values()].filter(ownLock);
+  if(k==="lock"){const n=lockDays(),cnt=d=>[...lockMap(d).values()].filter(x=>x.locked).length,ex=[...S.customers.values()].filter(ownLock),man=[...S.customers.values()].filter(c=>!isSup(c)&&c.lockNow);
     return `<h2>قفل الحسابات</h2><p class="lead">الزبون اللي عليه دين وما سدد الحساب كامل خلال المدة ينقفل حسابه: ما ينكتب عليه دين جديد (لا بالدفتر ولا بالكاشير) حتى يسدد، أو تفتحه أنت، أو واحد عنده رمز الفتح. التسديد يبقى مفتوح دائماً.</p>
-    <div class="tpl"><h3>${I.lock}المدة العامة (لكل الزبائن)</h3><span class="ro-note">تنحسب من أول دين بعد آخر مرة صار حسابه صفر. الفتح يعطيه نفس المدة من يوم الفتح. وتكدر تحدد مدة خاصة لأي زبون من صفحته (زر «قفل الحساب» تحت الرصيد)، وهي تمشي حتى لو العامة «بدون قفل».</span>
+    <div class="tpl"><h3>${I.lock}المدة العامة (لكل الزبائن)</h3><span class="ro-note">تنحسب من أول دين بعد آخر مرة صار حسابه صفر. الفتح يعطيه نفس المدة من يوم الفتح. وتكدر تحدد مدة خاصة لأي زبون، أو تقفله هسه، من صفحته (زر «قفل الحساب» تحت الرصيد)، وهذا يمشي حتى لو العامة «بدون قفل».</span>
       <div class="seg" role="group" aria-label="مدة القفل" style="align-self:flex-start;flex-wrap:wrap">${[[0,"بدون قفل"],[30,"شهر"],[60,"شهرين"]].map(([d,l])=>`<button type="button" data-lockdays="${d}" aria-pressed="${n===d}">${l}${d?` (ينقفل <span class="num">${cnt(d)}</span>)`:""}</button>`).join("")}</div></div>
     <div class="tpl"><h3>رمز الفتح</h3><span class="ro-note">${st.lockCode?"الرمز محفوظ. ":"ماكو رمز: بس أنت تفتح الحسابات. "}اعطِ الرمز لمن تريده يفتح الحسابات المقفولة (مثلاً أخوك). ينحفظ مشفّر، فإذا نسيته سوّ رمز جديد.</span>
       <form id="lockCodeForm" class="note-row" novalidate><input id="lcCode" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="${st.lockCode?"رمز جديد":"4 أرقام أو أكثر"}" style="direction:ltr;text-align:right" aria-label="رمز الفتح"><button class="btn primary" type="submit" style="flex:none">${st.lockCode?"تغيير الرمز":"حفظ الرمز"}</button></form>
       ${st.lockCode?`<div><button class="btn ghost sm danger-text" type="button" data-act="lockcodedel">حذف الرمز</button></div>`:""}</div>
-    ${ex.length?`<div class="tpl"><h3>زبائن بمدة خاصة (${ex.length})</h3><span class="ro-note">${ex.map(c=>`${esc(c.name)}: ${lockName(lockDaysOf(c))}`).join("، ")}. تغيّرها من صفحة الزبون.</span></div>`:""}`}
+    ${ex.length?`<div class="tpl"><h3>زبائن بمدة خاصة (${ex.length})</h3><span class="ro-note">${ex.map(c=>`${esc(c.name)}: ${lockName(lockDaysOf(c))}`).join("، ")}. تغيّرها من صفحة الزبون.</span></div>`:""}
+    ${man.length?`<div class="tpl"><h3>مقفولين هسه بيدك (${man.length})</h3><span class="ro-note">${man.map(c=>esc(c.name)).join("، ")}. ترفع القفل من صفحة الزبون.</span></div>`:""}`}
   if(k==="cats")return `<h2>أصناف المواد</h2><p class="lead">تطلع بقائمة «الأصناف» بنافذة الدين الجديد. اكتب كل صنف بسطر.</p>
     <div class="field"><textarea id="catsTa" aria-label="الأصناف" style="min-height:260px">${esc(cats().join("\n"))}</textarea></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="savecats">حفظ الأصناف</button><button class="btn ghost" type="button" data-act="resetcats">رجوع للقائمة الافتراضية</button></div>`;
