@@ -464,10 +464,12 @@ const monthEndStart=()=>{const d=new Date();return new Date(d.getFullYear(),d.ge
 const S={customers:new Map(),txns:new Map(),accounts:new Map(),activity:[],settings:{},
   me:null,isOwner:false,superOwner:false,shop:null,shops:new Map(),view:"home",kind:"customer",period:"all",remTab:"send",remFilter:"all",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,ready:{c:false,t:false,a:false,s:false}};
 let db=null,auth=null,unsubs=[],dataOn=false,flash=null,REG=null,installEvt=null;
-/* Shops: with MULTI_SHOP (config.js) other shops sign up in this same app and each gets its own notebook under shops/{its owner's uid}.
+/* Shops: other shops sign up in this same app and each gets its own notebook under shops/{its owner's uid}.
    SHOP is the signed-in person's shop (null = this shop's own data at the root, as it always was); P() puts a path inside it.
    memberOf/{uid} says which shop an account belongs to. S.superOwner is the root owner, who activates and stops shops. */
-const MULTI=!!window.MULTI_SHOP;
+// Set here, not in config.js: the service worker can serve an old config.js for one more load, and then this device
+// would open with shops off (no «المحلات» page, the old sign-up). scripts/build-shop.mjs turns it off in shop copies.
+const MULTI=true;
 let SHOP=null;
 const P=p=>SHOP?"shops/"+SHOP+"/"+p:p;
 const GATE_NAME_KEY="shahm-gate-name",GATE_TENANT_KEY="shahm-gate-tenant",SHOP_KEY="shahm-shop";
@@ -2701,6 +2703,12 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
         return;
       }
       const p=s.data();
+      if(p.status==="pending"&&MULTI&&!SHOP){stopData();S.me=null;
+        // An old copy of the app may have sent a shop's sign-up here as a request to join this shop: let it register its shop.
+        gateCard({sub:"",body:`<div class="banner warn">طلبك وصل لـ«${esc(shopName())}» بانتظار موافقة المدير. إذا انت صاحب محل وتريد دفتر لمحلك، سجّل محلك.</div>
+          <button class="btn primary block" type="button" id="wShop">صاحب محل؟ سجّل محلك</button><button class="btn block" type="button" id="wOut">تسجيل الخروج</button>`,
+          mount:g=>{g.querySelector("#wOut").onclick=()=>signOut();g.querySelector("#wShop").onclick=()=>showShopSetup(u,{username:p.username||uname,name:p.name})}});
+        return}
       if(p.status==="pending"){stopData();S.me=null;showWaiting("تم استلام طلبك ✅ بانتظار موافقة المدير. أول ما يفعّل حسابك يفتح البرنامج تلقائياً.","warn");return}
       if(p.status==="disabled"){stopData();S.me=null;showWaiting("تم إيقاف هذا الحساب. راجع المدير.","bad");return}
       const first=!S.me;
