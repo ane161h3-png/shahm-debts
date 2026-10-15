@@ -1,0 +1,14 @@
+{
+  "slug": "demo",
+  "name": "ماركت البركة",
+  "short": "ديون البركة",
+  "letter": "ب",
+  "firebase": {
+    "apiKey": "AIzaSyAR0nvBiSp05q3rz1LUIy0dQIQrUc6teiI",
+    "authDomain": "shahm-demo.firebaseapp.com",
+    "projectId": "shahm-demo",
+    "storageBucket": "shahm-demo.firebasestorage.app",
+    "messagingSenderId": "709904912151",
+    "appId": "1:709904912151:web:f6f3d9511474f63702b152"
+  }
+}
