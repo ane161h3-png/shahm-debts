@@ -129,12 +129,80 @@ service cloud.firestore {
     }
     match /users/{uid} {
       allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
-      // Signing up: a pending viewer with only the fields the sign-up form writes.
-      allow create: if isOwner() || (signedIn() && request.auth.uid == uid
-        && d().keys().hasOnly(['id', 'name', 'username', 'role', 'status', 'createdAt'])
-        && d().id == uid && nameOk(d().name) && str(d().username, 40)
-        && d().status == 'pending' && d().role == 'viewer');
+      // Signing up here: not an account that belongs to another shop.
+      allow create: if isOwner() || (signedIn() && request.auth.uid == uid && !exists(memberPath(uid)) && signUpOk(uid));
       allow update, delete: if isOwner();
+    }
+    // Signing up: a pending viewer with only the fields the sign-up form writes.
+    function signUpOk(uid) {
+      return d().keys().hasOnly(['id', 'name', 'username', 'role', 'status', 'createdAt'])
+        && d().id == uid && nameOk(d().name) && str(d().username, 40)
+        && d().status == 'pending' && d().role == 'viewer';
+    }
+
+    // ---------- Other shops (one app, many shops) ----------
+    // Each shop that signs up in the app gets its own notebook under shops/{s}, where s is its owner's uid. It opens only
+    // once this app's owner (isOwner) sets its status to 'active'; 'disabled' closes it again without deleting anything.
+    // Nobody in another shop can read or write this shop's data at the root, and this owner has no access to theirs.
+    // memberOf/{uid} only says which shop an account opens: each account writes its own, and it grants nothing by itself.
+    function memberPath(uid) { return /databases/$(database)/documents/memberOf/$(uid); }
+    function shopPath(s) { return /databases/$(database)/documents/shops/$(s); }
+    function shopOn(s) { return exists(shopPath(s)) && get(shopPath(s)).data.status == 'active'; }
+    function sOwner(s) { return signedIn() && request.auth.uid == s; }
+    function sProfPath(s) { return /databases/$(database)/documents/shops/$(s)/users/$(request.auth.uid); }
+    function sProf(s) { return get(sProfPath(s)).data; }
+    function sMember(s) { return signedIn() && exists(sProfPath(s)) && sProf(s).status == 'active'; }
+    function sReader(s) { return shopOn(s) && (sOwner(s) || sMember(s)); }
+    function sWriter(s) { return shopOn(s) && (sOwner(s) || (sMember(s) && sProf(s).role == 'editor')); }
+    function sBoss(s) { return shopOn(s) && sOwner(s); }
+    function sSigned(s, x) { return (x.by == sProf(s).get('name', x.by) || sProf(s).get('name', '') == '') && x.at is number && x.at < request.time.toMillis() + 86400000; }
+
+    match /memberOf/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid && d().keys().hasOnly(['shop', 'at'])
+        && str(d().shop, 128) && d().shop.size() > 0 && d().at is number;
+    }
+    match /shops/{s} {
+      allow get: if isOwner() || sOwner(s) || (signedIn() && exists(sProfPath(s)));
+      allow list: if isOwner();
+      allow create: if sOwner(s) && d().keys().hasOnly(['id', 'owner', 'name', 'ownerName', 'phone', 'username', 'status', 'createdAt'])
+        && d().id == s && d().owner == s && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30)
+        && str(d().username, 40) && d().status == 'pending' && d().createdAt is number;
+      allow update: if isOwner() || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['name', 'ownerName', 'phone'])
+        && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30));
+      allow delete: if isOwner();
+
+      match /customers/{id} {
+        allow read: if sReader(s);
+        allow create, update: if sWriter(s) && (sOwner(s) || (d().id == id && nameOk(d().name)));
+        allow delete: if sWriter(s);
+      }
+      match /txns/{id} {
+        allow read: if sReader(s);
+        allow create, update: if sWriter(s) && (sOwner(s) || (d().id == id && d().customerId is string
+          && d().type in ['debt', 'pay'] && amountOk(d().amount)));
+        allow delete: if sWriter(s);
+      }
+      match /photos/{id} {
+        allow read: if sReader(s);
+        allow create, update: if sWriter(s) && (sOwner(s) || (d().id == id && imageOk(d().data)));
+        allow delete: if sWriter(s);
+      }
+      match /activity/{id} {
+        allow read: if sReader(s);
+        allow create: if sBoss(s) || (sReader(s) && d().id == id && sSigned(s, d()) && (sWriter(s) || d().kind == 'remind'));
+        allow update, delete: if sBoss(s);
+      }
+      match /settings/{id} {
+        allow read: if sReader(s);
+        allow write: if sBoss(s) && id == 'main';
+      }
+      // Its workers: the shop's owner makes their accounts (or approves one that asks), as at the root.
+      match /users/{uid} {
+        allow read: if sBoss(s) || (signedIn() && request.auth.uid == uid);
+        allow create: if sBoss(s) || (signedIn() && request.auth.uid == uid && signUpOk(uid));
+        allow update, delete: if sBoss(s);
+      }
     }
   }
 }
