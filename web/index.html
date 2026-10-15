@@ -462,8 +462,15 @@ const monthEndISO=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.ge
 const monthEndLeft=()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,0).getDate()-d.getDate()}; // 0 on the last day
 const monthEndStart=()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,1-MONTH_END_DAYS).getTime()};
 const S={customers:new Map(),txns:new Map(),accounts:new Map(),activity:[],settings:{},
-  me:null,isOwner:false,view:"home",kind:"customer",period:"all",remTab:"send",remFilter:"all",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,ready:{c:false,t:false,a:false,s:false}};
+  me:null,isOwner:false,superOwner:false,shop:null,shops:new Map(),view:"home",kind:"customer",period:"all",remTab:"send",remFilter:"all",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,ready:{c:false,t:false,a:false,s:false}};
 let db=null,auth=null,unsubs=[],dataOn=false,flash=null,REG=null,installEvt=null;
+/* Shops: with MULTI_SHOP (config.js) other shops sign up in this same app and each gets its own notebook under shops/{its owner's uid}.
+   SHOP is the signed-in person's shop (null = this shop's own data at the root, as it always was); P() puts a path inside it.
+   memberOf/{uid} says which shop an account belongs to. S.superOwner is the root owner, who activates and stops shops. */
+const MULTI=!!window.MULTI_SHOP;
+let SHOP=null;
+const P=p=>SHOP?"shops/"+SHOP+"/"+p:p;
+const GATE_NAME_KEY="shahm-gate-name",GATE_TENANT_KEY="shahm-gate-tenant",SHOP_KEY="shahm-shop";
 const NATIVE=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
 const DOMAIN="shahm-debts.app",OWNER_USER="admin";
 const emailOf=u=>u+"@"+DOMAIN;
@@ -529,7 +536,15 @@ const dayName=iso=>{try{return new Date(iso+"T12:00:00").toLocaleDateString("ar-
 const shortDate=iso=>{try{return new Date(iso+"T12:00:00").toLocaleDateString("ar-IQ",{day:"numeric",month:"short",year:"numeric",numberingSystem:"latn"})}catch(e){return iso}};
 const timeAgo=ms=>{const d=new Date(ms);const t=todayISO();const iso=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
   const hm=d.toLocaleTimeString("ar-IQ",{hour:"numeric",minute:"2-digit",numberingSystem:"latn"});return iso===t?"اليوم "+hm:shortDate(iso)+" "+hm};
-const shopName=()=>S.settings.shopName||"ماركت الشهم";
+const shopName=()=>S.settings.shopName||(SHOP?(S.shop&&S.shop.name)||"":"ماركت الشهم");
+// The login screen's name: the last shop opened on this device (a new buyer's phone has none yet).
+// Another shop's mark: the first letter of its name (without «ماركت», «محل»…), in the brand font, in place of the Shahm drawing.
+const markLetter=n=>{const w=String(n||"").trim().split(/\s+/).filter(x=>x&&!/^(ماركت|سوبرماركت|محل|محلات|أسواق|اسواق|مخزن|مول|بقالة|متجر)$/.test(x));
+  return (w[0]||"دفتر").replace(/^ال(?=..)/,"").charAt(0)||"د"};
+const letterMark=n=>{const f=markLetter(n);
+  return `<svg viewBox="0 0 100 100" aria-hidden="true"><text x="50" y="72" text-anchor="middle" font-family="Lalezar, Tajawal, sans-serif" font-size="74" fill="currentColor">${esc(f)}</text></svg>`};
+const brandMark=()=>{if(S.me)return SHOP?letterMark(shopName()):BRAND_MARK;let t=null;try{t=localStorage.getItem(GATE_TENANT_KEY)}catch(e){}return !MULTI||t==="0"?BRAND_MARK:letterMark(gateName())};
+const gateName=()=>{if(S.me)return shopName();try{const n=localStorage.getItem(GATE_NAME_KEY);if(n)return n}catch(e){}return MULTI?"":shopName()};
 const kindOf=c=>c&&c.kind==="supplier"?"supplier":"customer";
 const isSup=c=>kindOf(c)==="supplier";
 const canWrite=()=>S.me&&(S.me.role==="owner"||S.me.role==="editor");
@@ -812,25 +827,25 @@ function writeFail(e){console.warn(e);toast(e&&e.code==="permission-denied"?"م�
 const WRITES=new Map(); // id -> promise of the write reaching the server (sendAutoWa waits for it)
 async function put(coll,obj){
   local(coll).set(obj.id,obj);render();
-  try{const w=db.collection(DBN(coll)).doc(obj.id).set(obj);WRITES.set(obj.id,w);const done=()=>{if(WRITES.get(obj.id)===w)WRITES.delete(obj.id)};w.then(done,e=>{done();writeFail(e)});return true}catch(e){writeFail(e);return false}
+  try{const w=db.collection(P(DBN(coll))).doc(obj.id).set(obj);WRITES.set(obj.id,w);const done=()=>{if(WRITES.get(obj.id)===w)WRITES.delete(obj.id)};w.then(done,e=>{done();writeFail(e)});return true}catch(e){writeFail(e);return false}
 }
 async function del(coll,id){
   local(coll).delete(id);render();
-  try{db.collection(DBN(coll)).doc(id).delete().catch(writeFail)}catch(e){writeFail(e)}
+  try{db.collection(P(DBN(coll))).doc(id).delete().catch(writeFail)}catch(e){writeFail(e)}
 }
 async function log(kind,what,info){
   const a={id:uid(),at:Date.now(),kind,what,by:S.me?S.me.name:"",byRole:S.me?S.me.role:"",...info};
-  try{db.collection("activity").doc(a.id).set(a).catch(()=>{})}catch(e){}
+  try{db.collection(P("activity")).doc(a.id).set(a).catch(()=>{})}catch(e){}
 }
 async function saveSettings(patch){
   S.settings={...S.settings,...patch};render();
   // Only the changed fields: writing the whole object from this device's copy could undo what another device just saved.
-  try{db.doc("settings/main").set(patch,{merge:true}).catch(writeFail);return true}catch(e){writeFail(e);return false}
+  try{db.doc(P("settings/main")).set(patch,{merge:true}).catch(writeFail);return true}catch(e){writeFail(e);return false}
 }
 
 /* ---------- gate ---------- */
 function gateCard(inner){$("#gate").hidden=false;$("#app").hidden=true;$("#bottomNav").hidden=true;
-  $("#gate").innerHTML=`<div class="gate-card"><div class="gate-head"><div class="logo">${BRAND_MARK}</div><h1>سجل ديون ${esc(shopName())}</h1>${inner.sub?`<p>${inner.sub}</p>`:""}</div>${inner.body}</div>`;
+  $("#gate").innerHTML=`<div class="gate-card"><div class="gate-head"><div class="logo">${brandMark()}</div><h1>${gateName()?"سجل ديون "+esc(gateName()):"دفتر الديون"}</h1>${inner.sub?`<p>${inner.sub}</p>`:""}</div>${inner.body}</div>`;
   inner.mount&&inner.mount($("#gate"));
 }
 function showError(msg){gateCard({sub:"",body:`<div class="banner bad">${esc(msg)}</div>`})}
@@ -853,7 +868,7 @@ function showLogin(msg,kind){
       <button class="btn primary block" type="submit" id="lGo">دخول</button>
     </form>
     <div class="gate-foot"><button class="linkish" type="button" id="toForgot">نسيت كلمة المرور؟</button></div>
-    <div class="gate-foot">ليس لديك حساب؟ <button class="linkish" type="button" id="toReg">إنشاء حساب</button></div>`,
+    <div class="gate-foot">${MULTI?`محل جديد؟ <button class="linkish" type="button" id="toReg">سجّل محلك</button>`:`ليس لديك حساب؟ <button class="linkish" type="button" id="toReg">إنشاء حساب</button>`}</div>`,
   mount:g=>{
     wirePw(g);g.querySelector("#toReg").onclick=()=>showRegister();g.querySelector("#toForgot").onclick=()=>showForgot($("#lUser").value);
     g.querySelector("#lf").addEventListener("submit",async e=>{
@@ -890,14 +905,17 @@ function showForgot(prefill){
   }});
 }
 function showRegister(){
-  gateCard({sub:"أنشئ حسابك، وبعدها المدير يفعّله",body:`
+  gateCard({sub:MULTI?"سجّل محلك، وبعد التفعيل يفتح دفترك":"أنشئ حسابك، وبعدها المدير يفعّله",body:`
     <form id="rf" class="field" style="gap:12px" novalidate>
+      ${MULTI?`<div class="field"><label for="rShop">اسم المحل</label><input id="rShop" maxlength="60" placeholder="مثال: ماركت النور"></div>`:""}
       <div class="field"><label for="rName">اسمك</label><input id="rName" maxlength="40" placeholder="مثال: علي"></div>
+      ${MULTI?`<div class="field"><label for="rPhone">رقم الهاتف</label><input id="rPhone" inputmode="tel" maxlength="20" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx"></div>`:""}
       <div class="field"><label for="rUser">اسم المستخدم</label><input id="rUser" maxlength="30" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right" placeholder="ali"><span class="help">أحرف إنجليزية أو أرقام، بدون فراغات.</span></div>
       <div class="field"><label for="rPw">كلمة المرور</label><div class="pw"><input id="rPw" type="password" autocomplete="new-password"><button type="button" data-showpw="rPw">إظهار</button></div><span class="help">6 أحرف على الأقل.</span></div>
       <p class="err" id="rErr"></p>
-      <button class="btn primary block" type="submit" id="rGo">إنشاء الحساب</button>
+      <button class="btn primary block" type="submit" id="rGo">${MULTI?"تسجيل المحل":"إنشاء الحساب"}</button>
     </form>
+    ${MULTI?`<p class="ro-note">عامل بمحل؟ لا تسجّل محل: صاحب المحل يسويلك حساب من الإعدادات ← المستخدمين.</p>`:""}
     <div class="gate-foot">عندك حساب؟ <button class="linkish" type="button" id="toLogin">تسجيل الدخول</button></div>`,
   mount:g=>{
     wirePw(g);g.querySelector("#toLogin").onclick=()=>showLogin();
@@ -905,8 +923,10 @@ function showRegister(){
       e.preventDefault();const err=$("#rErr"),btn=$("#rGo");
       const r=validateAccount($("#rName").value,$("#rUser").value,$("#rPw").value,null);
       if(r.error){err.textContent=r.error;return}
-      btn.disabled=true;btn.textContent="جارِ الإنشاء…";REG={name:r.name,username:r.username};
-      try{await auth.createUserWithEmailAndPassword(emailOf(r.username),r.pw)}catch(x){REG=null;err.textContent=authMsg(x);btn.disabled=false;btn.textContent="إنشاء الحساب"}
+      const shop=MULTI?{shop:$("#rShop").value.trim(),phone:normDigits($("#rPhone").value).trim()}:null;
+      if(shop&&!shop.shop){err.textContent="اكتب اسم المحل.";return}
+      const label=btn.textContent;btn.disabled=true;btn.textContent="جارِ الإنشاء…";REG={name:r.name,username:r.username,shop};
+      try{await auth.createUserWithEmailAndPassword(emailOf(r.username),r.pw)}catch(x){REG=null;err.textContent=authMsg(x);btn.disabled=false;btn.textContent=label}
     });
   }});
 }
@@ -954,18 +974,20 @@ try{flash=JSON.parse(sessionStorage.getItem(FLASH_KEY)||"null");sessionStorage.r
 /* ---------- live data ---------- */
 function stopData(){
   unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;
-  S.customers=new Map();S.txns=new Map();S.accounts=new Map();S.activity=[];S.settings={};S.ready={c:false,t:false,a:false,s:false};S.selected=null;
+  S.customers=new Map();S.txns=new Map();S.accounts=new Map();S.shops=new Map();S.activity=[];S.settings={};S.ready={c:false,t:false,a:false,s:false};S.selected=null;
 }
 function startData(){
   if(dataOn)return;dataOn=true;
   const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied")toast("ما عندك صلاحية لقراءة البيانات. راجع المدير.");else if(e&&e.code==="resource-exhausted")toast(readErrMsg(e))};
-  unsubs.push(db.collection("customers").onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.c=true;render()},fail));
-  unsubs.push(db.collection("txns").onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.t=true;render()},fail));
-  unsubs.push(db.collection("activity").orderBy("at","desc").limit(100).onSnapshot(s=>{S.activity=s.docs.map(d=>d.data());render()},fail));
-  unsubs.push(db.doc("settings/main").onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};if(S.me&&S.me.role==="owner")S.me.name=S.settings.ownerName||"المدير";S.ready.s=true;render()},fail));
+  unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.c=true;render()},fail));
+  unsubs.push(db.collection(P("txns")).onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.t=true;render()},fail));
+  unsubs.push(db.collection(P("activity")).orderBy("at","desc").limit(100).onSnapshot(s=>{S.activity=s.docs.map(d=>d.data());render()},fail));
+  unsubs.push(db.doc(P("settings/main")).onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};
+    if(SHOP&&S.isOwner&&S.shop&&!s.exists&&!s.metadata.fromCache)saveSettings({shopName:S.shop.name,ownerName:S.shop.ownerName,phone:S.shop.phone||""});try{if(shopName())localStorage.setItem(GATE_NAME_KEY,shopName());localStorage.setItem(GATE_TENANT_KEY,SHOP?"1":"0")}catch(e){}if(S.me&&S.me.role==="owner")S.me.name=S.settings.ownerName||"المدير";S.ready.s=true;render()},fail));
   if(S.isOwner){
-    unsubs.push(db.collection("users").onSnapshot(s=>{S.accounts=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));S.ready.a=true;render()},fail));
-    setTimeout(async()=>{try{const old=await db.collection("activity").where("at","<",Date.now()-120*864e5).limit(100).get();for(const d of old.docs)d.ref.delete().catch(()=>{})}catch(e){}},8000);
+    unsubs.push(db.collection(P("users")).onSnapshot(s=>{S.accounts=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));S.ready.a=true;render()},fail));
+    if(S.superOwner)unsubs.push(db.collection("shops").onSnapshot(s=>{S.shops=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));render()},fail));
+    setTimeout(async()=>{try{const old=await db.collection(P("activity")).where("at","<",Date.now()-120*864e5).limit(100).get();for(const d of old.docs)d.ref.delete().catch(()=>{})}catch(e){}},8000);
   }
 }
 
@@ -979,8 +1001,9 @@ function go(v){if(v==="customers"&&S.view!=="customers")S.kind="customer";S.view
 function render(){
   if(!S.me||$("#app").hidden)return;
   $("#today").textContent=dayName(todayISO());
-  $("#shopTitle").textContent="دفتر ديون "+shopName();
-  const pending=[...S.accounts.values()].filter(a=>a.status==="pending").length;
+  $("#shopTitle").textContent="دفتر ديون "+shopName();document.title="دفتر ديون "+shopName();
+  const mk=brandMark();if(mk!==render.mark){render.mark=mk;$("header.top .logo").innerHTML=mk}
+  const pending=[...S.accounts.values()].filter(a=>a.status==="pending").length+shopsPending();
   $("#tabs").innerHTML=NAV.map(([k,l,ic])=>`<button type="button" data-go="${k}" aria-current="${S.view===k?"page":"false"}">${ic}${l}${k==="settings"&&isAdmin()&&pending?` <span class="chip debt" style="padding:0 7px">${pending}</span>`:""}</button>`).join("");
   $("#bottomNav").innerHTML=NAV.slice(0,2).map(navBtn).join("")+(canWrite()?`<button type="button" class="plus" data-act="quick" aria-label="إضافة دين">${I.plus}</button>`:"")+NAV.slice(2).map(navBtn).join("");
   $("#meBox").innerHTML=`<span class="avatar" aria-hidden="true">${initial(S.me.name)}</span><span class="nm">${esc(S.me.name)}</span><span class="role">${ROLE_LABEL[S.me.role]}</span>`;
@@ -1027,7 +1050,7 @@ function homeView(){
       <div><div class="k">${I.check}المحصّل هذا الشهر</div><div class="v paid num">${shown("paid",fmt(mPay))}</div></div>
       <div><div class="k">${I.trend}المضاف هذا الشهر</div><div class="v debt num">${shown("added",fmt(mAdd))}</div></div>
     </div>
-    <div class="sum-actions" role="group" aria-label="إجراءات سريعة">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button><button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`:""}<button class="btn" type="button" data-act="monthrep">${I.trend}التقرير الشهري</button><button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين${shown("owing",` (${owing})`)}</button></div>
+    <div class="sum-actions" role="group" aria-label="إجراءات سريعة">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="newcust">زبون جديد</button>${SHOP?"":`<button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`}`:""}<button class="btn" type="button" data-act="monthrep">${I.trend}التقرير الشهري</button><button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين${shown("owing",` (${owing})`)}</button></div>
   </section>
   <section class="pane card-pad home-search" aria-label="بحث عن زبون">
     <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -1491,7 +1514,7 @@ const BIZ_STYLES={shahm:{l:"الشهم",bg:"#0e5a3a",bg2:"#0c5034",acc:"#f39a1e"
   light:{l:"فاتح",bg:"#ffffff",bg2:"#f4f2ec",acc:"#0e5a3a",tx:"#1c2421",mu:"#5e6660",ic:"#5e6660",ln:"#e3ded3",ft:"#e3ded3"}};
 function bizData(){
   const st=S.settings,c=st.card||{},d=S.bizDraft||{};
-  const v={name:st.shopName||"ماركت الشهم",desc:c.desc||"",manager:c.manager!=null?c.manager:(st.ownerName&&st.ownerName!=="المدير"?st.ownerName:""),phone:st.phone||"",address:st.address||"",social:c.social||"",style:BIZ_STYLES[c.style]?c.style:"shahm"};
+  const v={name:shopName(),desc:c.desc||"",manager:c.manager!=null?c.manager:(st.ownerName&&st.ownerName!=="المدير"?st.ownerName:""),phone:st.phone||"",address:st.address||"",social:c.social||"",style:BIZ_STYLES[c.style]?c.style:"shahm"};
   return {...v,...d};
 }
 const bizVcard=b=>["BEGIN:VCARD","VERSION:3.0",`FN:${b.manager||b.name}`,`ORG:${b.name}`,b.phone?`TEL;TYPE=CELL:${b.phone.replace(/[^\d+]/g,"")}`:"",b.address?`ADR:;;${b.address};;;;`:"",b.desc?`NOTE:${b.desc}`:"",/^https?:\/\//i.test(b.social)?`URL:${b.social}`:"","END:VCARD"].filter(Boolean).join("\n");
@@ -1507,7 +1530,7 @@ async function drawBizCard(cv,b){
   try{await Promise.all(["400 60px Lalezar","500 30px 'IBM Plex Sans Arabic'","600 32px 'IBM Plex Sans Arabic'"].map(f=>document.fonts.load(f)))}catch(e){}
   const W=1200,H=700,P=BIZ_STYLES[b.style]||BIZ_STYLES.shahm,F="'IBM Plex Sans Arabic',Tahoma,sans-serif",FD="'Lalezar','Tajawal',sans-serif";
   const P0=BIZ_STYLES[b.style]||BIZ_STYLES.shahm;
-  const mark=await new Promise(res=>{const svg=BRAND_MARK.replace(/currentColor/g,P0.tx).replace("<svg ",'<svg xmlns="http://www.w3.org/2000/svg" width="212" height="212" ');
+  const mark=await new Promise(res=>{const svg=brandMark().replace(/currentColor/g,P0.tx).replace("<svg ",'<svg xmlns="http://www.w3.org/2000/svg" width="212" height="212" ');
     const im=new Image();im.onload=()=>res(im);im.onerror=()=>res(null);im.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg)});
   if(cv._tk!==tk)return cv; // a newer draw started while fonts or the QR library were loading
   cv.width=W;cv.height=H;const x=cv.getContext("2d");x.clearRect(0,0,W,H);
@@ -1573,15 +1596,15 @@ async function bizExport(share){
 }
 
 /* ---------- settings ---------- */
-const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
+const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 function settingsView(){
-  const pages=SET_PAGES.filter(p=>!p[3]||isAdmin());
+  const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner));
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
   const cur=S.setPage||(window.innerWidth>820?pages[0][0]:null);
   const pending=[...S.accounts.values()].filter(a=>a.status==="pending").length;
   return `<div class="settings ${S.setPage?"open":""}">
     <nav class="pane set-menu-pane"><div class="set-menu">
-      ${pages.map(([k,l,ic])=>`<button type="button" data-set="${k}" aria-current="${cur===k}">${ic}${l}${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}</button>`).join("")}
+      ${pages.map(([k,l,ic])=>`<button type="button" data-set="${k}" aria-current="${cur===k}">${ic}${l}${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}${k==="shops"&&shopsPending()?`<span class="badge">${shopsPending()}</span>`:""}</button>`).join("")}
       <button type="button" data-act="logout" style="color:var(--debt)">${I.out}تسجيل الخروج</button>
     </div></nav>
     <section class="pane set-body-pane"><div class="set-body">${cur?`<button class="btn ghost set-back" type="button" data-set="">${I.back}رجوع</button>`+setPage(cur):""}</div></section>
@@ -1591,7 +1614,7 @@ function setPage(k){
   const st=S.settings;
   if(k==="shop")return `<h2>معلومات المتجر</h2><p class="lead">يظهر الاسم في الرسائل وكشوف الحساب.</p>
     <form id="shopForm" class="form-grid" novalidate>
-      <div class="field"><label for="sName">الاسم التجاري</label><input id="sName" maxlength="60" value="${esc(st.shopName||"ماركت الشهم")}"></div>
+      <div class="field"><label for="sName">الاسم التجاري</label><input id="sName" maxlength="60" value="${esc(shopName())}"></div>
       <div class="field"><label for="sOwner">اسمك (يظهر في سجل النشاط)</label><input id="sOwner" maxlength="40" value="${esc(st.ownerName||"المدير")}"></div>
       <div class="field"><label for="sPhone">رقم هاتف المتجر</label><input id="sPhone" inputmode="tel" maxlength="20" value="${esc(st.phone||"")}" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx"></div>
       <div class="field"><label for="sAddr">العنوان</label><input id="sAddr" maxlength="100" value="${esc(st.address||"")}"></div>
@@ -1600,22 +1623,23 @@ function setPage(k){
   if(k==="users"){
     const accs=[...S.accounts.values()].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
     const pend=accs.filter(a=>a.status==="pending"),rest=accs.filter(a=>a.status!=="pending");
-    return `<h2>المستخدمين</h2><p class="lead">أي شخص ينشئ حساباً يظهر هنا بانتظار التفعيل. فعّله واختر صلاحيته.</p>
+    return `<h2>المستخدمين</h2>${MULTI?`<p class="lead">لكل عامل: اضغط «إنشاء حساب» واختر صلاحيته، وأعطه اسم المستخدم وكلمة المرور. يدخل بيهم من نفس التطبيق ويشتغل على دفتر محلك.</p>`:`<p class="lead">أي شخص ينشئ حساباً يظهر هنا بانتظار التفعيل. فعّله واختر صلاحيته.</p>
     <div class="banner info"><b>طريقة إضافة أخيك:</b>
       <ol class="steps"><li>أرسل له رابط البرنامج أو ملف APK من صفحة «تثبيت البرنامج».</li><li>يفتحه ويضغط «إنشاء حساب».</li><li>يظهر طلبه هنا، فعّله كـ«محرر» حتى يقدر يضيف ويعدّل الديون.</li></ol>
-      أو أنشئ له الحساب بنفسك من زر «إنشاء حساب» وأعطه اسم المستخدم وكلمة المرور.</div>
-    <h3 style="margin:4px 0 0;font-size:15px">بانتظار التفعيل (${pend.length})</h3>
+      أو أنشئ له الحساب بنفسك من زر «إنشاء حساب» وأعطه اسم المستخدم وكلمة المرور.</div>`}
+    ${MULTI&&!pend.length?"":`<h3 style="margin:4px 0 0;font-size:15px">بانتظار التفعيل (${pend.length})</h3>
     ${pend.length?pend.map(a=>`<div class="user-row"><span class="avatar">${initial(a.name)}</span><div class="meta"><b>${esc(a.name)}</b><span class="num">@${esc(a.username)}</span> <span>· ${esc(timeAgo(a.createdAt))}</span></div>
       <div class="ops"><button class="btn paid sm" type="button" data-uact="approve-editor" data-id="${esc(a.id)}">تفعيل كمحرر</button><button class="btn sm" type="button" data-uact="approve-viewer" data-id="${esc(a.id)}">تفعيل كمشاهد</button><button class="btn ghost sm danger-text" type="button" data-uact="delete" data-id="${esc(a.id)}">رفض</button></div></div>`).join("")
-      :`<p class="ro-note" style="margin:0">لا توجد طلبات جديدة.</p>`}
+      :`<p class="ro-note" style="margin:0">لا توجد طلبات جديدة.</p>`}`}
     <div class="section-title" style="margin-top:6px"><h3 style="margin:0;font-size:15px">الحسابات (${rest.length})</h3><button class="btn sm" type="button" data-uact="create">${I.plus}إنشاء حساب</button></div>
-    <div class="user-row"><span class="avatar">${initial(st.ownerName||"المدير")}</span><div class="meta"><b>${esc(st.ownerName||"المدير")}</b><span class="num">@${OWNER_USER}</span></div><span class="role">المدير</span></div>
+    <div class="user-row"><span class="avatar">${initial(st.ownerName||"المدير")}</span><div class="meta"><b>${esc(st.ownerName||"المدير")}</b><span class="num">@${esc(S.me.username)}</span></div><span class="role">المدير</span></div>
     ${rest.map(a=>`<div class="user-row"><span class="avatar">${initial(a.name)}</span><div class="meta"><b>${esc(a.name)}</b><span class="num">@${esc(a.username)}</span></div>
       <div class="ops">${a.status==="disabled"?`<span class="chip warn">موقوف</span>`:""}
         <select data-urole="${esc(a.id)}" aria-label="الصلاحية"><option value="editor" ${a.role!=="viewer"?"selected":""}>محرر: يضيف ويعدّل</option><option value="viewer" ${a.role==="viewer"?"selected":""}>مشاهد: يشوف فقط</option></select>
         <button class="btn sm" type="button" data-uact="${a.status==="disabled"?"enable":"disable"}" data-id="${esc(a.id)}">${a.status==="disabled"?"تفعيل":"إيقاف"}</button>
         <button class="icon-btn del" type="button" aria-label="حذف الحساب" data-uact="delete" data-id="${esc(a.id)}">${I.trash}</button></div></div>`).join("")}`;
   }
+  if(k==="shops")return shopsPage();
   if(k==="templates"){
     const t=st.templates||{};
     const ph=["الاسم","المبلغ","الرصيد","التاريخ","البيان","نهاية الشهر","المتجر"];
@@ -1944,10 +1968,10 @@ const PHOTO_MAX=3;
 function photoFail(e){console.warn(e);toast(e&&e.code==="permission-denied"?"الصورة ما انحفظت: لازم تحديث قواعد Firebase.":"تعذّر حفظ الصورة. تحقق من الإنترنت.")}
 const photoCache=new Map();
 async function loadPhoto(id){if(photoCache.has(id))return photoCache.get(id);
-  const d=await db.collection("photos").doc(id).get();const url=d.exists?safeImg(d.data().data):"";if(url)photoCache.set(id,url);return url}
+  const d=await db.collection(P("photos")).doc(id).get();const url=d.exists?safeImg(d.data().data):"";if(url)photoCache.set(id,url);return url}
 function savePhotos(list,t){for(const ph of list){photoCache.set(ph.id,ph.url);
-  try{db.collection("photos").doc(ph.id).set({id:ph.id,data:ph.url,txnId:t.id,customerId:t.customerId,at:Date.now(),by:S.me.name}).catch(photoFail)}catch(e){photoFail(e)}}}
-function dropPhotos(ids){for(const id of ids||[]){photoCache.delete(id);try{db.collection("photos").doc(id).delete().catch(()=>{})}catch(e){}}}
+  try{db.collection(P("photos")).doc(ph.id).set({id:ph.id,data:ph.url,txnId:t.id,customerId:t.customerId,at:Date.now(),by:S.me.name}).catch(photoFail)}catch(e){photoFail(e)}}}
+function dropPhotos(ids){for(const id of ids||[]){photoCache.delete(id);try{db.collection(P("photos")).doc(id).delete().catch(()=>{})}catch(e){}}}
 function viewPhotos(t){
   const c=S.customers.get(t.customerId);
   openModal(`<h3>صور ${t.inv?"القائمة #"+esc(t.inv):"القائمة"}${c?" · "+esc(c.name):""}</h3><div class="pics-view" id="pv"><div class="spinner"></div></div>
@@ -1980,7 +2004,7 @@ async function addListPhotos(cid,files){
   for(const f of files){
     let ph;try{ph=await shrinkImage(f)}catch(e){toast("هذا الملف مو صورة.");continue}
     const id=uid(),at=Date.now();photoCache.set(id,ph.url);
-    try{db.collection("photos").doc(id).set({id,data:ph.url,customerId:cid,kind:"list",date:day,at,by:S.me.name}).catch(photoFail)}catch(e){photoFail(e);continue}
+    try{db.collection(P("photos")).doc(id).set({id,data:ph.url,customerId:cid,kind:"list",date:day,at,by:S.me.name}).catch(photoFail)}catch(e){photoFail(e);continue}
     added.push({id,date:day,at,by:S.me.name});
   }
   const c=S.customers.get(cid);if(!added.length||!c)return;
@@ -2175,7 +2199,10 @@ function accountForm(){
       try{
         const sec=firebase.apps.find(x=>x.name==="sec")||firebase.initializeApp(window.FIREBASE_CONFIG,"sec");
         const sa=sec.auth();try{await sa.setPersistence(firebase.auth.Auth.Persistence.NONE)}catch(x){}
-        const cred=await sa.createUserWithEmailAndPassword(emailOf(r.username),r.pw);await sa.signOut();
+        if(window.FIREBASE_EMULATOR&&!sec._emu){sec._emu=1;sa.useEmulator("http://127.0.0.1:9099",{disableWarnings:true});sec.firestore().useEmulator("127.0.0.1",8080)}
+        const cred=await sa.createUserWithEmailAndPassword(emailOf(r.username),r.pw);
+        if(SHOP)try{await sec.firestore().doc("memberOf/"+cred.user.uid).set({shop:SHOP,at:Date.now()})}catch(x){await sa.signOut();throw x}
+        await sa.signOut();
         const a={id:cred.user.uid,name:r.name,username:r.username,role:$("#aRole").value,status:"active",createdAt:Date.now()};
         closeModal();await put("accounts",a);log("add","account",{detail:`أنشأ حساب ${a.name} (${ROLE_LABEL[a.role]})`});toast("تم إنشاء الحساب");
       }catch(x){err.textContent=authMsg(x);btn.disabled=false}
@@ -2186,7 +2213,7 @@ function accountForm(){
    (the meta/rules-v2 probe is readable only under those rules); otherwise the freed admin@ login would count as owner. */
 let rulesV2=null;
 function checkRulesV2(){
-  if(rulesV2!==null||!S.isOwner)return;
+  if(rulesV2!==null||!S.isOwner||SHOP)return;
   db.doc("meta/rules-v2").get().then(()=>{rulesV2=true},e=>{rulesV2=e&&e.code==="permission-denied"?false:null}).then(()=>{if(S.view==="settings"&&S.setPage==="account")render()});
 }
 function emailCard(){
@@ -2195,7 +2222,7 @@ function emailCard(){
   const head=`<div class="tpl"><h3>${I.users}الإيميل (لاسترجاع كلمة المرور)</h3>`;
   const status=real?`<span class="ro-note">مربوط: <b class="num">${esc(u.email)}</b>. إذا نسيت كلمة المرور، اضغط «نسيت كلمة المرور؟» بصفحة الدخول ويوصلك رابط عليه.</span>`
     :`<span class="ro-note">حسابك بعده بدون إيميل حقيقي، فإذا نسيت كلمة المرور ما تكدر ترجعها. اربط إيميلك هنا.</span>`;
-  if(S.isOwner&&!real){checkRulesV2();
+  if(S.isOwner&&!SHOP&&!real){checkRulesV2();
     if(rulesV2===null)return head+status+`<span class="ro-note">جاري الفحص…</span></div>`;
     if(rulesV2===false)return head+status+`<div class="banner warn">قبل ربط إيميل المدير لازم تحديث قواعد Firebase مرة وحدة: افتح Firebase ← Firestore Database ← Rules، الصق محتوى ملف firestore.rules من المستودع، واضغط Publish. بعدها ارجع لهالصفحة.</div></div>`;}
   return head+status+`<form id="mailForm" class="field" style="gap:10px" novalidate>
@@ -2211,7 +2238,7 @@ async function linkEmail(){
   if(!pw){err.textContent="اكتب كلمة المرور الحالية.";return}
   try{
     const u=auth.currentUser;await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,pw));
-    if(S.isOwner){ // make sure the owner is recorded by uid before the admin@ login goes away
+    if(S.isOwner&&!SHOP){ // make sure the owner is recorded by uid before the admin@ login goes away
       const o=await db.doc("settings/owner").get({source:"server"});
       if(!o.exists||o.data().uid!==u.uid)await db.doc("settings/owner").set({uid:u.uid,at:Date.now()});
     }
@@ -2233,7 +2260,7 @@ async function changePassword(){
 
 /* ---------- backup ---------- */
 async function backupJson(day=todayISO()){
-  let activity=S.activity;try{const all=await db.collection("activity").get();activity=all.docs.map(d=>d.data())}catch(e){}
+  let activity=S.activity;try{const all=await db.collection(P("activity")).get();activity=all.docs.map(d=>d.data())}catch(e){}
   const data=JSON.stringify({app:"shahm-debts",version:3,exportedAt:new Date().toISOString(),settings:S.settings,customers:[...S.customers.values()],txns:[...S.txns.values()],accounts:[],activity},null,1);
   return {name:"نسخة-ديون-"+shopName().replace(/\s+/g,"-")+"-"+day+".json",data};
 }
@@ -2317,7 +2344,7 @@ function restorePreview(text){
   const sups=cs.filter(isSup).length;
   // The cashier's items, sales and stocktakes (in the daily Telegram backup): put back as they are; a full replace leaves other
   // cashier records alone. Shifts stay out: the rules let nobody write a closed shift back.
-  const pos=[["products","مادة"],["sales","فاتورة كاشير"],["stocktakes","جرد"]]
+  const pos=SHOP?[]:[["products","مادة"],["sales","فاتورة كاشير"],["stocktakes","جرد"]]
     .map(([k,label])=>[k,label,(Array.isArray(d[k])?d[k]:[]).filter(x=>x&&typeof x==="object"&&x.id)]).filter(x=>x[2].length);
   openModal(`<h3>استعادة النسخة</h3>
     <p class="hint">${d.exportedAt?"تاريخ النسخة: "+esc(timeAgo(Date.parse(d.exportedAt))):""}</p>
@@ -2348,7 +2375,7 @@ function restorePreview(text){
       try{
         for(let i=0;i<ops.length;i+=400){
           const b=db.batch();
-          for(const o of ops.slice(i,i+400)){const ref=db.collection(o[1]).doc(o[2]);if(o[0]==="del")b.delete(ref);else b.set(ref,o[3])}
+          for(const o of ops.slice(i,i+400)){const ref=db.collection(P(o[1])).doc(o[2]);if(o[0]==="del")b.delete(ref);else b.set(ref,o[3])}
           await b.commit();btn.textContent=`جارِ الاستعادة… ${Math.min(100,Math.round((i+400)/ops.length*100))}%`;
         }
       }catch(e){console.warn(e);btn.disabled=false;btn.textContent="استعادة";m.querySelector("#rErr2").textContent="انقطعت الاستعادة. تحقق من الإنترنت واضغط استعادة مرة ثانية، ما يتكرر شي.";return}
@@ -2383,6 +2410,7 @@ document.addEventListener("click",e=>{
   const ph=t.closest("[data-ph]");if(ph){const ta=document.getElementById(ph.dataset.for);const s=ta.selectionStart??ta.value.length;ta.value=ta.value.slice(0,s)+"{"+ph.dataset.ph+"}"+ta.value.slice(ta.selectionEnd??s);ta.focus();return}
   const tr=t.closest("[data-tplreset]");if(tr){document.getElementById("tpl-"+tr.dataset.tplreset).value=DEFAULT_TPL[tr.dataset.tplreset];return}
   const ua=t.closest("[data-uact]");if(ua&&isAdmin()){userAction(ua.dataset.uact,ua.dataset.id);return}
+  const sa=t.closest("[data-shopact]");if(sa){shopAction(sa.dataset.shopact,sa.dataset.id);return}
   const b=t.closest("[data-act]");if(!b)return;
   const c=S.customers.get(S.selected);
   switch(b.dataset.act){
@@ -2489,14 +2517,39 @@ document.addEventListener("submit",e=>{
   if(e.target.id==="pwForm"){e.preventDefault();changePassword();return}
   if(e.target.id==="mailForm"){e.preventDefault();linkEmail();return}
   if(e.target.id==="bizForm"){e.preventDefault();if(!isAdmin())return;const b=bizData();S.bizDraft=null;
-    saveSettings({shopName:b.name.trim()||"ماركت الشهم",phone:b.phone.trim(),address:b.address.trim(),card:{desc:b.desc.trim(),manager:b.manager.trim(),social:b.social.trim(),style:b.style}}).then(ok=>{if(ok)toast("انحفظت البطاقة")});return}
+    saveSettings({shopName:b.name.trim()||shopName(),phone:b.phone.trim(),address:b.address.trim(),card:{desc:b.desc.trim(),manager:b.manager.trim(),social:b.social.trim(),style:b.style}}).then(ok=>{if(ok)toast("انحفظت البطاقة")});return}
   if(e.target.id==="lockCodeForm"){e.preventDefault();if(!isAdmin())return;const v=normDigits($("#lcCode").value).trim();
     if(v.length<4){toast("الرمز لازم 4 أرقام أو حروف أو أكثر.");return}
     const salt=uid();lockHash(v,salt).then(hash=>saveSettings({lockCode:{salt,hash}})).then(ok=>{if(ok){log("edit","lock",{detail:"غيّر رمز فتح الحسابات"});toast("انحفظ الرمز")}},()=>toast("المتصفح ما يدعم حفظ الرمز."));return}
-  if(e.target.id==="shopForm"){e.preventDefault();saveSettings({shopName:$("#sName").value.trim()||"ماركت الشهم",ownerName:$("#sOwner").value.trim()||"المدير",phone:$("#sPhone").value.trim(),address:$("#sAddr").value.trim()}).then(ok=>{if(ok){S.me.name=S.settings.ownerName;render();toast("تم الحفظ")}})}
+  if(e.target.id==="shopForm"){e.preventDefault();saveSettings({shopName:$("#sName").value.trim()||shopName(),ownerName:$("#sOwner").value.trim()||"المدير",phone:$("#sPhone").value.trim(),address:$("#sAddr").value.trim()}).then(ok=>{if(ok){S.me.name=S.settings.ownerName;render();toast("تم الحفظ")}})}
 });
 document.addEventListener("click",e=>{if(e.target.id==="exportBtn"&&isAdmin())exportData()});
 document.addEventListener("change",e=>{const i=e.target.closest&&e.target.closest("[data-listadd]");if(i){const f=[...i.files];i.value="";addListPhotos(i.dataset.listadd,f)}});
+/* ---------- shops (root owner) ---------- */
+const shopsPending=()=>S.superOwner?[...S.shops.values()].filter(x=>x.status==="pending").length:0;
+const SHOP_ST={pending:["بانتظار التفعيل","warn"],active:["شغّال","paid"],disabled:["موقوف","debt"]};
+function shopsPage(){
+  const all=[...S.shops.values()].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const row=x=>{const [lbl,cls]=SHOP_ST[x.status]||SHOP_ST.pending;
+    return `<div class="user-row"><span class="avatar">${esc(markLetter(x.name))}</span><div class="meta"><b>${esc(x.name)}</b>
+      <span>${esc(x.ownerName||"")} · <span class="num">@${esc(x.username||"")}</span>${x.phone?` · <span class="num">${esc(x.phone)}</span>`:""}</span>
+      <span class="ro-note">سجّل ${esc(timeAgo(x.createdAt||0))}${x.activatedAt?` · انفعّل ${esc(shortDate(new Date(x.activatedAt).toISOString().slice(0,10)))}`:""}</span></div>
+      <div class="ops"><span class="chip ${cls}">${lbl}</span>
+        ${x.status==="active"?`<button class="btn sm" type="button" data-shopact="disable" data-id="${esc(x.id)}">إيقاف</button>`
+          :`<button class="btn paid sm" type="button" data-shopact="activate" data-id="${esc(x.id)}">تفعيل</button>`}
+        ${x.status==="pending"?`<button class="btn ghost sm danger-text" type="button" data-shopact="reject" data-id="${esc(x.id)}">رفض</button>`:""}</div></div>`};
+  const by=st=>all.filter(x=>(x.status||"pending")===st);
+  const sec=(t,l)=>l.length?`<h3 style="margin:8px 0 0;font-size:15px">${t} (${l.length})</h3>${l.map(row).join("")}`:"";
+  return `<h2>المحلات</h2><p class="lead">المشتري ينزّل نفس التطبيق (أو يفتح الموقع)، يضغط «سجّل محلك»، ويظهر هنا. فعّله بعد ما يدفع، ويصير إله دفتر منفصل: ما يشوف بياناتك ولا تشوف بياناته من هنا. الموقوف ما يكدر يفتح دفتره، وبياناته تبقى لحد ما ترجع تفعّله.</p>
+    ${all.length?sec("بانتظار التفعيل",by("pending"))+sec("المحلات الشغّالة",by("active"))+sec("الموقوفة",by("disabled")):`<p class="ro-note">بعد ما سجّل أي محل.</p>`}`;
+}
+function shopAction(act,id){
+  const x=S.shops.get(id);if(!x||!S.superOwner)return;
+  const set=patch=>db.doc("shops/"+id).update(patch).catch(writeFail);
+  if(act==="activate"){set({status:"active",activatedAt:x.activatedAt||Date.now()});toast("انفعّل محل "+x.name)}
+  else if(act==="disable")confirmBox("إيقاف المحل",`محل ${x.name} وعماله ما يكدرون يفتحون الدفتر لحد ما ترجع تفعّله. بياناتهم ما تنحذف.`,"إيقاف",()=>{set({status:"disabled"});toast("انوقف المحل")});
+  else if(act==="reject")confirmBox("رفض المحل",`ينحذف طلب ${x.name}. إذا صاحبه دخل بعدين يكدر يسجّل محله من جديد.`,"رفض",()=>{db.doc("shops/"+id).delete().catch(writeFail);toast("انرفض الطلب")});
+}
 function userAction(act,id){
   const a=S.accounts.get(id);
   if(act==="create"){accountForm();return}
@@ -2564,30 +2617,86 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch(e){}
   let profUnsub=null;
   let authSeq=0;
-  auth.onAuthStateChanged(async u=>{
+  const spin=sub=>gateCard({sub,body:`<div class="spinner" aria-hidden="true"></div>`});
+  // Which shop this account belongs to (memberOf), or null for this shop's own accounts. Offline: what this device saw last.
+  async function shopOf(u){
+    let cached=null;try{const c=JSON.parse(localStorage.getItem(SHOP_KEY)||"null");if(c&&c.uid===u.uid)cached=c.shop}catch(e){}
+    try{
+      const s=await db.doc("memberOf/"+u.uid).get();
+      if(s.exists){const sh=s.data().shop;try{localStorage.setItem(SHOP_KEY,JSON.stringify({uid:u.uid,shop:sh}))}catch(e){}return sh}
+      if(!s.metadata.fromCache){try{localStorage.removeItem(SHOP_KEY)}catch(e){}return null}
+    }catch(e){if(e&&e.code==="permission-denied")return null}
+    return cached;
+  }
+  // Opens a shop's notebook once its owner (the root owner) has activated it; its owner is the account whose uid is the shop id.
+  function enterShop(u,uname){
+    const own=SHOP===u.uid;let profOff=null;
+    const close=()=>{stopData();S.me=null};
+    const shopOff=db.doc("shops/"+SHOP).onSnapshot({includeMetadataChanges:true},s=>{
+      if(!s.exists){if(s.metadata.fromCache)return;close();showWaiting(own?"طلب محلك انرفض أو انحذف. تواصل ويا صاحب البرنامج.":"هذا المحل انحذف. راجع صاحب المحل.","bad");return}
+      S.shop={...s.data(),id:s.id};
+      if(S.shop.status==="pending"){close();showWaiting(own?`تم تسجيل «${S.shop.name}» ✅ بانتظار التفعيل من صاحب البرنامج. أول ما يتفعّل يفتح دفترك تلقائياً.`:"المحل بعده ما متفعّل. راجع صاحب المحل.","warn");return}
+      if(S.shop.status!=="active"){close();showWaiting(own?"اشتراك محلك موقوف. تواصل ويا صاحب البرنامج حتى يرجع يشتغل، وبياناتك محفوظة.":"المحل موقوف. راجع صاحب المحل.","bad");return}
+      if(own){
+        const first=!S.me;S.isOwner=true;
+        S.me={id:u.uid,name:S.settings.ownerName||S.shop.ownerName||"المدير",role:"owner",username:S.shop.username||uname};
+        rememberLogin(S.me.username,u.email);
+        startData();if(first||$("#app").hidden)showApp();else render();
+        return;
+      }
+      if(!profOff)profOff=watchProfile(u,uname);
+    },e=>{console.warn(e);
+      if(S.me&&!$("#app").hidden){toast(readErrMsg(e));return}
+      if(e&&e.code==="permission-denied"&&!own){showWaiting("حسابك مو مضاف لهذا المحل. راجع صاحب المحل.","bad");return}
+      showWaiting(readErrMsg(e),"bad",true)});
+    profUnsub=()=>{shopOff();if(profOff)profOff()};
+  }
+  // A signed-in account with no shop and no place in this shop: register its shop (the sign-up form, or this form after it).
+  function showShopSetup(u,pre,errMsg){
+    pre=pre||{};
+    gateCard({sub:"خطوة أخيرة: معلومات محلك",body:`
+      ${errMsg?`<div class="banner bad">${esc(errMsg)}</div>`:""}
+      <form id="nsf" class="field" style="gap:12px" novalidate>
+        <div class="field"><label for="nsShop">اسم المحل</label><input id="nsShop" maxlength="60" value="${esc(pre.shop||"")}" placeholder="مثال: ماركت النور"></div>
+        <div class="field"><label for="nsName">اسمك</label><input id="nsName" maxlength="40" value="${esc(pre.name||"")}"></div>
+        <div class="field"><label for="nsPhone">رقم الهاتف</label><input id="nsPhone" inputmode="tel" maxlength="20" value="${esc(pre.phone||"")}" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx"></div>
+        <p class="err" id="nsErr"></p>
+        <button class="btn primary block" type="submit">تسجيل المحل</button>
+      </form>
+      <p class="ro-note">عامل بمحل؟ لا تسجّل محل: صاحب المحل يسويلك حساب من الإعدادات ← المستخدمين.</p>
+      <button class="btn block" type="button" id="nsOut">تسجيل الخروج</button>`,
+    mount:g=>{
+      g.querySelector("#nsOut").onclick=()=>signOut();
+      g.querySelector("#nsf").addEventListener("submit",e=>{e.preventDefault();
+        const info={shop:$("#nsShop").value.trim(),name:$("#nsName").value.trim(),phone:normDigits($("#nsPhone").value).trim(),username:pre.username||""};
+        if(!info.shop||!info.name){$("#nsErr").textContent="اكتب اسم المحل واسمك.";return}
+        registerShop(u,info);
+      });
+    }});
+  }
+  async function registerShop(u,info){
+    spin("جارِ تسجيل المحل…");
+    const at=Date.now();
+    try{
+      const b=db.batch();
+      b.set(db.doc("shops/"+u.uid),{id:u.uid,owner:u.uid,name:info.shop.slice(0,60),ownerName:info.name.slice(0,40),phone:(info.phone||"").slice(0,20),username:info.username||"",status:"pending",createdAt:at});
+      b.set(db.doc("memberOf/"+u.uid),{shop:u.uid,at});
+      await b.commit();
+    }catch(e){console.warn(e);if(auth.currentUser===u)showShopSetup(u,info,e&&e.code==="permission-denied"?"تسجيل المحلات بعده ما مفتوح. تواصل ويا صاحب البرنامج.":"تعذّر التسجيل. تحقق من الإنترنت وحاول مرة ثانية.");return}
+    if(auth.currentUser!==u)return;
+    try{localStorage.setItem(SHOP_KEY,JSON.stringify({uid:u.uid,shop:u.uid}))}catch(e){}
     if(profUnsub){profUnsub();profUnsub=null}
-    const seq=++authSeq;
-    if(!u){stopData();S.me=null;S.isOwner=false;const f=flash;flash=null;showLogin(f&&f.msg,f&&f.kind);return}
-    const fake=isFakeEmail(u.email),uname=fake?u.email.split("@")[0]:"";
-    if(fake&&uname===OWNER_USER||!fake)gateCard({sub:"جارِ التحقق من الحساب…",body:`<div class="spinner" aria-hidden="true"></div>`});
-    const oc=fake&&uname!==OWNER_USER?{owner:false,known:false}:await ownerCheck(u);
-    if(seq!==authSeq)return;
-    S.isOwner=oc.owner;
-    if(S.isOwner){
-      rememberLogin(OWNER_USER,u.email);
-      // Record which account is the owner, so the made-up admin@ login stops counting once the owner moves to a real e-mail.
-      if(!oc.known)db.doc("settings/owner").set({uid:u.uid,at:Date.now()}).then(()=>{try{localStorage.setItem(OWNER_KEY,u.uid)}catch(e){}}).catch(e=>console.warn("owner record",e));
-      S.me={id:u.uid,name:S.settings.ownerName||(REG&&REG.name)||"المدير",role:"owner",username:OWNER_USER};
-      if(REG){const n=REG.name;REG=null;setTimeout(()=>{if(!S.settings.ownerName)saveSettings({ownerName:n})},2500)}
-      startData();showApp();return;
-    }
-    gateCard({sub:"جارِ التحقق من الحساب…",body:`<div class="spinner" aria-hidden="true"></div>`});
-    profUnsub=db.collection("users").doc(u.uid).onSnapshot({includeMetadataChanges:true},s=>{
+    SHOP=u.uid;enterShop(u,info.username||"");
+  }
+  // The account's profile in its shop (users/{uid} at the root, or inside the shop): pending, stopped, or its role.
+  function watchProfile(u,uname){
+    return db.collection(P("users")).doc(u.uid).onSnapshot({includeMetadataChanges:true},s=>{
       if(!s.exists){
         if(s.metadata.fromCache)return; // wait for the server before deciding the profile is missing
         const un=uname||(u.email||"").split("@")[0].toLowerCase().replace(/[^a-z0-9_.]/g,"").slice(0,30)||"user"; // a deleted account that had linked its e-mail asks again
+        if(MULTI&&!SHOP){const r=REG;REG=null;showShopSetup(u,{username:un,name:r&&r.name,shop:r&&r.shop&&r.shop.shop,phone:r&&r.shop&&r.shop.phone});return}
         const name=(REG&&REG.username===un&&REG.name)||un;REG=null;
-        db.collection("users").doc(u.uid).set({id:u.uid,name,username:un,role:"viewer",status:"pending",createdAt:Date.now()})
+        db.collection(P("users")).doc(u.uid).set({id:u.uid,name,username:un,role:"viewer",status:"pending",createdAt:Date.now()})
           .catch(()=>showWaiting("تعذّر إرسال طلبك. تحقق من الإنترنت وسجّل دخول مرة ثانية.","bad"));
         return;
       }
@@ -2602,6 +2711,34 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
       // Already open from the device's copy: keep working and say why it isn't updating, rather than locking people out.
       if(S.me&&!$("#app").hidden){toast(readErrMsg(e));return}
       showWaiting(readErrMsg(e),"bad",true)});
+  }
+  auth.onAuthStateChanged(async u=>{
+    if(profUnsub){profUnsub();profUnsub=null}
+    const seq=++authSeq;
+    SHOP=null;S.shop=null;S.superOwner=false;
+    if(!u){stopData();S.me=null;S.isOwner=false;const f=flash;flash=null;showLogin(f&&f.msg,f&&f.kind);return}
+    const fake=isFakeEmail(u.email),uname=fake?u.email.split("@")[0]:"";
+    if(MULTI){
+      spin("جارِ التحقق من الحساب…");
+      const sh=await shopOf(u);
+      if(seq!==authSeq)return;
+      if(sh){SHOP=sh;S.isOwner=false;enterShop(u,uname);return}
+      if(REG&&REG.shop&&REG.username===uname){const r=REG;REG=null;registerShop(u,{shop:r.shop.shop,name:r.name,phone:r.shop.phone,username:r.username});return}
+    }
+    if(fake&&uname===OWNER_USER||!fake)gateCard({sub:"جارِ التحقق من الحساب…",body:`<div class="spinner" aria-hidden="true"></div>`});
+    const oc=fake&&uname!==OWNER_USER?{owner:false,known:false}:await ownerCheck(u);
+    if(seq!==authSeq)return;
+    S.isOwner=oc.owner;S.superOwner=MULTI&&oc.owner;
+    if(S.isOwner){
+      rememberLogin(OWNER_USER,u.email);
+      // Record which account is the owner, so the made-up admin@ login stops counting once the owner moves to a real e-mail.
+      if(!oc.known)db.doc("settings/owner").set({uid:u.uid,at:Date.now()}).then(()=>{try{localStorage.setItem(OWNER_KEY,u.uid)}catch(e){}}).catch(e=>console.warn("owner record",e));
+      S.me={id:u.uid,name:S.settings.ownerName||(REG&&REG.name)||"المدير",role:"owner",username:OWNER_USER};
+      if(REG){const n=REG.name;REG=null;setTimeout(()=>{if(!S.settings.ownerName)saveSettings({ownerName:n})},2500)}
+      startData();showApp();return;
+    }
+    spin("جارِ التحقق من الحساب…");
+    profUnsub=watchProfile(u,uname);
   });
 // The site moved from GitHub Pages to shahm-debts.app (the old address stops once the code repository goes private).
 // Whoever still opens the old address, or an app installed before the move, is told where to go.
