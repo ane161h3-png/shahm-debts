@@ -2523,6 +2523,34 @@ if(NATIVE){
   if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 }
 
+/* ---------- updates ----------
+   A new version reaches an open app without closing it or reinstalling: when the app comes back to the screen (and every
+   30 minutes while it stays open) it reads the version name in sw.js (CACHE, raised with every change) and, when it
+   changed, reloads the page at a quiet moment: no open window, nothing typed in a field. The Android app opens
+   the live site, so it updates the same way. A page that started offline (maybe an old copy) reloads once when back online. */
+const UPD={ver:null,at:0,ready:false};
+function updBusy(){const a=document.activeElement;return !!$("#modalRoot").innerHTML||!!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.value)}
+function updTry(){
+  if(document.visibilityState==="visible"&&updBusy()){setTimeout(updTry,15000);return}
+  try{sessionStorage.setItem("shahm-updated","1")}catch(e){}
+  location.reload();
+}
+function updCheck(force){
+  if(UPD.ready||!navigator.onLine||(!force&&Date.now()-UPD.at<120000))return;
+  UPD.at=Date.now();
+  fetch("sw.js",{cache:"no-store"}).then(r=>r.ok?r.text():"").then(t=>{
+    const v=(t.match(/const CACHE = "([^"]+)"/)||[])[1];if(!v)return;
+    if(!UPD.ver)UPD.ver=v;else if(v!==UPD.ver){UPD.ready=true;updTry()}
+  },()=>{});
+}
+if(!navigator.onLine)UPD.ver="offline";
+updCheck(true);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")updCheck()});
+document.addEventListener("resume",()=>updCheck());
+window.addEventListener("online",()=>updCheck(true));
+setInterval(()=>{if(document.visibilityState==="visible")updCheck(true)},30*60000);
+try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm-updated");setTimeout(()=>toast("انحدّث البرنامج لآخر نسخة"),1500)}}catch(e){}
+
 /* ---------- boot ---------- */
 (async()=>{
   const cfg=window.FIREBASE_CONFIG;
