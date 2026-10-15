@@ -1,0 +1,122 @@
+# Copies of the debt book sold to other shops (shops/<slug>.json, see shops/README.md).
+# - Every push to main that touches the app or a shop rebuilds each shop's site from web/ (its name, icon and Firebase
+#   project) and publishes it on Cloudflare Pages at https://debts-<slug>.pages.dev, so updates reach every shop.
+# - The shop's Android app is built when its file or icon changes, or when this workflow is run by hand with "apk".
+#   It opens the live site, so ordinary updates don't need a new APK. The APK is served from the site: /dl/<slug>.apk.
+# Secrets: CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit), CLOUDFLARE_ACCOUNT_ID, ANDROID_KEYSTORE(_PASSWORD).
+name: Shop copies
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "shops/**", "scripts/build-shop.mjs", ".github/workflows/shops.yml"]
+  workflow_dispatch:
+    inputs:
+      apk:
+        description: Build every shop's Android app too
+        type: boolean
+        default: false
+permissions:
+  contents: write
+concurrency:
+  group: shops
+  cancel-in-progress: false
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    outputs:
+      shops: ${{ steps.l.outputs.shops }}
+      apk: ${{ steps.l.outputs.apk }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: l
+        run: |
+          all=$(ls shops/*.json 2>/dev/null | xargs -r -n1 basename | sed 's/\.json$//' | { grep -v '^_' || true; } | jq -R . | jq -sc .)
+          if [ "${{ github.event_name }}" = workflow_dispatch ] && [ "${{ inputs.apk }}" = true ]; then apk=$all
+          else apk=$(git diff --name-only HEAD^ HEAD -- shops 2>/dev/null | sed -nE 's#^shops/([a-z][a-z0-9]*)(\.json|/.*)$#\1#p' | sort -u | jq -R . | jq -sc "map(select(. as \$s | $all | index(\$s)))"); fi
+          echo "shops=${all:-[]}" >> "$GITHUB_OUTPUT"; echo "apk=${apk:-[]}" >> "$GITHUB_OUTPUT"
+          echo "shops: ${all:-[]}  apk: ${apk:-[]}"
+  apk:
+    needs: list
+    if: needs.list.outputs.apk != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shop: ${{ fromJson(needs.list.outputs.apk) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Build the shop's copy
+        run: |
+          node scripts/build-shop.mjs shops/${{ matrix.shop }}.json shop
+          cp shop-capacitor.json capacitor.config.json && cat capacitor.config.json
+      - name: Create Android project
+        run: |
+          npx cap add android
+          npx @capacitor/assets generate --android --assetPath shop-assets \
+            --iconBackgroundColor '#0e5a3a' --iconBackgroundColorDark '#0e5a3a' \
+            --splashBackgroundColor '#f4f2ec' --splashBackgroundColorDark '#0f1512'
+          npx cap sync android
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.READ_CONTACTS" />\n    <uses-permission android:name="android.permission.WRITE_CONTACTS" />#' $M
+          sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+      - name: Signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then echo "::error::Secret ANDROID_KEYSTORE is missing (see MAINTENANCE.md)"; exit 1; fi
+          printf %s "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/shahm.p12"
+      - name: Build APK
+        working-directory: android
+        env:
+          KEY_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/shahm.p12" -Pandroid.injected.signing.store.password="$KEY_PW" \
+            -Pandroid.injected.signing.key.alias=shahm -Pandroid.injected.signing.key.password="$KEY_PW"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk ${{ matrix.shop }}.apk
+          gh release delete shop-${{ matrix.shop }} --yes --cleanup-tag || true
+          gh release create shop-${{ matrix.shop }} ${{ matrix.shop }}.apk --target "${{ github.sha }}" --latest=false \
+            --title "${{ matrix.shop }} 1.0.${{ github.run_number }}" --notes "Android app of the ${{ matrix.shop }} shop copy."
+  web:
+    needs: [list, apk]
+    if: ${{ always() && needs.list.outputs.shops != '[]' && needs.list.result == 'success' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shop: ${{ fromJson(needs.list.outputs.shops) }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the shop's copy
+        run: |
+          node scripts/build-shop.mjs shops/${{ matrix.shop }}.json shop
+          mkdir -p shop/dl
+          gh release download shop-${{ matrix.shop }} -p '*.apk' -D shop/dl --clobber || echo "::warning::no APK yet for ${{ matrix.shop }}"
+      - name: Deploy
+        run: |
+          npx --yes wrangler@4 pages project create debts-${{ matrix.shop }} --production-branch main 2>/dev/null || true
+          npx --yes wrangler@4 pages deploy shop --project-name debts-${{ matrix.shop }} --branch main --commit-dirty=true
