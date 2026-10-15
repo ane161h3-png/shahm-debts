@@ -46,6 +46,7 @@ edit("index.html", [
   ["ماركت الشهم", name],
   ["ديون الشهم", short],
   ['l:"الشهم"', 'l:"الأخضر"'],
+  ["const MULTI=true;", "const MULTI=false;"], // a copy is one shop: no «سجّل محلك», no «المحلات»
   ['const WEB_URL="https://shahm-debts.app/";', `const WEB_URL="${url}";`],
   ['const APK_URL="https://shahm-debts.app/dl/shahm-debts.apk";', `const APK_URL="${url}dl/${slug}.apk";`],
   ['const SHEET_URL=WEB_URL+"daily-sheet.pdf";', 'const SHEET_URL=WEB_URL+"sheet.html";'],

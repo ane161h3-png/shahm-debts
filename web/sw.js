@@ -1,6 +1,6 @@
 // Offline shell for the debt book: the page always tries the network first (so updates arrive), everything else is served
 // from cache and refreshed in the background. Firebase traffic is cross-origin and never touched here.
-const CACHE = "shahm-v36";
+const CACHE = "shahm-v37";
 const SHELL = [
   "./", "index.html", "config.js", "manifest.webmanifest",
   "vendor/firebase-app-compat.js", "vendor/firebase-auth-compat.js", "vendor/firebase-firestore-compat.js",
@@ -24,6 +24,12 @@ self.addEventListener("fetch", e => {
     const isApp = /\/(index\.html)?$/.test(new URL(req.url).pathname);
     e.respondWith(fetch(req).then(r => { if (isApp && r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put("index.html", copy)); } return r; })
       .catch(() => caches.match("index.html")));
+    return;
+  }
+  // config.js says which Firebase project to use: the network first, so a change reaches the next load, not the one after.
+  if (/\/config\.js$/.test(new URL(req.url).pathname)) {
+    e.respondWith(fetch(req).then(r => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(req, copy)); } return r; })
+      .catch(() => caches.match(req)));
     return;
   }
   e.respondWith(caches.match(req).then(hit => {
