@@ -1,6 +1,6 @@
 // Copies third-party browser files from node_modules into web/vendor so the app works offline
 // (no CDN at runtime). Run after `npm install`: npm run vendor
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const out = "web/vendor";
 mkdirSync(out + "/fonts", { recursive: true });
@@ -12,6 +12,8 @@ copyFileSync("node_modules/@capacitor/core/dist/capacitor.js", `${out}/capacitor
 copyFileSync("node_modules/qrcode-generator/qrcode.js", `${out}/qrcode.js`);
 // Barcode reader for the cashier's camera scan on phones without the built-in BarcodeDetector (iPhone, laptops).
 copyFileSync("node_modules/@zxing/library/umd/index.min.js", `${out}/zxing.min.js`);
+// Charts on the reports page (loaded only when that page opens). The source map line is dropped: the map is not shipped.
+writeFileSync(`${out}/chart.umd.js`, readFileSync("node_modules/chart.js/dist/chart.umd.js", "utf8").replace(/\n\/\/# sourceMappingURL=[^\n]*\s*$/, "\n"));
 
 const RANGES = {
   arabic: "U+0600-06FF,U+0750-077F,U+0870-088E,U+0890-0891,U+0897-08E1,U+08E3-08FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE70-FE74,U+FE76-FEFC,U+102E0-102FB,U+10E60-10E7E,U+10EC2-10EC4,U+10EFC-10EFF,U+1EE00-1EEFF",

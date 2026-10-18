@@ -1,10 +1,10 @@
 // Offline shell for the debt book: the page always tries the network first (so updates arrive), everything else is served
 // from cache and refreshed in the background. Firebase traffic is cross-origin and never touched here.
-const CACHE = "shahm-v37";
+const CACHE = "shahm-v38";
 const SHELL = [
   "./", "index.html", "config.js", "manifest.webmanifest",
   "vendor/firebase-app-compat.js", "vendor/firebase-auth-compat.js", "vendor/firebase-firestore-compat.js",
-  "vendor/capacitor.js", "vendor/jspdf.umd.min.js", "vendor/qrcode.js", "vendor/fonts/fonts.css",
+  "vendor/capacitor.js", "vendor/jspdf.umd.min.js", "vendor/qrcode.js", "vendor/chart.umd.js", "vendor/fonts/fonts.css",
   "icons/icon-192.png", "icons/icon-512.png",
 ];
 

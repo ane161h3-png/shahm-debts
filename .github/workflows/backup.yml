@@ -5,16 +5,16 @@
 # DISPATCH_TOKEN (the worker's token) is read only to warn on Telegram two weeks before it expires.
 name: Daily backup
 # Each run says what it is, so the reports can tell whether today's backup ran (scripts/backup.mjs, startMissedBackup).
-run-name: ${{ inputs.mode == 'periodic' && 'Periodic report' || 'Daily backup' }}
+run-name: ${{ inputs.mode == 'periodic' && 'Periodic report' || inputs.mode == 'backup' && 'Backup before update' || 'Daily backup' }}
 on:
   schedule:
     - cron: "0 23 * * *"
   workflow_dispatch:
     inputs:
       mode:
-        description: "periodic = تقرير الـ5 ساعات، daily = النسخة اليومية وملف حركات اليوم"
+        description: "periodic = تقرير الـ5 ساعات، daily = النسخة اليومية وملف حركات اليوم، backup = ملف النسخة بس (قبل تحديث)"
         type: choice
-        options: [daily, periodic]
+        options: [daily, periodic, backup]
         default: daily
       scheduled:
         description: "Set by the Cloudflare cron: report the last full 5-hour slot"
