@@ -609,6 +609,62 @@ const canWrite=()=>S.me&&(S.me.role==="owner"||S.me.role==="editor");
 const isAdmin=()=>S.me&&S.me.role==="owner";
 const waNumber=p=>{let d=normDigits(p).replace(/\D/g,"");if(!d)return "";if(d.startsWith("00"))d=d.slice(2);if(d.startsWith("0"))d="964"+d.slice(1);else if(d.length===10&&d.startsWith("7"))d="964"+d;return d};
 const waLink=(phone,text)=>{const n=waNumber(phone);return n?"https://wa.me/"+n+"?text="+encodeURIComponent(text):""};
+// WhatsApp Business: the shop's number (settings/main.waBiz) and, per phone, whether WhatsApp Business opened on it in the test.
+// Messages still go by hand through wa.me, so they leave from whichever WhatsApp the phone opens: each phone needs the business
+// account (the main phone registered with the number, the others linked to it as companion devices) and opens it by default.
+const WA_BIZ_KEY="shahm-wa-biz",IS_IOS=/iPhone|iPad|iPod/i.test(navigator.userAgent);
+const WA_BIZ_STORE=IS_IOS?"https://apps.apple.com/app/whatsapp-business/id1386412985":"https://play.google.com/store/apps/details?id=com.whatsapp.w4b";
+const waBizNum=()=>waNumber(S.settings.waBiz||"");
+const waBizHere=()=>{try{const v=JSON.parse(localStorage.getItem(WA_BIZ_KEY)||"null");return v&&v.n&&v.n===waBizNum()?v:null}catch(e){return null}};
+function waBizPage(){
+  const n=waBizNum(),here=waBizHere();
+  return `<h2>واتساب الأعمال</h2><p class="lead">رسائل البرنامج (بعد الدين والتسديد، التذكير، الكشف) تنفتح بالواتساب اللي على الموبايل وتنرسل بضغطة منك. حتى تطلع كلها من رقم المحل، نزّل حساب واتساب الأعمال على كل موبايل يشتغل بالبرنامج واربطه من هنا.</p>
+  <div class="tpl"><h3>${I.wa}رقم واتساب الأعمال</h3>
+    ${isAdmin()?`<div class="field"><input id="wbNum" type="tel" inputmode="tel" dir="ltr" placeholder="07xx xxx xxxx" value="${esc(S.settings.waBiz||"")}" aria-label="رقم واتساب الأعمال"></div><div><button class="btn primary sm" type="button" data-act="wabizsave">حفظ الرقم</button></div>`
+      :n?`<b class="num" dir="ltr">${esc(S.settings.waBiz)}</b>`:`<span class="ro-note">المدير بعده ما حط رقم واتساب الأعمال.</span>`}</div>
+  <div class="tpl"><h3>${I.phone}هذا الموبايل</h3>
+    ${!n?`<span class="ro-note">${isAdmin()?"احفظ الرقم أولاً.":"ينربط بعد ما المدير يحط الرقم."}</span>`
+      :here?`<span><span class="chip paid">مربوط ✓</span> <span class="ro-note">تأكدنا يوم ${esc(here.d)}: الرسائل تنفتح بواتساب الأعمال.</span></span>`:`<span><span class="chip warn">مو مربوط بعد</span></span>`}
+    ${n?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ${here?"":"primary "}sm" type="button" data-act="wabizlink">${I.wa}${here?"فحص الربط من جديد":"ربط هذا الموبايل"}</button>${here?`<button class="btn ghost sm" type="button" data-act="wabizoff">إلغاء الربط بهذا الموبايل</button>`:""}</div>`:""}</div>
+  <p class="ro-note" style="margin:0">الإرسال يبقى يدوي بضغطة وحدة، والربط ما يغيّر أي دين أو حساب. حالة الربط محفوظة بكل موبايل لوحده.</p>`;
+}
+// Linking one phone: install, account (main or companion), open WhatsApp Business by default, then a test chat to the shop's own number.
+function waBizForm(){
+  const n=waBizNum();if(!n)return;
+  let role="",step=0,other=false;
+  const fmtN=esc(S.settings.waBiz||n);
+  const store=`<a class="btn sm" href="${WA_BIZ_STORE}" target="_blank" rel="noopener">${I.save}تنزيل واتساب الأعمال</a>`;
+  const body=()=>{
+    if(step===0)return `<p class="ro-note">هذا الموبايل شنو؟</p><div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn" type="button" data-wb="main">${I.phone}موبايل المدير: عليه رقم المحل ${fmtN}</button>
+      <button class="btn" type="button" data-wb="staff">${I.users}موبايل موظف أو موبايل ثاني</button></div>`;
+    if(step===1)return role==="main"
+      ?`<ol class="steps"><li>نزّل واتساب الأعمال. ${store}</li><li>افتحه وسجّل برقم المحل <b class="num" dir="ltr">${fmtN}</b> ورمز التفعيل اللي يوصلك.</li><li>إذا الرقم كان على واتساب عادي، واتساب الأعمال ينقله ويّا المحادثات.</li></ol>`
+      :`<ol class="steps"><li>نزّل واتساب الأعمال على هذا الموبايل. ${store}</li><li>افتحه، وبأول شاشة لا تكتب رقم: ${IS_IOS?"اضغط «ربط بحساب موجود» تحت":"اضغط ⋮ فوك واختار «ربط كجهاز مصاحب» (Link as companion device)"}. يطلع رمز QR.</li><li>بموبايل المدير: واتساب الأعمال ← ⋮ ← «الأجهزة المرتبطة» ← «ربط جهاز»، وامسح الرمز.</li><li>انتظر لحد ما تنزل المحادثات.</li></ol>
+        <p class="ro-note">الحساب الواحد يتربط بعدد محدود من الأجهزة (عادة 4 غير موبايل المدير). وإذا موبايل المدير ما فتح واتساب الأعمال 14 يوم، تنفصل الأجهزة المرتبطة وتحتاج تربطها من جديد.</p>`;
+    if(step===2)return `${other?`<div class="banner warn">انفتح واتساب ثاني. خلي واتساب الأعمال هو اللي ينفتح:</div>`:`<p class="ro-note">خلي الموبايل يفتح واتساب الأعمال مو الواتساب العادي:</p>`}
+      ${IS_IOS?`<ol class="steps"><li>الآيفون يفتح الواتساب العادي إذا موجود، وما يخليك تختار.</li><li>على موبايل الشغل خلي واتساب الأعمال بس، أو احذف الواتساب العادي منه.</li></ol>`
+        :`<ol class="steps"><li>إذا ما عندك واتساب عادي على هذا الموبايل، ما تحتاج شي.</li><li>إذا عندك: أول مرة ترسل من البرنامج يسألك «فتح باستخدام»، اختار <b>واتساب الأعمال</b> ثم <b>دائماً</b>.</li><li>إذا يفتح العادي بدون ما يسأل: إعدادات الموبايل ← التطبيقات ← WhatsApp ← «الفتح تلقائياً» (Open by default) ← طفّي «فتح الروابط المتوافقة».</li></ol>`}`;
+    return `<p class="ro-note">اضغط «افتح التجربة». ينفتح الواتساب على رقم المحل:</p><ul class="steps"><li>إذا انفتحت محادثتك ويّا نفسك (مكتوب «أنت» أو «راسل نفسك») بواتساب الأعمال: الموبايل مربوط.</li><li>إذا انفتحت محادثة ويّا رقم المحل كأنه شخص ثاني، أو انفتح الواتساب العادي: بعده مو مربوط.</li></ul>
+      <div><button class="btn wa" type="button" data-wb="test">${I.wa}افتح التجربة</button></div>
+      <p class="ro-note">التجربة ما ترسل شي إلا إذا ضغطت إرسال بالواتساب.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-wb="ok">${I.check}انفتح واتساب الأعمال ✓</button><button class="btn" type="button" data-wb="other">انفتح واتساب ثاني</button></div>`;
+  };
+  const titles=["ربط هذا الموبايل بواتساب الأعمال","خطوة 1 من 3: الحساب على هذا الموبايل","خطوة 2 من 3: يفتح واتساب الأعمال","خطوة 3 من 3: تجربة"];
+  const draw=m=>{m.querySelector("#wbT").textContent=titles[step];m.querySelector("#wbB").innerHTML=body();
+    m.querySelector("#wbBack").hidden=step===0;m.querySelector("#wbNext").hidden=step===0||step===3};
+  openModal(`<h3 id="wbT"></h3><div id="wbB" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="foot"><button class="btn primary" type="button" id="wbNext">التالي</button><button class="btn ghost" type="button" id="wbBack">رجوع</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>`,m=>{
+    draw(m);
+    m.querySelector("#wbNext").addEventListener("click",()=>{step=Math.min(3,step+1);other=false;draw(m)});
+    m.querySelector("#wbBack").addEventListener("click",()=>{step=Math.max(0,step-1);other=false;draw(m)});
+    m.querySelector("#wbB").addEventListener("click",e=>{const b=e.target.closest("[data-wb]");if(!b)return;const k=b.dataset.wb;
+      if(k==="main"||k==="staff"){role=k;step=1;draw(m)}
+      else if(k==="test")openExternal(waLink(n,"تجربة ربط برنامج الديون بواتساب الأعمال ✓"));
+      else if(k==="ok"){try{localStorage.setItem(WA_BIZ_KEY,JSON.stringify({n,d:todayISO()}))}catch(x){}closeModal();toast("✓ هذا الموبايل مربوط بواتساب الأعمال");render()}
+      else if(k==="other"){step=2;other=true;draw(m)}});
+  });
+}
 // Automatic WhatsApp: customers switched to "تلقائي" get the message from the server (worker/ POST /wa, Meta's official API)
 // without anyone opening WhatsApp. The server builds the message itself from the saved transaction.
 // Off by owner's choice (Meta charges per message): every customer is manual, WhatsApp opens with the message ready.
@@ -1659,7 +1715,7 @@ async function bizExport(share){
 }
 
 /* ---------- settings ---------- */
-const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
+const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 function settingsView(){
   const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner));
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
@@ -1703,6 +1759,7 @@ function setPage(k){
         <button class="icon-btn del" type="button" aria-label="حذف الحساب" data-uact="delete" data-id="${esc(a.id)}">${I.trash}</button></div></div>`).join("")}`;
   }
   if(k==="shops")return shopsPage();
+  if(k==="wabiz")return waBizPage();
   if(k==="templates"){
     const t=st.templates||{};
     const ph=["الاسم","المبلغ","الرصيد","التاريخ","البيان","نهاية الشهر","المتجر"];
@@ -1718,7 +1775,7 @@ function setPage(k){
       <label class="wa-auto"><input type="checkbox" data-act="waautonew" ${S.settings.waAutoNew?"checked":""}>الزبون الجديد يكون على التلقائي</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" type="button" data-act="waall" data-v="1">تشغيل التلقائي لكل اللي عندهم رقم</button><button class="btn ghost sm" type="button" data-act="waall" data-v="0">إرجاع الكل لليدوي</button></div></div>`;
     if(WA_AUTO)setTimeout(waStatus,0);
-    return `<h2>قوالب الرسائل</h2>${waCard}<p class="lead">للزبائن على «يدوي»: بعد كل دين أو تسديد ينفتح واتساب على رقم الزبون بهذا النص (تكدر تطفيها من نافذة التسجيل). الكلمات بين { } تتبدل تلقائياً.</p>
+    return `<h2>قوالب الرسائل</h2>${waCard}<div class="tpl"><h3>${I.wa}واتساب الأعمال</h3><span class="ro-note">${waBizNum()?`الرقم: <b class="num" dir="ltr">${esc(S.settings.waBiz)}</b>. `:""}حتى تطلع الرسائل من رقم المحل بكل الموبايلات، اربط كل موبايل بحساب واتساب الأعمال.</span><div><button class="btn sm" type="button" data-set="wabiz">${I.wa}ربط واتساب الأعمال</button></div></div><p class="lead">للزبائن على «يدوي»: بعد كل دين أو تسديد ينفتح واتساب على رقم الزبون بهذا النص (تكدر تطفيها من نافذة التسجيل). الكلمات بين { } تتبدل تلقائياً.</p>
       ${box("debt","إضافة دين جديد","ترسل بعد تسجيل دين")}${box("pay","إضافة دفعة","ترسل بعد تسجيل تسديد")}${box("remind","تذكير بالرصيد","زر «تذكير واتساب» في صفحة الزبون")}${box("promise","تذكير بموعد الدفع","يوم الوعد بالدفع. {الموعد} و{مبلغ الوعد} تتبدل تلقائياً")}${box("monthend","تذكير نهاية الشهر","لكل المدينين قبل نهاية الشهر: التذكيرات ← «نهاية الشهر». {نهاية الشهر} يتبدل بآخر يوم بالشهر")}
       <div><button class="btn primary" type="button" data-act="savetpl">حفظ القوالب</button></div>`;
   }
@@ -3023,6 +3080,9 @@ document.addEventListener("click",e=>{
     case "copylinks":copyText(b.dataset.txt,document.createElement("textarea"));break;
     case "savecats":if(isAdmin()){const list=[...new Set($("#catsTa").value.split("\n").map(x=>x.trim().slice(0,30)).filter(Boolean))].slice(0,60);saveSettings({categories:list}).then(ok=>ok&&toast("تم حفظ الأصناف"))}break;
     case "resetcats":if(isAdmin())$("#catsTa").value=DEFAULT_CATS.join("\n");break;
+    case "wabizsave":if(isAdmin()){const v=($("#wbNum").value||"").trim();if(v&&waNumber(v).length<11){toast("الرقم مو صحيح. اكتبه مثل 07xx xxx xxxx");break}saveSettings({waBiz:v}).then(ok=>ok&&toast(v?"انحفظ رقم واتساب الأعمال":"انمسح رقم واتساب الأعمال"))}break;
+    case "wabizlink":waBizForm();break;
+    case "wabizoff":try{localStorage.removeItem(WA_BIZ_KEY)}catch(x){}render();break;
     case "savetpl":if(isAdmin()){const tp={};for(const k of Object.keys(DEFAULT_TPL))tp[k]=document.getElementById("tpl-"+k).value;saveSettings({templates:tp}).then(ok=>ok&&toast("تم حفظ القوالب"))}break;
     case "edittx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())txnForm(null,x);break}
     case "deltx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())confirmBox("حذف الحركة",`حذف ${c&&isSup(c)?(x.type==="debt"?"فاتورة":"دفعة"):(x.type==="debt"?"دين":"تسديد")} بمبلغ ${fmt(x.amount)} ${CUR} بتاريخ ${x.date}؟`,"حذف",()=>{del("txns",x.id);log("delete",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount,...(c&&isSup(c)?{sup:true}:{})});
