@@ -288,6 +288,10 @@ td.x{width:64px;white-space:nowrap}
 .amt-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .calc-t{border:1px solid var(--line);background:var(--paper-2);border-radius:99px;padding:3px 11px;font-size:12.5px;cursor:pointer;color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:5px}
 .calc-t svg{width:15px;height:15px}
+.amt-tools{display:inline-flex;gap:6px;flex-wrap:wrap}.calc-t[aria-pressed=true]{background:var(--debt);color:var(--paper);border-color:var(--debt)}
+.search .s-mic{position:absolute;left:5px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:0;background:transparent;color:var(--accent);display:grid;place-items:center;cursor:pointer}
+.search .s-mic svg{position:static;transform:none;width:19px;height:19px;color:inherit}.search .s-mic.on{background:var(--debt);color:var(--paper)}
+.search:has(.s-mic) input,.home-search .search:has(.s-mic) input{padding-left:44px}
 .calc-t[aria-expanded="true"]{background:var(--accent-soft);border-color:var(--accent-soft);color:var(--accent)}
 .calc{direction:ltr;display:flex;flex-direction:column;gap:6px;background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:8px}
 .calc[hidden]{display:none}
@@ -1171,7 +1175,7 @@ function homeView(){
   </section>
   <section class="pane card-pad home-search" aria-label="بحث عن زبون">
     <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="hq" type="search" placeholder="ابحث عن زبون أو مورد بالاسم أو الرقم" autocomplete="off" enterkeyhint="search" value="${esc(S.hq||"")}"></div>
+      <input id="hq" type="search" placeholder="ابحث عن زبون أو مورد بالاسم أو الرقم" autocomplete="off" enterkeyhint="search" value="${esc(S.hq||"")}">${micBtn('class="s-mic" data-vsearch="hq"',"ابحث بالصوت")}</div>
     <ul class="hs-list" id="hsList" hidden></ul>
   </section>
   <div class="home-alerts">
@@ -1217,7 +1221,7 @@ function customersView(){
       <div class="list-tools">
         <div class="seg kind-seg" role="group" aria-label="نوع الحساب">${[["customer","الزبائن"],["supplier","الموردين"]].map(([k,l])=>`<button type="button" data-kind="${k}" aria-pressed="${S.kind===k}">${l} (${[...S.customers.values()].filter(c=>kindOf(c)===k).length})</button>`).join("")}</div>
         <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <input id="q" type="search" placeholder="ابحث بالاسم أو رقم الهاتف" autocomplete="off" value="${esc(S.q)}"></div>
+          <input id="q" type="search" placeholder="ابحث بالاسم أو رقم الهاتف" autocomplete="off" value="${esc(S.q)}">${micBtn('class="s-mic" data-vsearch="q"',"ابحث بالصوت")}</div>
         <div class="row-tools">
           <div class="seg" role="group" aria-label="تصفية">${[["all","الكل"],["owe",S.kind==="supplier"?"علينا لهم":"عليهم دين"],["clear","مسددين"],...(S.kind==="supplier"?[["due","فواتير مستحقة"]]:[]),...(S.kind!=="supplier"&&anyLock()?[["locked",`مقفولة (${[...lockMap().values()].filter(x=>x.locked).length})`]]:[]),["nophone",`بدون رقم (${[...S.customers.values()].filter(c=>kindOf(c)===S.kind&&!normDigits(c.phone).replace(/\D/g,"")).length})`]].map(([k,l])=>`<button type="button" data-f="${k}" aria-pressed="${S.filter===k}">${l}</button>`).join("")}</div>
           <select class="sort" id="sort" aria-label="ترتيب">${[["bal","الأعلى ديناً"],["recent","آخر حركة"],["name","الاسم"]].map(([k,l])=>`<option value="${k}" ${S.sort===k?"selected":""}>${l}</option>`).join("")}</select>
@@ -1948,9 +1952,9 @@ function txnForm(type,existing,pre){
   const title=sup?(existing?(isDebt?"تعديل فاتورة ":"تعديل دفعة "):(isDebt?"فاتورة شراء من ":"دفعة إلى ")):(existing?(isDebt?"تعديل دين ":"تعديل تسديد "):(isDebt?"تسجيل دين على ":"تسديد من "));
   openModal(`<h3>${title}${esc(c.name)}</h3>
     <p class="hint">${sup?"علينا له":"الرصيد الحالي"}: <span class="num">${fmt(bal)}</span> ${CUR}${!sup&&c.limit>0?` · حد الدين: <span class="num">${fmt(c.limit)}</span>`:""}</p>
-    ${pre&&pre.said?`<p class="vc-said">${I.mic}<span>سمعت: «${esc(pre.said)}». راجع المبلغ والتاريخ واضغط «تأكيد الحفظ».</span></p>`:""}
+    ${pre&&pre.said?`<p class="vc-said">${I.mic}<span>سمعت: «${esc(pre.said)}». ${pre.amount?"راجع المبلغ والتاريخ واضغط «تأكيد الحفظ».":"كول المبلغ أو اكتبه، وبعدين اضغط «تأكيد الحفظ»."}</span></p>`:""}
     <form id="tf" class="field" style="gap:10px" novalidate>
-      <div class="field"><div class="amt-head"><label for="tAmt">المبلغ (${CUR})</label><button type="button" class="calc-t" id="calcT" aria-expanded="false" aria-controls="calc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8.5 6.5h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h.01M12 18h.01M15.5 18h.01"/></svg>حاسبة</button></div><input id="tAmt" class="big" inputmode="numeric" autocomplete="off" placeholder="0" value="${existing?fmt(existing.amount):pre&&pre.amount?fmt(pre.amount):""}"></div>
+      <div class="field"><div class="amt-head"><label for="tAmt">المبلغ (${CUR})</label><span class="amt-tools">${VC_LIVE&&!existing?`<button type="button" class="calc-t" id="amtMic" aria-pressed="false">${I.mic}كول المبلغ</button>`:""}<button type="button" class="calc-t" id="calcT" aria-expanded="false" aria-controls="calc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8.5 6.5h7M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h.01M12 18h.01M15.5 18h.01"/></svg>حاسبة</button></span></div><p class="ro-note" id="amtHeard" role="status" aria-live="polite" hidden></p><input id="tAmt" class="big" inputmode="numeric" autocomplete="off" placeholder="0" value="${existing?fmt(existing.amount):pre&&pre.amount?fmt(pre.amount):""}"></div>
       <div class="calc" id="calc" hidden><span class="calc-exp num" id="cExp"></span><div class="calc-keys">${[["C","fn"],["⌫","fn"],["÷","op","/"],["×","op","*"],["7"],["8"],["9"],["−","op","-"],["4"],["5"],["6"],["+","op"],["1"],["2"],["3"],["=","eq"],["0"],["000"],["."]].map(([l,c,v])=>`<button type="button" class="${c||""}" data-k="${v||l}">${l}</button>`).join("")}</div></div>
       <div class="quick">${quick.map(q=>`<button type="button" data-q="${q}">+${fmt(q)}</button>`).join("")}${!isDebt&&!existing&&bal>0?`<button type="button" data-all="${bal}">${sup?"دفع الكل":"سداد كامل"} ${fmt(bal)}</button>`:""}</div>
       ${sup&&isDebt?`<div class="two"><div class="field"><label for="tInv">رقم الفاتورة (اختياري)</label><input id="tInv" maxlength="30" inputmode="numeric" value="${esc(existing&&existing.inv)}" style="direction:ltr;text-align:right"></div>
@@ -1973,6 +1977,15 @@ function txnForm(type,existing,pre){
     const showCalc=(writeBack=true)=>{const v=calcEval(expr.replace(/[+\-*/.]+$/,""));cExp.textContent=expr?pretty(expr).trim()+(/[+\-*/]/.test(expr.slice(1))&&isFinite(v)?"  = "+fmt(v):""):"";if(expr&&writeBack)a.value=isFinite(v)?fmt(v):a.value};
     const setCalc=(open,remember=true)=>{calc.hidden=!open;cT.setAttribute("aria-expanded",String(open));if(remember)try{localStorage.setItem(CALC_KEY,open?"1":"")}catch(e){}if(open){expr=a.value?String(parseAmt(a.value)||""):"";showCalc()}};
     cT.addEventListener("click",()=>setCalc(calc.hidden));
+    // Saying the amount: the number goes into the amount box, where it can still be changed; nothing is saved by speaking.
+    const mic=m.querySelector("#amtMic"),heard=m.querySelector("#amtHeard");
+    const say=t=>{heard.hidden=false;heard.textContent=t};
+    if(mic){const go=()=>listen(mic,{onState:say,onText:(t,end)=>{const r=parseVoice(t);
+        if(r.amount>0){a.value=fmt(r.amount);a.dispatchEvent(new Event("input",{bubbles:true}));if(!calc.hidden){expr=String(r.amount);showCalc(false)}
+          say(`سمعت «${t}» = ${fmt(r.amount)} ${CUR}${r.assumedK?" (حسبتها بالألف)":""}. تكدر تعدّله بالمربع.`)}
+        else say(end?`سمعت «${t}» بس ما فهمت المبلغ. اضغط «كول المبلغ» وعيده، أو اكتبه.`:`«${t}»`);
+        if(end&&r.amount>0)a.focus()}});
+      mic.addEventListener("click",go);if(pre&&pre.listen)go()}
     try{if(localStorage.getItem(CALC_KEY))setCalc(true)}catch(e){}
     const press=k=>{
       if(k==="C")expr="";
@@ -2284,12 +2297,13 @@ function scanReview(rows,pics){
 }
 function pickCustomer(type){
   openModal(`<h3>${type==="debt"?"دين جديد":"تسديد"}: اختر الزبون</h3>
-    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="pq" type="search" placeholder="ابحث بالاسم أو الهاتف" autocomplete="off"></div>
+    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="pq" type="search" placeholder="ابحث بالاسم أو الهاتف" autocomplete="off">${micBtn('class="s-mic" data-vsearch="pq"',"ابحث بالصوت")}</div>
     <ul class="pick-list" id="pl"></ul>
     <div class="foot"><button class="btn primary" type="button" id="pNew">${I.plus}زبون جديد</button><button class="btn" type="button" data-close>إلغاء</button></div>`,m=>{
     const per=stats();
     const draw=()=>{const q=normDigits(m.querySelector("#pq").value).trim().toLowerCase();
-      const arr=[...S.customers.values()].filter(c=>!q||c.name.toLowerCase().includes(q)||normDigits(c.phone).includes(q)).sort((a,b)=>per.get(b.id).last-per.get(a.id).last).slice(0,60);
+      const sc=c=>!q?1:c.name.toLowerCase().includes(q)||normDigits(c.phone).includes(q)?Math.max(5,custScore(c,q)):custScore(c,q);
+      const arr=[...S.customers.values()].map(c=>({c,s:sc(c)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s||per.get(b.c.id).last-per.get(a.c.id).last).slice(0,60).map(x=>x.c);
       m.querySelector("#pl").innerHTML=arr.length?arr.map(c=>`<li><button type="button" data-pick="${esc(c.id)}"><span>${esc(c.name)}</span><span class="num" style="color:var(--muted)">${fmt(per.get(c.id).bal)}</span></button></li>`).join(""):`<li class="empty">لا يوجد زبون بهذا الاسم</li>`};
     draw();m.querySelector("#pq").addEventListener("input",draw);
     m.querySelector("#pl").addEventListener("click",e=>{const b=e.target.closest("[data-pick]");if(!b)return;closeModal();openCustomer(b.dataset.pick);txnForm(type)});
@@ -2656,13 +2670,37 @@ function voiceMatches(name,text){
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const VC_ERR={"not-allowed":"البرنامج ما عنده إذن يستعمل المايك. اسمحله من إعدادات المتصفح، أو اكتب الجملة.","service-not-allowed":"التعرف على الصوت مو متاح بهذا المتصفح. اكتب الجملة، أو استعمل مايك الكيبورد.",
   "no-speech":"ما سمعت شي. اضغط المايك وتكلم مرة ثانية.","audio-capture":"ما لكيت مايك شغّال بهذا الجهاز.","network":"التعرف على الصوت يحتاج إنترنت. اكتب الجملة بدالها.","aborted":"انلغى الاستماع.","language-not-supported":"العربي مو مدعوم بالتعرف على الصوت بهذا المتصفح. اكتب الجملة."};
+// The mic buttons on search boxes and on the amount field: browsers with speech recognition listen themselves; in the Android app
+// (no speech recognition in its web view) the search mic opens the keyboard so its own mic types the name. One listen per press; the words reach onText as they come and once more at the end.
+const VC_LIVE=!!SR&&!NATIVE;
+const micBtn=(attrs,label)=>VC_LIVE||NATIVE?`<button type="button" ${attrs} aria-pressed="false" aria-label="${label}" title="${label}">${I.mic}</button>`:"";
+function listen(btn,{onText,onState}){
+  if(btn._rec){try{btn._rec.stop()}catch(e){}return}
+  if(!navigator.onLine){onState(VC_ERR.network);return}
+  const rec=new SR();rec.lang="ar-IQ";rec.interimResults=true;rec.continuous=false;rec.maxAlternatives=1;
+  let got="";btn._rec=rec;
+  const on=v=>{btn.classList.toggle("on",v);btn.setAttribute("aria-pressed",String(v))};
+  rec.onstart=()=>{on(true);onState("أسمعك… تكلم هسه")};
+  rec.onresult=e=>{if(!document.body.contains(btn)){try{rec.abort()}catch(x){}return}let t="";for(const r of e.results)t+=r[0].transcript;got=t.trim();if(got)onText(got,false)};
+  rec.onerror=e=>onState(VC_ERR[e.error]||"صار خطأ بالمايك ("+e.error+"). اكتب بيدك.");
+  rec.onend=()=>{btn._rec=null;on(false);if(got&&document.body.contains(btn))onText(got,true)};
+  try{rec.start()}catch(e){btn._rec=null;on(false);onState("ما اشتغل المايك. اكتب بيدك.")}
+}
+// Saying a name into a search box: the words go into the box as if typed (the box's own search does the matching).
+function voiceSearch(btn){
+  const inp=document.getElementById(btn.dataset.vsearch);if(!inp)return;
+  if(!VC_LIVE){inp.focus();toast("اضغط زر المايك 🎤 اللي بالكيبورد وكول الاسم");return}
+  listen(btn,{onText:t=>{inp.value=t.replace(/[.،,!؟?]+$/,"").replace(/^(?:دين|تسديد|على|الى|إلى)\s+/,"");inp.dispatchEvent(new Event("input",{bubbles:true}))},
+    onState:m=>{if(!/أسمعك/.test(m))toast(m);inp.placeholder=/أسمعك/.test(m)?m:inp.dataset.ph||inp.placeholder}});
+  if(!inp.dataset.ph)inp.dataset.ph=inp.placeholder;
+}
 function voiceEntry(){
   if(!canWrite())return;
   // The Android app's web view has no speech recognition; the keyboard's own mic button types the words there.
   const live=!!SR&&!NATIVE;
   let rec=null,listening=false,pick=null,res=null,manualType=null;
   openModal(`<h3 class="vc-title">${I.mic}تسجيل بالصوت</h3>
-    <p class="hint">${live?"اضغط المايك وكول مثلاً: «دين خمسين ألف على أحمد» أو «أبو علي دفع خمسة وسبعين ألف».":"اضغط على المربع، وبعدين زر المايك 🎤 اللي بالكيبورد وتكلم. أو اكتب الجملة بيدك."}</p>
+    <p class="hint">${live?"اضغط المايك وكول اسم الزبون، أو الاسم والمبلغ سوا مثل: «دين خمسين ألف على أحمد». إذا كلت الاسم بس، تكول المبلغ بالخطوة الجاية.":"اضغط على المربع، وبعدين زر المايك 🎤 اللي بالكيبورد وتكلم. أو اكتب الجملة بيدك."}</p>
     ${live?`<div class="vc-mic"><button type="button" class="vc-btn" id="vcBtn" aria-pressed="false" aria-label="ابدأ الاستماع">${I.mic}</button><span id="vcState" class="ro-note" role="status" aria-live="polite">اضغط وتكلم. يحتاج إنترنت.</span></div>`:""}
     <div class="field"><label for="vcText">الجملة</label><textarea id="vcText" rows="2" maxlength="200" placeholder="مثال: دين خمسين ألف على أحمد"></textarea></div>
     <div id="vcOut" aria-live="polite"></div>
@@ -2683,7 +2721,7 @@ function voiceEntry(){
       const pc=pick&&S.customers.get(pick);
       out.innerHTML=`<div class="vc-card">
         <div class="seg" role="group" aria-label="نوع العملية"><button type="button" data-vct="debt" aria-pressed="${type==="debt"}">دين</button><button type="button" data-vct="pay" aria-pressed="${type==="pay"}">تسديد</button></div>
-        <div class="vc-row"><span>المبلغ</span>${res.amount?`<b class="num">${fmt(res.amount)}</b> ${CUR}`:`<b class="vc-miss">ما فهمت المبلغ</b>`}</div>
+        <div class="vc-row"><span>المبلغ</span>${res.amount?`<b class="num">${fmt(res.amount)}</b> ${CUR}`:`<span class="ro-note">تكوله أو تكتبه بالخطوة الجاية</span>`}</div>
         ${res.assumedK?`<p class="ro-note" style="margin:0">سمعت «${fmt(res.heard)}» بدون «ألف»، فحسبتها ${fmt(res.amount)}. تكدر تغيّرها بالخطوة الجاية.</p>`:""}
         <div class="vc-row"><span>التاريخ</span><b>${esc(dayName(res.date))}</b>${res.back?` <span class="ro-note">(قبل ${res.back} يوم)</span>`:""}</div>
         <div class="vc-row"><span>الحساب</span>${pc?`<b>${esc(pc.name)}</b>${isSup(pc)?' <span class="chip">مورد</span>':""}`:`<b class="vc-miss">${list.length?"اختار الحساب الصحيح":"ما لكيت حساب بهالاسم"}</b>`}</div>
@@ -2691,7 +2729,7 @@ function voiceEntry(){
         <div class="field"><label for="vcFind">${list.length?"مو بالقائمة؟ ابحث عن الحساب":"ابحث عن الحساب"}</label><input id="vcFind" type="search" autocomplete="off" value="${esc(q)}" placeholder="اكتب الاسم"></div>
         ${!pc&&res.name?`<button class="btn sm" type="button" id="vcNew">${I.plus}زبون جديد باسم «${esc(res.name)}»</button>`:""}
       </div>`;
-      go.disabled=!(pc&&res.amount>0);
+      go.disabled=!pc;
       const f=out.querySelector("#vcFind");if(q){f.focus();f.setSelectionRange(f.value.length,f.value.length)}
     };
     ta.addEventListener("input",()=>{manualType=null;draw()});
@@ -2721,7 +2759,7 @@ function voiceEntry(){
 /* Step two: the normal debt/payment form, filled in. Nothing is saved until «تأكيد الحفظ». */
 function voiceReview(id,r){
   const c=S.customers.get(id);if(!c)return;
-  S.selected=id;txnForm(r.type,null,{amount:r.amount,date:r.date,said:r.text});
+  S.selected=id;txnForm(r.type,null,{amount:r.amount,date:r.date,said:r.text,listen:!r.amount});
 }
 
 /* ---------- reports (read only: nothing here writes) ---------- */
@@ -3015,6 +3053,7 @@ document.addEventListener("click",e=>{
   const ld=t.closest("[data-lockdays]");if(ld&&isAdmin()){const d=Number(ld.dataset.lockdays);const go=()=>saveSettings({lockDays:d}).then(ok=>{if(ok){log("edit","lock",{detail:d?`قفل الحسابات بعد ${d} يوم`:"إيقاف قفل الحسابات"});toast(d?"تم تشغيل القفل":"انطفى القفل")}});
     const n=d?[...lockMap(d).values()].filter(x=>x.locked).length:0;
     if(n&&d!==lockDays())confirmBox("تشغيل قفل الحسابات",`${n} زبون راح ينقفل حسابه هسه لأنه ما سدد كامل خلال ${d} يوم. تكدر تفتح أي واحد منهم من صفحته.`,"تشغيل",go);else go();return}
+  const vsb=t.closest("[data-vsearch]");if(vsb){voiceSearch(vsb);return}
   const sp=t.closest("[data-set]");if(sp){S.setPage=sp.dataset.set||null;render();window.scrollTo(0,0);return}
   const hd=t.closest("[data-hide]");if(hd){const k=hd.dataset.hide,h=hiddenNums().filter(x=>x!==k);if(hd.dataset.v==="1")h.push(k);setHidden(h);render();return}
   const ha=t.closest("[data-hideall]");if(ha){setHidden(ha.dataset.hideall==="1"?HIDE_ITEMS.map(x=>x[0]):[]);S.reveal=false;render();return}
