@@ -1221,7 +1221,7 @@ function customersView(){
       <div class="list-tools">
         <div class="seg kind-seg" role="group" aria-label="نوع الحساب">${[["customer","الزبائن"],["supplier","الموردين"]].map(([k,l])=>`<button type="button" data-kind="${k}" aria-pressed="${S.kind===k}">${l} (${[...S.customers.values()].filter(c=>kindOf(c)===k).length})</button>`).join("")}</div>
         <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <input id="q" type="search" placeholder="ابحث بالاسم أو رقم الهاتف" autocomplete="off" value="${esc(S.q)}"></div>
+          <input id="q" type="search" placeholder="ابحث بالاسم أو رقم الهاتف" autocomplete="off" value="${esc(S.q)}">${micBtn('class="s-mic" data-vsearch="q"',"ابحث بالصوت")}</div>
         <div class="row-tools">
           <div class="seg" role="group" aria-label="تصفية">${[["all","الكل"],["owe",S.kind==="supplier"?"علينا لهم":"عليهم دين"],["clear","مسددين"],...(S.kind==="supplier"?[["due","فواتير مستحقة"]]:[]),...(S.kind!=="supplier"&&anyLock()?[["locked",`مقفولة (${[...lockMap().values()].filter(x=>x.locked).length})`]]:[]),["nophone",`بدون رقم (${[...S.customers.values()].filter(c=>kindOf(c)===S.kind&&!normDigits(c.phone).replace(/\D/g,"")).length})`]].map(([k,l])=>`<button type="button" data-f="${k}" aria-pressed="${S.filter===k}">${l}</button>`).join("")}</div>
           <select class="sort" id="sort" aria-label="ترتيب">${[["bal","الأعلى ديناً"],["recent","آخر حركة"],["name","الاسم"]].map(([k,l])=>`<option value="${k}" ${S.sort===k?"selected":""}>${l}</option>`).join("")}</select>
@@ -2670,10 +2670,10 @@ function voiceMatches(name,text){
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const VC_ERR={"not-allowed":"البرنامج ما عنده إذن يستعمل المايك. اسمحله من إعدادات المتصفح، أو اكتب الجملة.","service-not-allowed":"التعرف على الصوت مو متاح بهذا المتصفح. اكتب الجملة، أو استعمل مايك الكيبورد.",
   "no-speech":"ما سمعت شي. اضغط المايك وتكلم مرة ثانية.","audio-capture":"ما لكيت مايك شغّال بهذا الجهاز.","network":"التعرف على الصوت يحتاج إنترنت. اكتب الجملة بدالها.","aborted":"انلغى الاستماع.","language-not-supported":"العربي مو مدعوم بالتعرف على الصوت بهذا المتصفح. اكتب الجملة."};
-// The mic buttons on search boxes and on the amount field: browsers with speech recognition only (the Android app types with the
-// keyboard's own mic instead). One listen per press; the words reach onText as they come and once more at the end.
+// The mic buttons on search boxes and on the amount field: browsers with speech recognition listen themselves; in the Android app
+// (no speech recognition in its web view) the search mic opens the keyboard so its own mic types the name. One listen per press; the words reach onText as they come and once more at the end.
 const VC_LIVE=!!SR&&!NATIVE;
-const micBtn=(attrs,label)=>VC_LIVE?`<button type="button" ${attrs} aria-pressed="false" aria-label="${label}" title="${label}">${I.mic}</button>`:"";
+const micBtn=(attrs,label)=>VC_LIVE||NATIVE?`<button type="button" ${attrs} aria-pressed="false" aria-label="${label}" title="${label}">${I.mic}</button>`:"";
 function listen(btn,{onText,onState}){
   if(btn._rec){try{btn._rec.stop()}catch(e){}return}
   if(!navigator.onLine){onState(VC_ERR.network);return}
@@ -2689,6 +2689,7 @@ function listen(btn,{onText,onState}){
 // Saying a name into a search box: the words go into the box as if typed (the box's own search does the matching).
 function voiceSearch(btn){
   const inp=document.getElementById(btn.dataset.vsearch);if(!inp)return;
+  if(!VC_LIVE){inp.focus();toast("اضغط زر المايك 🎤 اللي بالكيبورد وكول الاسم");return}
   listen(btn,{onText:t=>{inp.value=t.replace(/[.،,!؟?]+$/,"").replace(/^(?:دين|تسديد|على|الى|إلى)\s+/,"");inp.dispatchEvent(new Event("input",{bubbles:true}))},
     onState:m=>{if(!/أسمعك/.test(m))toast(m);inp.placeholder=/أسمعك/.test(m)?m:inp.dataset.ph||inp.placeholder}});
   if(!inp.dataset.ph)inp.dataset.ph=inp.placeholder;
