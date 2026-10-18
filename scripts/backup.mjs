@@ -453,6 +453,28 @@ async function startMissedBackup(dayStart, slot) {
     : `⚠️ النسخة الاحتياطية الليلية ${what}، وما گدرت أشغلها (${r.status}). شغّلها يدوياً: GitHub ← Actions ← Daily backup ← Run workflow.`;
 }
 
+
+// The same check number the app shows in Settings > backup (dataPrint in web/index.html): if both match, no account and no
+// transaction differs between the app and this file. FNV-1a over every account and transaction, sorted by id.
+function dataPrint(customers, txns) {
+  let h = 0x811c9dc5;
+  const mix = s => { for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } };
+  const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const cs = [...customers].sort(byId), ts = [...txns].sort(byId);
+  for (const c of cs) mix(c.id + "|" + (c.name || "") + "|" + (c.kind === "supplier" ? "supplier" : "customer") + "\n");
+  let debt = 0, pay = 0;
+  const bal = new Map();
+  for (const t of ts) {
+    mix(t.id + "|" + t.customerId + "|" + t.type + "|" + Number(t.amount) + "|" + (t.date || "") + "\n");
+    if (t.type === "debt") debt += Number(t.amount); else pay += Number(t.amount);
+    bal.set(t.customerId, (bal.get(t.customerId) || 0) + (t.type === "debt" ? 1 : -1) * Number(t.amount));
+  }
+  let owed = 0;
+  for (const c of cs) if (c.kind !== "supplier") { const b = bal.get(c.id) || 0; if (b > 0) owed += b; }
+  const hx = h.toString(16).padStart(8, "0").toUpperCase();
+  return { code: hx.slice(0, 4) + "-" + hx.slice(4), customers: cs.length, txns: ts.length, debt, pay, owed };
+}
+
 async function main() {
   const mode = (process.env.MODE || "daily").trim();
   const token = await signIn();
@@ -469,6 +491,10 @@ async function main() {
   const backup = { app: "shahm-debts", version: 3, exportedAt: now.toISOString(), source: "daily-telegram", settings, customers, txns, accounts: [], activity, products, sales, shifts, stocktakes };
   const backupJson = JSON.stringify(backup);
   const chat = env("TELEGRAM_CHAT_ID");
+  // Read the file back before sending it: same accounts, same transactions, same check number.
+  const print = dataPrint(customers, txns), back = JSON.parse(backupJson), again = dataPrint(back.customers, back.txns);
+  if (again.code !== print.code || back.customers.length !== customers.length || back.txns.length !== txns.length)
+    throw new Error("ملف النسخة ما طابق البيانات بعد قراءته. ما انرسل.");
 
   const bal = new Map();
   for (const t of txns) bal.set(t.customerId, (bal.get(t.customerId) || 0) + (t.type === "debt" ? t.amount : -t.amount));
@@ -479,10 +505,15 @@ async function main() {
     `📅 ${day}`,
     `👥 ${customers.length} حساب · ${txns.length} حركة`,
     `💰 مجموع الديون: ${fmt(owed)} د.ع (${owing} زبون)`,
+    `🔐 بصمة البيانات: ${print.code} (ديون مسجلة ${fmt(print.debt)} · تسديدات ${fmt(print.pay)})`,
+    `✓ الملف انقرأ بعد الحفظ وطابق: نفس الحسابات والحركات`,
     `للاستعادة: الإعدادات ← النسخ الاحتياطي ← اختيار ملف النسخة`,
   ].join("\n");
-  await sendFile(`نسخة-ديون-${slug}-${day}.json`, backupJson, "application/json", caption);
+  const name = mode === "backup" ? `نسخة-ديون-${slug}-${isoDay(now.getTime())}-قبل-التحديث.json` : `نسخة-ديون-${slug}-${day}.json`;
+  await sendFile(name, backupJson, "application/json", mode === "backup" ? caption.replace("💾 نسخة احتياطية يومية", "💾 نسخة احتياطية قبل تحديث البرنامج") : caption);
   console.log(`Sent backup: ${customers.length} accounts, ${txns.length} transactions, ${activity.length} activity entries.`);
+  // A backup on request (before an update): the file only, no day reports.
+  if (mode === "backup") return;
 
   await tg("sendMessage", { chat_id: chat, text: daySummary(customers, txns, settings, now, sales, products, shifts, stocktakes).slice(0, 4000) });
   console.log("Sent end-of-day summary.");
