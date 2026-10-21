@@ -2959,39 +2959,73 @@ function codesForm(){
 /* Counter card: one A4 sheet (or more) kept on the counter with a barcode for every item that has none on it: the weighed
    items and the loose or local goods. The cashier scans the card instead of searching by name. Missing codes are made first. */
 const onCard=p=>p.active!==false&&(isWeighed(p)||!p.barcode||/^0400\d{9}$/.test(String(p.barcode)));
-async function counterCard(btn){
-  const list=[...S.products.values()].filter(onCard);
-  if(!list.length){toast("ماكو مواد وزن ولا مواد بلا باركود.",3000);return}
-  if(btn)btn.disabled=true;
-  try{
-    const miss=list.filter(p=>!p.barcode),codes=newCodes(miss.length),now=Date.now();
-    for(let i=0;i<miss.length;i+=450){const bt=db.batch();miss.slice(i,i+450).forEach((p,j)=>bt.update(db.collection("products").doc(p.id),{barcode:codes[i+j],updatedAt:now,updatedBy:S.me.name}));await bt.commit()}
-    miss.forEach((p,i)=>{p.barcode=codes[i]});
-    if(miss.length)toast(`انولّد ${miss.length} باركود جديد`,2500);
-    await counterPdf(list.filter(p=>eanBars(p.barcode)));
-  }catch(e){writeFail(e)}finally{if(btn)btn.disabled=false}
+// The card's choices (title, columns, price, items added or left out) stay on this device for the next print.
+const CARD_KEY="shahm-pos-card";
+function cardOpts(){let o={};try{o=JSON.parse(localStorage.getItem(CARD_KEY)||"{}")||{}}catch(e){}
+  return {title:o.title||"",sub:o.sub||"",cols:[2,3,4].includes(o.cols)?o.cols:3,price:o.price!==false,group:o.group!==false,extra:Array.isArray(o.extra)?o.extra:[],skip:Array.isArray(o.skip)?o.skip:[]}}
+function saveCardOpts(o){try{localStorage.setItem(CARD_KEY,JSON.stringify(o))}catch(e){}}
+function counterCard(){
+  const o=cardOpts(),skip=new Set(o.skip),extra=new Set(o.extra.filter(id=>S.products.has(id)));
+  const base=()=>[...S.products.values()].filter(p=>onCard(p)||extra.has(p.id)).sort((a,b)=>(isWeighed(b)-isWeighed(a))||(a.category||"").localeCompare(b.category||"","ar")||a.name.localeCompare(b.name,"ar"));
+  openModal(`<h3>بطاقة الكاونتر</h3>
+    <p class="hint">عدّل البطاقة قبل الطباعة: شيل أو ضيف مواد، وغيّر العنوان والشكل. اختياراتك تنحفظ للمرة الجاية. المادة اللي بلا باركود ياخذ باركود جديد وقت الطباعة.</p>
+    <div class="row2"><div class="field"><label for="ccT">العنوان</label><input id="ccT" maxlength="40" placeholder="${esc(shopName())}" value="${esc(o.title)}"></div>
+      <div class="field"><label for="ccS">السطر الثاني</label><input id="ccS" maxlength="70" placeholder="بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها" value="${esc(o.sub)}"></div></div>
+    <div class="tool-row" style="flex-wrap:wrap;gap:12px;margin:4px 0 8px"><div class="seg" role="group" aria-label="عدد الأعمدة" style="flex:none">${[2,3,4].map(n=>`<button type="button" data-cols="${n}" aria-pressed="${o.cols===n}"><span class="num">${n}</span> بالسطر</button>`).join("")}</div>
+      <label class="check"><input type="checkbox" id="ccP" ${o.price?"checked":""}> السعر</label><label class="check"><input type="checkbox" id="ccG" ${o.group?"checked":""}> حسب الصنف</label></div>
+    <label class="search">${I.search}<input id="ccQ" type="search" placeholder="ضيف مادة للبطاقة: ابحث بالاسم" autocomplete="off"></label>
+    <ul class="rows" id="ccAdd" style="max-height:22vh;overflow:auto"></ul>
+    <div class="tool-row" style="margin:8px 0 4px"><b style="flex:1;font-family:var(--f-display)" id="ccN"></b><button class="btn sm" type="button" id="ccAll">اختار الكل</button><button class="btn sm ghost" type="button" id="ccNone">شيل الكل</button></div>
+    <ul class="rows" id="ccL" style="max-height:34vh;overflow:auto"></ul>
+    <div class="foot"><button class="btn primary" type="button" id="ccGo">${I.pdf}طلّع الملف PDF</button><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
+    const L=m.querySelector("#ccL"),A=m.querySelector("#ccAdd"),N=m.querySelector("#ccN");
+    const keep=()=>{o.title=m.querySelector("#ccT").value.trim();o.sub=m.querySelector("#ccS").value.trim();o.price=m.querySelector("#ccP").checked;o.group=m.querySelector("#ccG").checked;o.skip=[...skip];o.extra=[...extra];saveCardOpts(o)};
+    const draw=()=>{const l=base(),on=l.filter(p=>!skip.has(p.id)).length;N.innerHTML=`على البطاقة <span class="num">${on}</span> من <span class="num">${l.length}</span>`;
+      L.innerHTML=l.length?l.map(p=>`<li class="crow"><label class="check" style="flex:1;min-width:0"><input type="checkbox" data-cc="${esc(p.id)}" ${skip.has(p.id)?"":"checked"}>
+        <span class="m"><b>${esc(p.name)}</b><span>${esc(p.category||"بدون صنف")} · <span class="num">${fmt(p.price)}</span>${isWeighed(p)?" للكيلو":""}${p.barcode?"":" · ياخذ باركود جديد"}</span></span></label>
+        ${extra.has(p.id)?`<button class="btn sm ghost danger-text" type="button" data-ccx="${esc(p.id)}">شيلها</button>`:""}</li>`).join("")
+        :`<li class="empty">ماكو مواد. ضيف مواد من البحث فوك.</li>`};
+    L.addEventListener("change",e=>{const c=e.target.closest("[data-cc]");if(!c)return;if(c.checked)skip.delete(c.dataset.cc);else skip.add(c.dataset.cc);keep();draw()});
+    L.addEventListener("click",e=>{const b=e.target.closest("[data-ccx]");if(!b)return;extra.delete(b.dataset.ccx);keep();draw()});
+    m.querySelector("#ccQ").addEventListener("input",e=>{const q=e.target.value.trim();
+      A.innerHTML=q?productList().filter(p=>p.active!==false&&!onCard(p)&&!extra.has(p.id)&&matchScore(p.name,q,p.category)>0).slice(0,20).map(p=>`<li class="crow"><div class="m"><b>${esc(p.name)}</b><span>${esc(p.category||"")}</span></div><button class="btn sm" type="button" data-cca="${esc(p.id)}">${I.plus}ضيف</button></li>`).join("")||`<li class="empty">ماكو مادة بهذا الاسم، أو موجودة بالبطاقة.</li>`:""});
+    A.addEventListener("click",e=>{const b=e.target.closest("[data-cca]");if(!b)return;extra.add(b.dataset.cca);skip.delete(b.dataset.cca);b.closest("li").remove();keep();draw()});
+    m.querySelectorAll("[data-cols]").forEach(b=>b.onclick=()=>{o.cols=Number(b.dataset.cols);m.querySelectorAll("[data-cols]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));keep()});
+    ["#ccT","#ccS","#ccP","#ccG"].forEach(k=>m.querySelector(k).addEventListener("change",keep));
+    m.querySelector("#ccAll").onclick=()=>{skip.clear();keep();draw()};
+    m.querySelector("#ccNone").onclick=()=>{for(const p of base())skip.add(p.id);keep();draw()};
+    m.querySelector("#ccGo").onclick=async e=>{keep();const btn=e.currentTarget,list=base().filter(p=>!skip.has(p.id));
+      if(!list.length){toast("اختار مادة وحدة على الأقل.");return}
+      btn.disabled=true;
+      try{const miss=list.filter(p=>!p.barcode),codes=newCodes(miss.length),now=Date.now();
+        for(let i=0;i<miss.length;i+=450){const bt=db.batch();miss.slice(i,i+450).forEach((p,j)=>bt.update(db.collection("products").doc(p.id),{barcode:codes[i+j],updatedAt:now,updatedBy:S.me.name}));await bt.commit()}
+        miss.forEach((p,i)=>{p.barcode=codes[i]});if(miss.length)toast(`انولّد ${miss.length} باركود جديد`,2500);
+        await counterPdf(list.filter(p=>eanBars(p.barcode)),o);draw()}
+      catch(err){writeFail(err)}finally{btn.disabled=false}};
+    draw();
+  });
 }
-async function counterPdf(list){
+async function counterPdf(list,o={}){
   toast("جارِ تجهيز البطاقة…");if(!await pdfReady())return;
-  const W=1240,H=1754,M=70,G=22,C=3,cw=(W-2*M-(C-1)*G)/C,ch=214,pages=[];let x,y;
+  const W=1240,H=1754,M=70,G=22,C=o.cols||3,cw=(W-2*M-(C-1)*G)/C,ch=C===2?236:C===4?196:214,mw=C===2?4:C===4?2:3,bh=C===4?60:68,showPrice=o.price!==false,pages=[];let x,y;
   // The picture on each card: the ready-made fruit photo for fruit and vegetables, else the item's drawing.
   const picOf=p=>stockPic({...p,pic:0})||`img/art/${catIcon({...p,pic:0})||"box"}.svg`;
   const arts=new Map();await Promise.all([...new Set(list.map(picOf))].map(u=>new Promise(res=>{const i=new Image();i.onload=()=>{arts.set(u,i);res()};i.onerror=res;i.src=u})));
   const page=()=>{const cv=document.createElement("canvas");cv.width=W;cv.height=H;x=cv.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,W,H);pages.push(cv);
     x.fillStyle=PDFC.green;x.fillRect(0,0,W,14);x.fillStyle=PDFC.orange;x.fillRect(0,14,W,5);x.direction="rtl";x.textAlign="right";
-    x.font=`400 46px ${PDF_BRAND}`;x.fillStyle=PDFC.green;x.fillText(shopName(),W-M,M+40);
-    x.font=`500 24px ${PDF_F}`;x.fillStyle=PDFC.muted;x.fillText("بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها",W-M,M+80);
+    x.font=`400 46px ${PDF_BRAND}`;x.fillStyle=PDFC.green;x.fillText(o.title||shopName(),W-M,M+40);
+    x.font=`500 24px ${PDF_F}`;x.fillStyle=PDFC.muted;x.fillText(o.sub||"بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها",W-M,M+80);
     x.direction="ltr";x.textAlign="left";x.fillText(todayISO(),M,M+40);y=M+120};
   const rr=(X,Y,w,h,r)=>{x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+w,Y,X+w,Y+h,r);x.arcTo(X+w,Y+h,X,Y+h,r);x.arcTo(X,Y+h,X,Y,r);x.arcTo(X,Y,X+w,Y,r);x.closePath()};
   const groups=[];const add=(t,a)=>{if(a.length)groups.push([t,a.sort((p,q)=>p.name.localeCompare(q.name,"ar"))])};
-  add("مواد الوزن",list.filter(isWeighed));
+  if(o.group===false)add("",list.slice());else{add("مواد الوزن",list.filter(isWeighed));
   const rest=list.filter(p=>!isWeighed(p)),byCat=new Map();for(const p of rest){const c=p.category||"مواد أخرى";if(!byCat.has(c))byCat.set(c,[]);byCat.get(c).push(p)}
-  for(const c of [...byCat.keys()].sort((a,b)=>a.localeCompare(b,"ar")))add(c,byCat.get(c));
+  for(const c of [...byCat.keys()].sort((a,b)=>a.localeCompare(b,"ar")))add(c,byCat.get(c))}
   page();
   for(const [title,items] of groups){
     if(y+60+ch>H-M)page();
-    x.direction="rtl";x.textAlign="right";x.font=`700 30px ${PDF_D}`;x.fillStyle=PDFC.green;x.fillText(title,W-M,y+30);
-    const tw=x.measureText(title).width;x.strokeStyle=PDFC.line;x.lineWidth=2;x.beginPath();x.moveTo(M,y+20);x.lineTo(W-M-tw-16,y+20);x.stroke();y+=56;
+    if(title){x.direction="rtl";x.textAlign="right";x.font=`700 30px ${PDF_D}`;x.fillStyle=PDFC.green;x.fillText(title,W-M,y+30);
+      const tw=x.measureText(title).width;x.strokeStyle=PDFC.line;x.lineWidth=2;x.beginPath();x.moveTo(M,y+20);x.lineTo(W-M-tw-16,y+20);x.stroke();y+=56}
     items.forEach((p,i)=>{const col=i%C;if(col===0&&i){y+=ch+G}
       if(y+ch>H-M)page();
       const cx=W-M-(col+1)*cw-col*G,cy=y;
@@ -2999,11 +3033,11 @@ async function counterPdf(list){
       const img=arts.get(picOf(p));if(img){x.save();rr(cx+14,cy+12,68,68,12);x.clip();x.fillStyle="#fff";x.fillRect(cx+14,cy+12,68,68);const k=Math.min(68/img.width,68/img.height);x.drawImage(img,cx+14+(68-img.width*k)/2,cy+12+(68-img.height*k)/2,img.width*k,img.height*k);x.restore()}
       x.direction="rtl";x.textAlign="right";x.fillStyle=PDFC.ink;x.font=`700 27px ${PDF_F}`;
       let nm=p.name;while(nm.length>2&&x.measureText(nm).width>cw-110)nm=nm.slice(0,-1);if(nm!==p.name)nm+="…";x.fillText(nm,cx+cw-18,cy+44);
-      x.fillStyle=PDFC.green;x.font=`800 25px ${PDF_D}`;x.fillText(`${fmt(p.price)} ${CUR}${isWeighed(p)?" للكيلو":""}`,cx+cw-18,cy+78);
-      const bars=eanBars(p.barcode),mw=3,bw=bars.length*mw,bx=cx+(cw-bw)/2;
-      x.fillStyle="#fff";x.fillRect(bx-14,cy+94,bw+28,106);x.fillStyle="#000";
-      for(let j=0;j<bars.length;j++)if(bars[j]==="1")x.fillRect(bx+j*mw,cy+102,mw,68);
-      let c=normDigits(p.barcode);if(c.length===12)c="0"+c;x.direction="ltr";x.textAlign="center";x.fillStyle=PDFC.ink;x.font=`500 20px ${PDF_F}`;x.fillText(c,cx+cw/2,cy+192);
+      if(showPrice){x.fillStyle=PDFC.green;x.font=`800 25px ${PDF_D}`;x.fillText(`${fmt(p.price)} ${CUR}${isWeighed(p)?" للكيلو":""}`,cx+cw-18,cy+78)}
+      const bars=eanBars(p.barcode),bw=bars.length*mw,bx=cx+(cw-bw)/2;
+      x.fillStyle="#fff";x.fillRect(bx-12,cy+94,bw+24,ch-108);x.fillStyle="#000";
+      for(let j=0;j<bars.length;j++)if(bars[j]==="1")x.fillRect(bx+j*mw,cy+102,mw,bh+(C===2?20:0));
+      let c=normDigits(p.barcode);if(c.length===12)c="0"+c;x.direction="ltr";x.textAlign="center";x.fillStyle=PDFC.ink;x.font=`500 20px ${PDF_F}`;x.fillText(c,cx+cw/2,cy+ch-22);
     });
     y+=ch+G+16;
   }
@@ -4462,7 +4496,7 @@ document.addEventListener("click",e=>{
     case "excel":excelForm();break;
     case "webpics":webPicsForm();break;
     case "codes":codesForm();break;
-    case "ccard":counterCard(a);break;
+    case "ccard":counterCard();break;
     case "catalog":catalogForm();break;
     case "weighlist":weighListForm();break;
     case "delnocode":delNoCode();break;
