@@ -511,6 +511,7 @@ const DEFAULT_TPL={
   pay:"مرحباً {الاسم}،\nاستلمنا منك {المبلغ} د.ع بتاريخ {التاريخ}. شكراً لك.\nالرصيد المتبقي: {الرصيد} د.ع.\n{المتجر}",
   remind:"السلام عليكم ورحمة الله وبركاته\n{الاسم}، تحية طيبة.\nنود تذكيركم بلطف بأن الرصيد المتبقي على حسابكم هو {الرصيد} د.ع.\nنتشرف بزيارتكم في أي وقت، وشكراً لثقتكم بنا.\n{المتجر}",
   monthend:"السلام عليكم ورحمة الله وبركاته\n{الاسم}، تحية طيبة.\nأولاً: نود تذكيركم بأن المبلغ المطلوب على حسابكم هو {الرصيد} د.ع، ونرجو تسديده قبل نهاية الشهر ({نهاية الشهر}).\nثانياً: نعتذر عن إعطاء دين جديد في حال لم يتم تصفير الحساب.\nشاكرين تعاونكم وثقتكم بنا.\n{المتجر}",
+  all:"السلام عليكم ورحمة الله وبركاته\nزبائننا الكرام، تحية طيبة.\nنود تذكيركم بتسديد أو تصفية حساباتكم قبل نهاية الشهر ({نهاية الشهر}).\nنعتذر عن إعطاء دين جديد للحسابات اللي ما تتصفّر.\nشاكرين تعاونكم وثقتكم بنا.\n{المتجر}",
   promise:"مرحباً {الاسم}،\nنذكّرك بموعد الدفع اللي اتفقنا عليه ({الموعد}){مبلغ الوعد}.\nالرصيد المتبقي عليك: {الرصيد} د.ع.\nشكراً لك.\n{المتجر}"
 };
 // Saved templates that still hold an old default follow the new default.
@@ -701,9 +702,10 @@ function autoWaToast(c,link,res){
 }
 function fillTpl(kind,c,extra){
   const tpl=tplText(kind);
-  const bal=balanceOf(c.id);
-  const pr=c.promise||{};
-  const map={"نهاية الشهر":dayName(monthEndISO()),"الموعد":pr.date?dayName(pr.date):"","مبلغ الوعد":pr.amount?` بمبلغ ${fmt(pr.amount)} د.ع`:"","الاسم":c.name,"المبلغ":fmt(extra&&extra.amount),"الرصيد":fmt(bal),"التاريخ":((extra&&extra.date)||todayISO())+(extra&&extra.time?" الساعة "+extra.time:""),"الوقت":(extra&&extra.time)||hm12(Date.now()),"البيان":(extra&&extra.note)||(kind==="debt"?"مشتريات":"دفعة"),"المتجر":shopName()};
+  // c is null for the message to everyone: no name or amount in it.
+  const bal=c?balanceOf(c.id):0;
+  const pr=(c&&c.promise)||{};
+  const map={"نهاية الشهر":dayName(monthEndISO()),"الموعد":pr.date?dayName(pr.date):"","مبلغ الوعد":pr.amount?` بمبلغ ${fmt(pr.amount)} د.ع`:"","الاسم":c?c.name:"","المبلغ":fmt(extra&&extra.amount),"الرصيد":fmt(bal),"التاريخ":((extra&&extra.date)||todayISO())+(extra&&extra.time?" الساعة "+extra.time:""),"الوقت":(extra&&extra.time)||hm12(Date.now()),"البيان":(extra&&extra.note)||(kind==="debt"?"مشتريات":"دفعة"),"المتجر":shopName()};
   return tpl.replace(/\{([^}]+)\}/g,(m,k)=>k in map?map[k]:m);
 }
 const I={
@@ -1344,6 +1346,44 @@ function renderDetail(){
 function openCustomer(id){S.hq="";S.view="customers";S.selected=id;const oc=S.customers.get(id);if(oc)S.kind=kindOf(oc);render();if(window.innerWidth<=820)window.scrollTo(0,0)}
 
 /* ---------- reminders ---------- */
+// The customers shown on the reminders page (with a phone, and not already reminded this month-end), for «إرسال للكل بالدور».
+let remQueue={ids:[],kind:"remind",noPhone:0};
+// WhatsApp can't send to many people from a link, so this walks the list: one tap opens the next customer's chat with the message ready.
+function remSeq(){
+  const q={...remQueue,ids:[...remQueue.ids]};if(!q.ids.length)return;
+  let i=0,sent=0;
+  const title={remind:"تذكير بالرصيد",monthend:"تذكير نهاية الشهر",promise:"تذكير بموعد الدفع"}[q.kind];
+  openModal(`<h3>${title}: للكل بالدور</h3><div id="rsB"></div>
+    <div class="foot"><button class="btn wa" type="button" id="rsGo"></button><button class="btn" type="button" id="rsSkip">تخطي</button><button class="btn ghost" type="button" data-close>إيقاف</button></div>`,m=>{
+    const draw=()=>{
+      if(i>=q.ids.length){m.querySelector("#rsB").innerHTML=`<p class="hint">خلصت القائمة: انفتح واتساب لـ <b class="num">${sent}</b> من <b class="num">${q.ids.length}</b>.${q.noPhone?` و<b class="num">${q.noPhone}</b> بدون رقم.`:""}</p>`;
+        m.querySelector("#rsGo").hidden=true;m.querySelector("#rsSkip").hidden=true;m.querySelector("[data-close]").textContent="إغلاق";return}
+      const c=S.customers.get(q.ids[i]);if(!c){i++;return draw()}
+      m.querySelector("#rsB").innerHTML=`<p class="hint"><span class="num">${i+1}</span> من <span class="num">${q.ids.length}</span>${q.noPhone?` · ${q.noPhone} بدون رقم ما ينحسبون`:""}</p>
+        <div class="rem-row"><span class="avatar">${initial(c.name)}</span><div class="meta"><b>${esc(c.name)}</b></div><span class="chip debt"><span class="num">${fmt(balanceOf(c.id))}</span></span></div>
+        <textarea class="statement" readonly rows="5">${esc(fillTpl(q.kind,c))}</textarea>
+        <p class="ro-note" style="margin:0">اضغط «إرسال»، ينفتح واتساب، دز الرسالة وارجع للبرنامج: يطلع اللي بعده وحده.</p>`;
+      m.querySelector("#rsGo").innerHTML=`${I.wa}إرسال لـ ${esc(c.name)}`;
+    };
+    m.querySelector("#rsGo").addEventListener("click",()=>{const c=S.customers.get(q.ids[i]);if(!c)return;
+      openExternal(waLink(c.phone,fillTpl(q.kind,c)));log("remind","remind",{customerName:c.name,customerId:c.id,amount:balanceOf(c.id)});sent++;i++;draw()});
+    m.querySelector("#rsSkip").addEventListener("click",()=>{i++;draw()});
+    draw();
+  });
+}
+// One general message (no name, no amount) for everyone at once: copy it, or share it to a WhatsApp broadcast list or group.
+function remAll(){
+  const txt=fillTpl("all",null);
+  openModal(`<h3>رسالة عامة لكل الزبائن</h3><p class="hint">نص واحد بدون اسم أو مبلغ. تغيّره من الإعدادات ← قوالب الرسائل.</p>
+    <textarea class="statement" id="raTxt" readonly rows="6">${esc(txt)}</textarea>
+    <ol class="steps"><li>اضغط «فتح واتساب» واختار <b>قائمة البث</b> (أو الكروب) اللي بيها الزبائن، وتنرسل للكل مرة وحدة.</li>
+      <li>إذا ما عندك قائمة بث: بواتساب ← ⋮ ← «بث جديد» (أو «قوائم البث» بواتساب الأعمال)، واختار الزبائن.</li>
+      <li>رسالة البث توصل بس للي حافظ رقم المحل عنده.</li></ol>
+    <div class="foot"><button class="btn wa" type="button" id="raWa">${I.wa}فتح واتساب</button><button class="btn" type="button" id="raCp">${I.copy}نسخ النص</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>`,m=>{
+    m.querySelector("#raWa").addEventListener("click",()=>{openExternal("https://wa.me/?text="+encodeURIComponent(txt));log("remind","remind",{customerName:"كل الزبائن",detail:"رسالة عامة"})});
+    m.querySelector("#raCp").addEventListener("click",()=>copyText(txt,m.querySelector("#raTxt")));
+  });
+}
 function lastRemindMap(){const m=new Map();for(const a of S.activity){if(a.kind==="remind"&&a.customerId&&!m.has(a.customerId))m.set(a.customerId,a.at)}return m}
 function remindersView(){
   const per=stats();const last=lastRemindMap();
@@ -1356,10 +1396,12 @@ function remindersView(){
     .filter(x=>x.b>0&&(S.remFilter!=="late"||(x.li&&x.li.late))&&(!PR||x.c.promise))
     .sort(PR?(a,b)=>a.c.promise.date<b.c.promise.date?-1:1:S.remFilter==="late"?(a,b)=>b.li.days-a.li.days:(a,b)=>b.b-a.b);
   const logs=S.activity.filter(a=>a.kind==="remind");
+  remQueue={ids:list.filter(x=>x.c.phone&&!(ME&&(last.get(x.c.id)||0)>=meFrom)).map(x=>x.c.id),kind:PR?"promise":ME?"monthend":"remind",noPhone:list.filter(x=>!x.c.phone).length};
   return `<section class="pane card-pad">
     <div class="seg kind-seg" role="group" aria-label="التذكيرات"><button type="button" data-remtab="send" aria-pressed="${S.remTab==="send"}">إرسال تذكيرات</button><button type="button" data-remtab="log" aria-pressed="${S.remTab==="log"}">سجل التذكيرات (${logs.length})</button></div>
     ${S.remTab==="send"?`<p class="ro-note" style="margin:0">اضغط «إرسال» يفتح واتساب على رقم الزبون والرسالة جاهزة فيها اسمه والمبلغ المتبقي، وأنت تضغط إرسال. نص الرسالة يتغيّر من الإعدادات ← قوالب الرسائل.</p>
       <div class="chips" role="group" aria-label="تصفية المدينين"><button type="button" data-remf="all" aria-pressed="${S.remFilter==="all"}">كل المدينين</button><button type="button" data-remf="late" aria-pressed="${S.remFilter==="late"}">متأخرين أكثر من ${LATE_DAYS} يوم (${lateN})</button><button type="button" data-remf="promise" aria-pressed="${PR}">وعود الدفع (${promN})</button><button type="button" data-remf="month" aria-pressed="${ME}">نهاية الشهر</button></div>
+      ${canWrite()?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn wa" type="button" data-act="remseq" ${remQueue.ids.length?"":"disabled"}>${I.wa}إرسال للكل بالدور (${remQueue.ids.length})</button><button class="btn" type="button" data-act="remall">${I.wa}رسالة عامة للكل</button></div>`:""}
       ${ME?`<p class="ro-note" style="margin:0">رسالة نهاية الشهر لكل المدينين: المبلغ المطلوب، وتنبيه إنه ما ينطى دين جديد إذا ما تصفّر الحساب. اللي دزيتله من ${dayName(new Date(meFrom).getFullYear()+"-"+String(new Date(meFrom).getMonth()+1).padStart(2,"0")+"-"+String(new Date(meFrom).getDate()).padStart(2,"0"))} يطلع عليه «✓ وصله».</p>`:""}
       ${list.length?list.map(({c,b,li})=>{const l=c.phone?waLink(c.phone,fillTpl(PR?"promise":ME?"monthend":"remind",c)):"";const lr=last.get(c.id);const pl=promiseLeft(c);
         return `<div class="rem-row"><span class="avatar">${initial(c.name)}</span><div class="meta"><b>${esc(c.name)}</b>${c.promise?`<span class="${pl<=0?"late":""}">وعد: ${esc(dayName(c.promise.date))}${c.promise.amount?" · "+fmt(c.promise.amount):""} (${promiseText(pl)})</span>`:""}${li&&!PR?`<span class="${li.late?"late":""}">${lateText(li)}</span>`:""}<span>${ME&&lr>=meFrom?"✓ وصله تذكير · ":""}${lr?"آخر تذكير: "+esc(timeAgo(lr)):"لم يُرسل له تذكير"}</span></div>
@@ -1780,7 +1822,7 @@ function setPage(k){
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" type="button" data-act="waall" data-v="1">تشغيل التلقائي لكل اللي عندهم رقم</button><button class="btn ghost sm" type="button" data-act="waall" data-v="0">إرجاع الكل لليدوي</button></div></div>`;
     if(WA_AUTO)setTimeout(waStatus,0);
     return `<h2>قوالب الرسائل</h2>${waCard}<div class="tpl"><h3>${I.wa}واتساب الأعمال</h3><span class="ro-note">${waBizNum()?`الرقم: <b class="num" dir="ltr">${esc(S.settings.waBiz)}</b>. `:""}حتى تطلع الرسائل من رقم المحل بكل الموبايلات، اربط كل موبايل بحساب واتساب الأعمال.</span><div><button class="btn sm" type="button" data-set="wabiz">${I.wa}ربط واتساب الأعمال</button></div></div><p class="lead">للزبائن على «يدوي»: بعد كل دين أو تسديد ينفتح واتساب على رقم الزبون بهذا النص (تكدر تطفيها من نافذة التسجيل). الكلمات بين { } تتبدل تلقائياً.</p>
-      ${box("debt","إضافة دين جديد","ترسل بعد تسجيل دين")}${box("pay","إضافة دفعة","ترسل بعد تسجيل تسديد")}${box("remind","تذكير بالرصيد","زر «تذكير واتساب» في صفحة الزبون")}${box("promise","تذكير بموعد الدفع","يوم الوعد بالدفع. {الموعد} و{مبلغ الوعد} تتبدل تلقائياً")}${box("monthend","تذكير نهاية الشهر","لكل المدينين قبل نهاية الشهر: التذكيرات ← «نهاية الشهر». {نهاية الشهر} يتبدل بآخر يوم بالشهر")}
+      ${box("debt","إضافة دين جديد","ترسل بعد تسجيل دين")}${box("pay","إضافة دفعة","ترسل بعد تسجيل تسديد")}${box("remind","تذكير بالرصيد","زر «تذكير واتساب» في صفحة الزبون")}${box("promise","تذكير بموعد الدفع","يوم الوعد بالدفع. {الموعد} و{مبلغ الوعد} تتبدل تلقائياً")}${box("monthend","تذكير نهاية الشهر","لكل المدينين قبل نهاية الشهر: التذكيرات ← «نهاية الشهر». {نهاية الشهر} يتبدل بآخر يوم بالشهر")}${box("all","رسالة عامة لكل الزبائن","بدون اسم أو مبلغ، ترسلها مرة وحدة لكل الزبائن: التذكيرات ← «رسالة عامة للكل»")}
       <div><button class="btn primary" type="button" data-act="savetpl">حفظ القوالب</button></div>`;
   }
   if(k==="lock"){const n=lockDays(),cnt=d=>[...lockMap(d).values()].filter(x=>x.locked).length,ex=[...S.customers.values()].filter(ownLock),man=[...S.customers.values()].filter(c=>!isSup(c)&&c.lockNow);
@@ -3124,6 +3166,8 @@ document.addEventListener("click",e=>{
     case "setlimit":if(canWrite())customerForm(c);break;
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
+    case "remseq":if(canWrite())remSeq();break;
+    case "remall":if(canWrite())remAll();break;
     case "daybackup":if(isAdmin())dailyBackup();break;
     case "bkrootreset":kv.set("backupRoot",null).then(()=>toast("بالمرة الجاية يسألك وين مجلد النسخ بالفلاش."));break;
     case "pastebackup":if(isAdmin())pasteBackup();break;
