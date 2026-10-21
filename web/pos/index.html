@@ -132,6 +132,13 @@ fieldset.sec legend{padding:0 6px;font-family:var(--f-display);font-weight:700;f
 .tile .pic{width:100%;aspect-ratio:1/1;object-fit:contain;background:var(--paper-2);border-radius:10px;display:block;padding:6px}
 .cart-lines .cpic{width:40px;height:40px;border-radius:8px;object-fit:contain;background:var(--paper);border:1px solid var(--line);flex:none}
 .pic.art{object-fit:contain;padding:10%;background:var(--paper-2)}
+.pic-prev img[src^="img/art/"]{object-fit:contain;padding:10%}
+.art-pick{margin-top:8px}
+.art-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:6px;max-height:260px;overflow:auto;padding:2px}
+.art-grid button{display:flex;flex-direction:column;align-items:center;gap:2px;border:1px solid var(--line);background:var(--paper-2);border-radius:var(--r-ctl);padding:6px 4px;cursor:pointer;font:inherit;font-size:11.5px;color:var(--ink);min-height:64px;justify-content:center}
+.art-grid button img{width:40px;height:40px}
+.art-grid button span{line-height:1.2;text-align:center}
+.art-grid button[aria-pressed="true"]{border:2px solid var(--accent);background:var(--accent-soft)}
 .cart-lines .cpic.art{padding:3px}
 img.avatar.pic-av{object-fit:cover;padding:0;background:var(--paper)}
 .pic-edit{display:flex;gap:12px;align-items:center}
@@ -2695,7 +2702,7 @@ function productForm(p){
       const o=r.obj,now=Date.now(),meta={updatedAt:now,updatedBy:S.me.name};
       if(isNew){
         const obj={id:uid(),createdAt:now,by:S.me.name,...o,...meta};
-        const pa=commitPic(obj.id,pic);if(pa)obj.pic=pa;if(pic.noStock)obj.noStock=true;
+        const pa=commitPic(obj.id,pic);if(pa)obj.pic=pa;if(pic.noStock)obj.noStock=true;if(pic.art)obj.art=pic.art;
         S.products.set(obj.id,obj);try{db.collection("products").doc(obj.id).set(obj).catch(writeFail)}catch(x){writeFail(x)}
         log("add","product",{detail:`أضاف المادة ${o.name} بسعر ${fmt(o.price)}${o.track?`، الكمية ${qtyText(o.stock)}`:""}${o.offer?`، ${o.offer.type==="qty"?`عرض ${o.offer.n} بـ ${fmt(o.offer.price)}`:`سعر عرض ${fmt(o.offer.price)}`}`:""}`});
       }else{
@@ -2705,6 +2712,7 @@ function productForm(p){
         // Saving the item from its form means the owner checked its price (items from the ready-made list carry est until then).
         if(p.est)patch.est=firebase.firestore.FieldValue.delete();
         const pa=commitPic(p.id,pic);if(pa)patch.pic=pa;else if(pa===null)patch.pic=firebase.firestore.FieldValue.delete();if(pic.noStock)patch.noStock=true;
+        if(pic.artChanged)patch.art=pic.art||firebase.firestore.FieldValue.delete();
         const {__new,__picSt,...base}=p;
         S.products.set(p.id,{...base,...o,est:false,...(pa!==undefined?{pic:pa||0}:{}),...(pic.noStock?{noStock:true}:{})});try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
         const ch=[];
@@ -2740,6 +2748,7 @@ function loadPic(p){
   picWait.set(k,pr);return pr;
 }
 const picImg=(p,cls)=>{if(p&&p.pic)return `<img class="${cls}" data-pic="${esc(p.id)}" alt=""${picUrl(p)?` src="${esc(picUrl(p))}"`:""}>`;
+  if(p&&p.art&&ART_NAMES[p.art])return artImg(cls,p.art);
   const u=stockPic(p);if(u)return `<img class="${cls}" src="${u}" alt="" loading="lazy">`;
   const k=catIcon(p);return k?artImg(cls,k):""};
 /* Ready-made fruit photos (img/fruit, from the Fruits-360 photo set; credits in img/fruit/CREDITS.md). A fruit item with no
@@ -2781,8 +2790,14 @@ const ART_BY=[["water","مياه|ماء|مي معدني"],["energy","طاقه|ر
   ["detergent","منظف|منظفات|تايد|اريال|كلور|فلاش|سائل|مسحوق|معطر|ديتول"],["battery","بطاريه|بطاريات|كهربائيات|شاحن|لمبه"],
   ["pencil","قلم|اقلام|دفتر|قرطاسيه"],["bag","نايلون|كيس|اكياس|بلاستيك"],["pet","قطط|كلاب|حيوانات"],["home","منزليه|مكنسه|اسفنج|سطل"]]
   .map(([k,w])=>[k,new RegExp(w)]);
+// The owner can pick the drawing for an item (products.art), which wins over the automatic one.
+const ART_NAMES={soda:"مشروب غازي",water:"مي",juice:"عصير",energy:"مشروب طاقة",milk:"حليب",yogurt:"لبن وقيمر",cheese:"جبن",egg:"بيض",bread:"خبز",cake:"كيك",
+  biscuit:"بسكويت",choc:"شوكولاتة",mint:"حلويات",chips:"شيبس",nuts:"مكسرات",icecream:"ايس كريم",tea:"شاي",coffee:"قهوة",sack:"رز وطحين وسكر",oil:"زيت",
+  ghee:"سمن",pasta:"معكرونة",can:"معلبات",sauce:"صلصة وكاتشب",spice:"بهارات",jam:"مربى وعسل",meat:"لحم",chicken:"دجاج",fish:"سمك",frozen:"مجمدات",
+  detergent:"منظفات",soap:"صابون",shampoo:"شامبو وعناية",tissue:"مناديل",diaper:"حفاضات",battery:"بطاريات",pencil:"قرطاسية",bag:"أكياس",pet:"حيوانات",home:"أدوات منزلية",box:"مواد عامة"};
 const artMemo=new Map();
 function catIcon(p){
+  if(p&&!p.pic&&p.art&&ART_NAMES[p.art])return p.art;
   if(!p||p.pic||p.noStock)return "";
   const n=foldAr(p.name||""),c=foldAr(p.category||""),key=n+"|"+c;if(artMemo.has(key))return artMemo.get(key);
   const h=ART_BY.find(([,re])=>re.test(n))||ART_BY.find(([,re])=>re.test(c));const k=h?h[0]:"";artMemo.set(key,k);return k;
@@ -2812,16 +2827,27 @@ const picFieldHtml=x=>`<div class="pic-edit"><div class="pic-prev" id="${x}Prev"
   <label class="btn sm">${I.camera}تصوير المادة<input type="file" accept="image/*" capture="environment" hidden id="${x}Cam"></label>
   <label class="btn sm">من المعرض<input type="file" accept="image/*" hidden id="${x}Gal"></label>
   <button class="btn sm" type="button" id="${x}Web">${I.search}صورة من الإنترنت</button>
-  <button class="btn sm ghost danger-text" type="button" id="${x}Del">${I.trash}شيل الصورة</button></div></div>`;
+  <button class="btn sm" type="button" id="${x}Art">اختار رسمة</button>
+  <button class="btn sm ghost danger-text" type="button" id="${x}Del">${I.trash}شيل الصورة</button></div></div>
+  <div class="art-pick" id="${x}Arts" hidden></div>`;
 function picField(m,x,p,init){
   const st=init||{url:"",changed:false},prev=m.querySelector("#"+x+"Prev"),del=m.querySelector("#"+x+"Del");
   if(!init&&p&&!p.pic&&stockPic(p)){st.url=stockPic(p);st.stock=true}
-  const show=()=>{prev.innerHTML=st.url?`<img src="${esc(st.url)}" alt="صورة المادة">`:I.camera;prev.classList.toggle("empty",!st.url);del.hidden=!st.url;
+  if(st.art===undefined)st.art=p&&p.art||"";
+  const autoArt=()=>st.art||catIcon({...(p||{}),pic:0,noStock:0,art:"",name:(m.querySelector("#pName,#qName")||{}).value||(p&&p.name)||""});
+  const show=()=>{const ak=st.url?"":autoArt();prev.innerHTML=st.url?`<img src="${esc(st.url)}" alt="صورة المادة">`:ak?`<img src="img/art/${ak}.svg" alt="رسمة المادة">`:I.camera;prev.classList.toggle("empty",!st.url&&!ak);del.hidden=!st.url;
     prev.title=st.stock?"صورة جاهزة، تكدر تصوّر المادة بدالها":""};
   const pick=async f=>{if(!f)return;try{const r=await shrinkImage(f,480,.8);st.url=r.url;st.changed=true;st.stock=false;show()}catch(e){console.warn(e);toast("تعذّر فتح الصورة.")}};
   m.querySelector("#"+x+"Cam").addEventListener("change",e=>pick(e.target.files[0]));
   m.querySelector("#"+x+"Gal").addEventListener("change",e=>pick(e.target.files[0]));
   del.onclick=()=>{if(st.stock){st.stock=false;st.noStock=true}st.url="";st.changed=true;show()};
+  const artBtn=m.querySelector("#"+x+"Art"),arts=m.querySelector("#"+x+"Arts");
+  artBtn.onclick=()=>{if(!arts.hidden){arts.hidden=true;return}
+    arts.innerHTML=`<p class="hint">الرسمة تطلع للمادة إذا ما إلها صورة. «تلقائي» يخلي البرنامج يختار حسب الاسم والصنف.</p><div class="art-grid"><button type="button" data-art="" aria-pressed="${!st.art}"><b>تلقائي</b></button>${Object.entries(ART_NAMES).map(([k,n])=>`<button type="button" data-art="${k}" aria-pressed="${st.art===k}" title="${esc(n)}"><img src="img/art/${k}.svg" alt=""><span>${esc(n)}</span></button>`).join("")}</div>`;
+    arts.hidden=false};
+  arts.addEventListener("click",e=>{const b=e.target.closest("[data-art]");if(!b)return;st.art=b.dataset.art;st.artChanged=true;
+    if(st.url&&!st.changed){toast("المادة إلها صورة، والصورة تطلع قبل الرسمة. شيل الصورة إذا تريد الرسمة.",3500)}
+    arts.querySelectorAll("[data-art]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));show()});
   const web=m.querySelector("#"+x+"Web");
   web.onclick=async()=>{const c=m.querySelector("#pCode,#qCode"),code=c?c.value:p&&p.barcode;
     if(!normDigits(code||"").trim()){toast("اكتب باركود المادة أو امسحه أول، الصورة تنجاب بالباركود.");return}
@@ -3016,7 +3042,7 @@ function priceForm(p){
       const cur=S.products.get(p.id)||p,now=Date.now(),patch={price:v,barcode:c,cost,updatedAt:now,updatedBy:S.me.name},ch=[];
       if(Number(cur.price)!==v||cur.est)ch.push(`السعر ${fmt(v)}`);if((cur.barcode||"")!==c)ch.push(c?`الباركود ${c}`:"شال الباركود");if((Number(cur.cost)||0)!==cost)ch.push(`سعر الشراء ${fmt(cost)}`);
       if(cur.est)patch.est=firebase.firestore.FieldValue.delete();
-      const pa=commitPic(p.id,pic);if(pa)patch.pic=pa;else if(pa===null)patch.pic=firebase.firestore.FieldValue.delete();if(pa!==undefined)ch.push(pa?"الصورة":"شال الصورة");if(pic.noStock)patch.noStock=true;
+      const pa=commitPic(p.id,pic);if(pa)patch.pic=pa;else if(pa===null)patch.pic=firebase.firestore.FieldValue.delete();if(pa!==undefined)ch.push(pa?"الصورة":"شال الصورة");if(pic.noStock)patch.noStock=true;if(pic.artChanged){patch.art=pic.art||firebase.firestore.FieldValue.delete();ch.push("الرسمة")}
       S.products.set(p.id,{...cur,price:v,barcode:c,cost,updatedAt:now,updatedBy:S.me.name,est:false,...(pa!==undefined?{pic:pa||0}:{}),...(pic.noStock?{noStock:true}:{})});
       try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
       if(ch.length)log("edit","product",{detail:`عدّل ${cur.name}: ${ch.join("، ")}`});
