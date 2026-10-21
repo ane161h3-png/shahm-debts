@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Where the page may load from and talk to: itself, Firebase (Google) and the photo-reading worker. Anything else, such as a
      script planted in a customer name sending the data elsewhere, is blocked by the browser. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://shahm-ai.hydrzyd83.workers.dev; frame-src https://*.firebaseapp.com https://*.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://shahm-ai.hydrzyd83.workers.dev https://world.openfoodfacts.org https://images.openfoodfacts.org; frame-src https://*.firebaseapp.com https://*.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>كاشير ماركت الشهم</title>
 <meta name="description" content="كاشير ماركت الشهم: بيع كاش أو بالدين على حساب الزبون بدفتر الديون، وتقرير مبيعات يومي.">
@@ -252,18 +252,20 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 .cart-lines .info{flex:1;min-width:0;cursor:pointer;border:0;background:none;text-align:right;padding:0}
 .cart-lines .info b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cart-lines .info span{font-size:12.5px;color:var(--muted)}
-.cart-lines .lt{font-family:var(--f-display);font-weight:700;min-width:70px;text-align:left}
+.cart-lines .lt{font-family:var(--f-display);font-weight:800;font-size:16px;min-width:76px;text-align:left}
 .stepper{display:flex;align-items:center;border:1px solid var(--line);border-radius:99px;background:var(--paper-2)}
-.stepper button{width:32px;height:32px;border:0;background:none;cursor:pointer;display:grid;place-items:center;color:var(--accent);border-radius:50%;touch-action:manipulation}
+.stepper button{width:38px;height:38px;border:0;background:none;cursor:pointer;display:grid;place-items:center;color:var(--accent);border-radius:50%;touch-action:manipulation}
 .stepper button svg{width:16px;height:16px}
 .stepper .num{min-width:26px;text-align:center;font-weight:700;font-family:var(--f-display)}
 .cart-foot{padding:12px 14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
 .tot-row{display:flex;justify-content:space-between;gap:8px;font-size:14px;color:var(--muted)}
 .tot-row b{color:var(--ink)}
 .tot-row.disc button{border:0;background:none;color:var(--accent);font-weight:600;cursor:pointer;padding:0}
-.grand{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.grand span{font-family:var(--f-display);font-weight:700;font-size:16px}
-.grand b{font-family:var(--f-display);font-weight:800;font-size:30px;color:var(--accent)}
+.grand{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--accent-soft);border-radius:var(--r);padding:8px 14px}
+.grand>span{font-family:var(--f-display);font-weight:700;font-size:17px;display:flex;flex-direction:column;line-height:1.2}
+.grand>span small{font-size:12.5px;font-weight:500;color:var(--muted)}
+.grand b{font-family:var(--f-display);font-weight:800;font-size:44px;line-height:1.1;color:var(--accent);white-space:nowrap}
+.grand b small{font-size:15px;font-weight:700}
 .charge{width:100%;padding:15px;font-size:19px;border-radius:12px;box-shadow:var(--shadow-fab)}
 .cartbar{display:none}
 .ro-note{margin:12px}
@@ -280,7 +282,7 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
   .cart-foot{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
   .cartbar{display:flex;position:fixed;inset-inline:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:10;gap:8px}
   .cartbar .open{flex:1;display:flex;align-items:center;justify-content:space-between;gap:8px;border:0;border-radius:14px;padding:13px 16px;background:var(--accent);color:var(--accent-ink);font-family:var(--f-display);font-weight:700;font-size:16px;box-shadow:var(--shadow-fab);cursor:pointer}
-  .cartbar .open b{font-size:19px;font-weight:800}
+  .cartbar .open b{font-size:26px;font-weight:800}
   .cartbar .open .cnt{background:var(--accent-ink);color:var(--accent);border-radius:99px;padding:0 9px;font-size:14px;margin-left:8px}
 }
 /* Split view on a phone or tablet: after the first scan the invoice stays open on the left and the items on the right, so the
@@ -307,7 +309,8 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
   body.splitv .cart-lines .cpic{display:none}
   body.splitv .cart-lines .lt{min-width:0;margin-inline-start:auto}
   body.splitv .cart-foot{padding:8px 10px}
-  body.splitv .grand b{font-size:21px}
+  body.splitv .grand{flex-wrap:wrap;padding:6px 10px;gap:0 8px}
+  body.splitv .grand b{font-size:26px}
   body.splitv .charge{padding:12px;font-size:16px}
   body.splitv .pay-row{flex-direction:column;gap:6px}
   body.splitv .pay-row .more{padding:9px 10px}
@@ -369,6 +372,8 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 .count-bar{position:sticky;top:0;z-index:3;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--paper);border-radius:var(--r) var(--r) 0 0}
 .count-bar .m{flex:1;min-width:200px}
 .count-bar .m b{display:block;font-family:var(--f-display)}
+.cprog{display:block;height:6px;border-radius:99px;background:var(--paper-2);border:1px solid var(--line);overflow:hidden;margin:6px 0 4px}
+.cprog i{display:block;height:100%;background:var(--accent);transition:width .2s}
 .count-bar .m span{font-size:13px;color:var(--muted)}
 .crow{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--line)}
 .crow:last-child{border-bottom:0}
@@ -1061,7 +1066,7 @@ function renderCart(){
       ${S.whole?`<div class="banner info" style="padding:6px 12px">الفاتورة بسعر الجملة</div>`:""}
       <div class="tot-row"><span>المجموع</span><b class="num">${fmt(t.sub)}</b></div>
       <div class="tot-row disc"><button type="button" data-act="discount"${S.cart.length&&canSell()?"":" disabled"}>${t.disc?"الخصم (تعديل)":"+ إضافة خصم"}</button>${t.disc?`<b class="num">-${fmt(t.disc)}</b>`:""}</div>
-      <div class="grand"><span>المطلوب</span><b><span class="num">${fmt(t.total)}</span> <small style="font-size:14px">${CUR}</small></b></div>
+      <div class="grand" aria-live="polite"><span>المطلوب${S.cart.length?`<small><span class="num">${qtyText(round3(S.cart.reduce((a,l)=>a+(l.w?1:l.qty),0)))}</span> قطعة</small>`:""}</span><b><span class="num">${fmt(t.total)}</span> <small>${CUR}</small></b></div>
       <div class="pay-row"><button class="btn primary charge" type="button" data-act="quickcash"${S.cart.length&&canSell()?"":" disabled"}>${I.check}كاش <span class="num">${fmt(t.total)}</span>${kk("cash")}</button>
         <button class="btn more" type="button" data-act="checkout"${S.cart.length&&canSell()?"":" disabled"}>دين / باقي${kk("pay")}</button></div>
     </div>`;
@@ -2524,8 +2529,10 @@ function productsView(){
         <button class="btn sm" type="button" data-act="excel">${I.sheet}Excel: استيراد وتصدير</button>
         <button class="btn sm" type="button" data-act="plist" id="plBtn">${plBtn()}</button>
         <button class="btn sm" type="button" data-act="catalog">${I.list}قائمة مواد جاهزة</button>
+        <button class="btn sm" type="button" data-act="webpics">${I.camera}صور حقيقية من الإنترنت</button>
         <button class="btn sm" type="button" data-act="weighlist">${I.scale}مواد الوزن</button>
-        <button class="btn sm" type="button" data-act="linkscan">${I.scan}ربط باركود</button></div>
+        <button class="btn sm" type="button" data-act="linkscan">${I.scan}ربط باركود</button>
+        <button class="btn sm" type="button" data-act="codes">${I.scan}توليد باركود وطباعة ملصقات</button></div>
       <div class="chips" id="pchips"></div></div>
     <ul class="rows" id="plist"></ul></section>`;
 }
@@ -2630,7 +2637,7 @@ function productForm(p){
       <div class="row3"><div class="field"><label for="pCat">الصنف</label><select id="pCat">${cl.map(c=>`<option${c===p.category?" selected":""}>${esc(c)}</option>`).join("")}<option value="__new">+ صنف جديد…</option></select>
           <input id="pCatNew" maxlength="30" placeholder="اسم الصنف الجديد" hidden></div>
         <div class="field"><label for="pUnit">الوحدة</label><input id="pUnit" list="unitList" maxlength="15" value="${esc(baseUnit(p))}"><datalist id="unitList">${UNITS.map(u=>`<option value="${u}">`).join("")}</datalist></div>
-        <div class="field"><label for="pCode">الباركود</label><div class="tool-row"><input id="pCode" data-code data-next="pPrice" inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(p.barcode||"")}" placeholder="اختياري">${canScan()?`<button class="icon-btn" type="button" id="pScan" aria-label="مسح بالكاميرا">${I.scan}</button>`:""}</div></div></div>
+        <div class="field"><label for="pCode">الباركود</label><div class="tool-row"><input id="pCode" data-code data-next="pPrice" inputmode="numeric" style="direction:ltr;text-align:right" value="${esc(p.barcode||"")}" placeholder="اختياري">${canScan()?`<button class="icon-btn" type="button" id="pScan" aria-label="مسح بالكاميرا">${I.scan}</button>`:""}<button class="btn sm" type="button" id="pGen" title="باركود خاص بالمحل للمادة اللي ما عليها باركود">ولّد</button></div></div></div>
       <div class="row3"><div class="field"><label for="pPrice">سعر المفرد (${CUR})</label><input id="pPrice" class="big" inputmode="numeric" value="${p.price!==""&&p.price!=null?fmt(p.price):""}" placeholder="0"></div>
         <div class="field"><label for="pW">سعر الجملة</label><input id="pW" class="big" inputmode="numeric" value="${p.wprice>0?fmt(p.wprice):""}" placeholder="اختياري"></div>
         <div class="field"><label for="pCost">سعر الشراء</label><input id="pCost" class="big" inputmode="decimal" value="${p.cost>0?fmt(p.cost):""}" placeholder="للربح"></div></div>
@@ -2677,6 +2684,7 @@ function productForm(p){
     const tr=m.querySelector("#pTrack");tr.onchange=()=>{m.querySelector("#pStock").disabled=!tr.checked;m.querySelector("#pMin").disabled=!tr.checked;if(tr.checked)m.querySelector("#pStock").focus()};
     m.querySelector("#addPack").onclick=()=>{m.querySelector("#packs").insertAdjacentHTML("beforeend",packRow({}));m.querySelector("#packs [data-pack]:last-child input").focus()};
     m.querySelector("#packs").addEventListener("click",e=>{const b=e.target.closest("[data-delpack]");if(b)b.closest("[data-pack]").remove()});
+    m.querySelector("#pGen").onclick=()=>{const c=m.querySelector("#pCode");if(c.value.trim()&&!confirm("المادة عليها باركود. تبدله بباركود جديد؟"))return;c.value=newCodes(1)[0];c.dispatchEvent(new Event("input",{bubbles:true}));toast("انولّد باركود. احفظ المادة، وتكدر تطبع ملصقها من «توليد باركود وطباعة ملصقات».",3500)};
     const sc=m.querySelector("#pScan");
     if(sc)sc.onclick=()=>{
       // Keep what was typed: rebuild a draft from the form, then reopen it with the scanned code.
@@ -2808,6 +2816,7 @@ function flashItem(p,pack){
 const picFieldHtml=x=>`<div class="pic-edit"><div class="pic-prev" id="${x}Prev"></div><div class="pic-btns">
   <label class="btn sm">${I.camera}تصوير المادة<input type="file" accept="image/*" capture="environment" hidden id="${x}Cam"></label>
   <label class="btn sm">من المعرض<input type="file" accept="image/*" hidden id="${x}Gal"></label>
+  <button class="btn sm" type="button" id="${x}Web">${I.search}صورة من الإنترنت</button>
   <button class="btn sm ghost danger-text" type="button" id="${x}Del">${I.trash}شيل الصورة</button></div></div>`;
 function picField(m,x,p,init){
   const st=init||{url:"",changed:false},prev=m.querySelector("#"+x+"Prev"),del=m.querySelector("#"+x+"Del");
@@ -2818,6 +2827,12 @@ function picField(m,x,p,init){
   m.querySelector("#"+x+"Cam").addEventListener("change",e=>pick(e.target.files[0]));
   m.querySelector("#"+x+"Gal").addEventListener("change",e=>pick(e.target.files[0]));
   del.onclick=()=>{if(st.stock){st.stock=false;st.noStock=true}st.url="";st.changed=true;show()};
+  const web=m.querySelector("#"+x+"Web");
+  web.onclick=async()=>{const c=m.querySelector("#pCode,#qCode"),code=c?c.value:p&&p.barcode;
+    if(!normDigits(code||"").trim()){toast("اكتب باركود المادة أو امسحه أول، الصورة تنجاب بالباركود.");return}
+    web.disabled=true;toast("جارِ البحث عن صورة…");
+    try{const u=await webPic(code);if(u){st.url=u;st.changed=true;st.stock=false;show()}else toast("ما لكيت صورة لهذا الباركود. صوّر المادة بالكاميرا.",3500)}
+    catch(e){console.warn(e);toast("تعذّر الاتصال. تأكد من الإنترنت.")}finally{web.disabled=false}};
   if(!init&&p&&p.pic)loadPic(p).then(u=>{if(!st.changed){st.url=u;show()}}).catch(()=>{});
   show();return st;
 }
@@ -2828,6 +2843,113 @@ function commitPic(id,st){
   const at=Date.now();PICS.set(id+":"+at,st.url);
   try{db.collection("itemPhotos").doc(id).set({id,data:st.url,at,by:S.me.name}).catch(writeFail)}catch(e){writeFail(e)}
   return at;
+}
+/* ---------- photos from the internet ----------
+   Open Food Facts is a free, open database of packaged products, looked up by barcode. The device fetches the front photo,
+   shrinks it like a camera photo and saves it as the item's own photo, so it shows offline afterwards. Local products are
+   often missing from it; those keep their drawing until someone photographs them. */
+async function webPic(code){
+  code=normDigits(code||"").trim();if(!/^\d{8,14}$/.test(code))return "";
+  const r=await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=image_front_url,image_url,image_front_small_url`);
+  if(!r.ok)return "";
+  const pr=((await r.json())||{}).product||{},u=pr.image_front_url||pr.image_url||pr.image_front_small_url;
+  if(!u||!/^https:\/\/images\.openfoodfacts\.org\//.test(u))return "";
+  const b=await fetch(u);if(!b.ok)return "";
+  return (await shrinkImage(await b.blob(),480,.8)).url;
+}
+// Every item with a barcode and no photo of its own gets one, three at a time, with a running count.
+function webPicsForm(){
+  const list=[...S.products.values()].filter(p=>p.active!==false&&!p.pic&&!p.noStock&&/^\d{8,14}$/.test(normDigits(p.barcode||"")));
+  openModal(`<h3>صور حقيقية للمواد</h3>
+    <p class="hint">البرنامج يدوّر صورة كل مادة بباركودها بقاعدة Open Food Facts المجانية، ويحفظها كصورة المادة. المواد العالمية (بيبسي، نستله، إندومي…) غالباً موجودة، والمحلية ممكن لا، وهذني تصوّرها بالكاميرا من «تعديل المادة».</p>
+    <div class="rcpt"><div class="ln"><span>مواد بباركود وبلا صورة</span><span class="num">${list.length}</span></div><div class="ln" id="wpL" hidden></div></div>
+    <div class="foot"><button class="btn primary" type="button" id="wpGo"${list.length?"":" disabled"}>${I.search}ابدأ</button><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
+    const go=m.querySelector("#wpGo"),ln=m.querySelector("#wpL");
+    go.onclick=async()=>{go.disabled=true;ln.hidden=false;let done=0,found=0,fail=0;const q=list.slice();
+      const tick=()=>{ln.innerHTML=`<span>${done<list.length?"جارِ البحث…":"خلص"}</span><span><span class="num">${done}</span>/<span class="num">${list.length}</span> · لكيت <span class="num">${found}</span></span>`};tick();
+      const work=async()=>{for(let p;(p=q.shift());){try{const u=await webPic(p.barcode);
+          if(u){const at=commitPic(p.id,{url:u,changed:true});await db.collection("products").doc(p.id).update({pic:at,updatedAt:Date.now(),updatedBy:S.me.name});found++}}
+        catch(e){console.warn(e);fail++}done++;tick()}};
+      await Promise.all([work(),work(),work()]);
+      toast(found?`انضافت ${found} صورة`:fail===list.length?"تعذّر الاتصال. تأكد من الإنترنت.":"ما لكيت صور لهالمواد.",3500)};
+  });
+}
+/* ---------- barcodes: make and print ----------
+   Items with no maker's barcode (loose goods, home-made, local brands) get a shop code: an EAN-13 in the GS1 range 040–049,
+   which is kept for codes used inside one shop, so it never clashes with a real product or with a scale label (those start
+   with the scale prefix, 2 by default). The codes run in order: 0400 + 8 digits + check digit.
+   Labels print as an A4 PDF of 3 × 8 stickers (the common 24-per-sheet paper), each with the name, price and barcode. */
+const EAN_L=["0001101","0011001","0010011","0111101","0100011","0110001","0101111","0111011","0110111","0001011"];
+const EAN_P=["LLLLLL","LLGLGG","LLGGLG","LLGGGL","LGLLGG","LGGLLG","LGGGLL","LGLGLG","LGLGGL","LGGLGL"];
+const eanCheck=d12=>{let t=0;for(let i=0;i<12;i++)t+=Number(d12[i])*(i%2?3:1);return String((10-t%10)%10)};
+// The 95 bars of an EAN-13 (a 12-digit UPC-A is the same code with a leading 0), or "" for anything else.
+function eanBars(code){
+  let c=normDigits(code||"").trim();if(/^\d{12}$/.test(c))c="0"+c;if(!ean13ok(c))return "";
+  const inv=b=>b.replace(/./g,x=>x==="1"?"0":"1"),par=EAN_P[Number(c[0])];
+  let out="101";for(let i=1;i<7;i++){const l=EAN_L[Number(c[i])];out+=par[i-1]==="L"?l:inv(l).split("").reverse().join("")}
+  out+="01010";for(let i=7;i<13;i++)out+=inv(EAN_L[Number(c[i])]);return out+"101";
+}
+function usedCodes(){const u=new Set();for(const p of S.products.values()){if(p.barcode)u.add(String(p.barcode));for(const k of packsOf(p))if(k.barcode)u.add(String(k.barcode))}return u}
+// The next free shop codes, in order after the highest one already given.
+function newCodes(n){
+  const used=usedCodes();let seq=0;for(const c of used)if(/^0400\d{9}$/.test(c))seq=Math.max(seq,Number(c.slice(4,12)));
+  const out=[];while(out.length<n){seq++;const d=("0400"+String(seq).padStart(8,"0"));const c=d+eanCheck(d);if(!used.has(c))out.push(c)}return out;
+}
+const needsCode=p=>p.active!==false&&!p.barcode&&!(isWeighed(p)&&p.plu);
+function codesForm(){
+  const miss=[...S.products.values()].filter(needsCode);
+  const st={q:"",pick:new Map()};
+  openModal(`<h3>الباركودات</h3>
+    <div class="rcpt"><div class="ln"><span>مواد بلا باركود</span><span class="num">${miss.length}</span></div></div>
+    <p class="hint">البرنامج يولّد لكل مادة باركود خاص بالمحل (يبدأ بـ 0400) ما يتعارض مع باركودات الشركات ولا ملصقات الميزان. بعدها اطبع ملصقاتها والزقها على المواد، وتنقرا بالسكانر عادي.</p>
+    <div class="foot" style="margin-top:0"><button class="btn primary" type="button" id="bcGen"${miss.length?"":" disabled"}>${I.plus}ولّد باركود لكل المواد اللي بلاها</button></div>
+    <hr>
+    <h3 style="font-size:16px;margin:4px 0">طباعة ملصقات</h3>
+    <p class="hint">اختار المواد وعدد الملصقات لكل وحدة. الملف PDF على ورق A4 بيه 24 ملصق (3 × 8)، يطبع على ورق الستيكر العادي.</p>
+    <label class="search">${I.search}<input id="bcQ" type="search" placeholder="ابحث بالاسم" autocomplete="off"></label>
+    <div class="tool-row" style="margin:6px 0"><button class="btn sm" type="button" id="bcAll">اختار الظاهرة</button><button class="btn sm ghost" type="button" id="bcNone">شيل الاختيار</button><span class="hint" id="bcN" style="margin:0"></span></div>
+    <ul class="rows" id="bcL" style="max-height:38vh;overflow:auto"></ul>
+    <div class="foot"><button class="btn primary" type="button" id="bcPdf">${I.pdf}ملف الملصقات PDF</button><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
+    const L=m.querySelector("#bcL"),N=m.querySelector("#bcN");
+    const shown=()=>{const q=normDigits(st.q).trim();return productList().filter(p=>p.active!==false&&eanBars(p.barcode)&&(!q||matchScore(p.name,q,p.category)>0||String(p.barcode).includes(q))).slice(0,200)};
+    const count=()=>{let n=0;for(const v of st.pick.values())n+=v;N.innerHTML=n?`<span class="num">${n}</span> ملصق · <span class="num">${Math.ceil(n/24)}</span> ورقة`:""};
+    const draw=()=>{const l=shown();L.innerHTML=l.length?l.map(p=>`<li class="crow"><div class="m"><b>${esc(p.name)}</b><span class="num" style="direction:ltr">${esc(p.barcode)}</span></div>
+        <input data-bc="${esc(p.id)}" inputmode="numeric" value="${st.pick.get(p.id)||""}" placeholder="0" aria-label="عدد ملصقات ${esc(p.name)}"></li>`).join("")
+        :`<li class="empty">ماكو مواد بباركود ينطبع${st.q?" بهذا الاسم":""}.</li>`;count()};
+    L.addEventListener("input",e=>{const i=e.target.closest("[data-bc]");if(!i)return;const v=Math.min(500,Math.max(0,Math.floor(Number(normDigits(i.value))||0)));if(v)st.pick.set(i.dataset.bc,v);else st.pick.delete(i.dataset.bc);count()});
+    m.querySelector("#bcQ").addEventListener("input",e=>{st.q=e.target.value;draw()});
+    m.querySelector("#bcAll").onclick=()=>{for(const p of shown())if(!st.pick.get(p.id))st.pick.set(p.id,1);draw()};
+    m.querySelector("#bcNone").onclick=()=>{st.pick.clear();draw()};
+    m.querySelector("#bcGen").onclick=async e=>{const b=e.currentTarget;b.disabled=true;
+      const codes=newCodes(miss.length),now=Date.now();
+      for(let i=0;i<miss.length;i+=450){const bt=db.batch();miss.slice(i,i+450).forEach((p,j)=>{bt.update(db.collection("products").doc(p.id),{barcode:codes[i+j],updatedAt:now,updatedBy:S.me.name});st.pick.set(p.id,1)});
+        try{await bt.commit()}catch(err){writeFail(err);return}}
+      // Local copy so the list shows the new codes before the listener catches up.
+      miss.forEach((p,i)=>{p.barcode=codes[i]});
+      toast(`انولّد ${miss.length} باركود، واختاريتهن للطباعة`,3000);m.querySelector(".rcpt .num").textContent="0";draw()};
+    m.querySelector("#bcPdf").onclick=()=>{const list=[];for(const [id,n] of st.pick){const p=S.products.get(id);if(p&&eanBars(p.barcode))for(let k=0;k<n;k++)list.push(p)}
+      if(!list.length){toast("اختار مادة وحدة على الأقل.");return}labelsPdf(list)};
+    draw();
+  });
+}
+async function labelsPdf(list){
+  toast("جارِ تجهيز الملصقات…");if(!await pdfReady())return;
+  const W=1240,H=1754,C=3,R=8,MX=40,MY=60,lw=(W-2*MX)/C,lh=(H-2*MY)/R,pages=[];let x;
+  list.forEach((p,i)=>{
+    if(i%(C*R)===0){const cv=document.createElement("canvas");cv.width=W;cv.height=H;x=cv.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,W,H);pages.push(cv)}
+    const k=i%(C*R),cx=W-MX-(k%C+1)*lw,cy=MY+Math.floor(k/C)*lh,mid=cx+lw/2;
+    x.strokeStyle=PDFC.line;x.lineWidth=1;x.strokeRect(cx+6,cy+6,lw-12,lh-12);
+    x.direction="rtl";x.textAlign="center";x.fillStyle=PDFC.ink;x.font=`700 25px ${PDF_F}`;
+    let nm=p.name;while(nm.length>2&&x.measureText(nm).width>lw-40)nm=nm.slice(0,-1);if(nm!==p.name)nm+="…";x.fillText(nm,mid,cy+42);
+    x.fillStyle=PDFC.green;x.font=`800 27px ${PDF_D}`;x.direction="ltr";x.fillText(`${fmt(p.price)} ${CUR}${isWeighed(p)?" / كغم":""}`,mid,cy+74);
+    const bars=eanBars(p.barcode),mw=3,bw=bars.length*mw,bx=mid-bw/2;x.fillStyle="#000";
+    for(let j=0;j<bars.length;j++)if(bars[j]==="1")x.fillRect(bx+j*mw,cy+86,mw,82);
+    let c=normDigits(p.barcode);if(c.length===12)c="0"+c;
+    x.fillStyle=PDFC.ink;x.font=`500 21px ${PDF_F}`;x.fillText(c,mid,cy+190);
+  });
+  const {jsPDF}=window.jspdf;const pdf=new jsPDF({unit:"pt",format:"a4"});
+  pages.forEach((cv,i)=>{if(i)pdf.addPage();pdf.addImage(cv.toDataURL("image/png"),"PNG",0,0,595.28,841.89)});
+  try{if(await saveFile(`ملصقات-باركود-${todayISO()}.pdf`,pdf.output("blob")))toast("تم حفظ ملف الملصقات")}catch(e){console.warn(e);toast("تعذّر حفظ الملف.")}
 }
 /* ---------- linking barcodes ----------
    Scan an item from the shelf, then pick its name: the code is saved on that item, or a new item is made with it.
@@ -2967,8 +3089,11 @@ function setCount(p,q){
   saveCount();
 }
 const countDiffHtml=d=>d===null?`<span class="chip zero">يبدأ يتابَع</span>`:d===0?`<span class="chip paid">مضبوط</span>`:`<span class="chip ${d<0?"debt":"warn"}"><span class="num">${d>0?"+":""}${qtyText(d)}</span></span>`;
+// The items sold today: a daily count checks only what moved, which takes minutes instead of counting the whole shop.
+const soldToday=()=>[...new Set([...S.sales.values()].filter(x=>x.status!=="void").flatMap(x=>(x.items||[]).map(i=>i.pid)).filter(Boolean))].filter(id=>S.products.has(id));
 function countList(){
-  let list=[...S.products.values()].filter(p=>p.active!==false&&(tracked(p)||S.cany||S.count.items[p.id]));
+  const only=S.count.only?new Set(S.count.only):null;
+  let list=[...S.products.values()].filter(p=>only?only.has(p.id)||S.count.items[p.id]:p.active!==false&&(tracked(p)||S.cany||S.count.items[p.id]));
   if(S.ccat!=="all")list=list.filter(p=>(p.category||"")===S.ccat);
   if(S.cshow==="todo")list=list.filter(p=>!S.count.items[p.id]);
   else if(S.cshow==="diff")list=list.filter(p=>{const d=countDiff(p,S.count.items[p.id]);return d!==null&&d!==0});
@@ -2977,8 +3102,9 @@ function countList(){
   return list.map(p=>({p,s:p.barcode===q||packsOf(p).some(k=>k.barcode===q)?20:matchScore(p.name,q,p.category)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s).map(x=>x.p);
 }
 function countSumHtml(){
-  const t=countTotals(),all=[...S.products.values()].filter(p=>p.active!==false&&tracked(p)).length;
-  return `<b>عدّيت <span class="num">${t.n-t.fresh}</span> من <span class="num">${all}</span> مادة متابَعة</b>
+  const t=countTotals(),only=S.count.only,all=only?only.length:[...S.products.values()].filter(p=>p.active!==false&&tracked(p)).length,done=only?only.filter(id=>S.count.items[id]).length:t.n-t.fresh;
+  return `<b>${only?"جرد اليوم: ":""}عدّيت <span class="num">${done}</span> من <span class="num">${all}</span> ${only?"مادة انباعت اليوم":"مادة متابَعة"}</b>
+    <span class="cprog" role="progressbar" aria-valuemin="0" aria-valuemax="${all}" aria-valuenow="${done}"><i style="width:${all?Math.min(100,Math.round(done/all*100)):0}%"></i></span>
     <span>${t.short?`ناقص <span class="num">${t.short}</span>${t.shortValue?` (بقيمة <span class="num">${fmt(t.shortValue)}</span>)`:""}`:"ماكو نقص"}${t.extra?` · زايد <span class="num">${t.extra}</span>`:""}${t.fresh?` · جديدة بالمتابعة <span class="num">${t.fresh}</span>`:""}</span>`;
 }
 function renderCount(){
@@ -2989,7 +3115,9 @@ function renderCount(){
     v.innerHTML=head+`<div class="rep-grid"><section class="pane"><h2>جرد جديد</h2><div style="padding:14px;display:flex;flex-direction:column;gap:12px">
       <p class="hint">عدّ المواد اللي على الرفوف واكتب العدد لكل مادة، أو امسح باركودها مرة لكل حبة (باركود الكارتون يحسب الكارتون كله). المواد اللي ما تعدّها تبقى مثل ما هي.</p>
       <p class="hint">البيع يكمل عادي أثناء الجرد، والفرق ينحسب على الكمية اللي جانت بالبرنامج وقت ما عدّيت المادة. العد ينحفظ بهذا الجهاز لحد ما تحفظ الجرد.</p>
-      <button class="btn primary" type="button" data-act="countstart">${I.box}ابدأ الجرد</button></div></section>${takesPane()}</div>`;
+      <button class="btn primary" type="button" data-act="countday">${I.box}جرد اليوم: المواد اللي انباعت اليوم${S.ready.s?` (<span class="num">${soldToday().length}</span>)`:""}</button>
+      <button class="btn" type="button" data-act="countstart">${I.box}جرد كامل لكل المواد</button>
+      <p class="hint">بعد الحفظ تكدر تنزّل نتيجة الجرد ملف Excel وملف PDF.</p></div></section>${takesPane()}</div>`;
     return}
   v.innerHTML=head+`<section class="pane">
     <div class="count-bar"><div class="m" id="csum">${countSumHtml()}</div>
@@ -3059,9 +3187,9 @@ function countSaveForm(){
 }
 function saveStocktake(note){
   const t=countTotals(),now=Date.now(),id=uid(),FV=firebase.firestore.FieldValue;
-  const items=t.rows.map(({p,e,diff})=>({pid:p.id,name:p.name,unit:baseUnit(p),sys:e.tr?e.sys:null,counted:e.q,diff,cost:Number(p.cost)>0?Number(p.cost):null}));
+  const items=t.rows.map(({p,e,diff})=>({pid:p.id,name:p.name,cat:p.category||"",unit:baseUnit(p),sys:e.tr?e.sys:null,counted:e.q,diff,cost:Number(p.cost)>0?Number(p.cost):null}));
   const take={id,at:now,date:todayISO(),startedAt:S.count.startedAt||now,by:S.me.name,byId:S.me.id,n:t.n,same:t.same,short:t.short,extra:t.extra,fresh:t.fresh,
-    shortValue:t.shortValue,extraValue:t.extraValue,note,items};
+    shortValue:t.shortValue,extraValue:t.extraValue,note,items,...(S.count.kind?{kind:S.count.kind}:{})};
   // Counted items that differ get the difference added; items counted for the first time get the counted stock.
   const meta={updatedAt:now,updatedBy:S.me.name};
   const writes=t.rows.filter(r=>r.diff!==0||!tracked(r.p)).map(({p,e,diff})=>[db.collection("products").doc(p.id),diff!==null&&tracked(p)?{stock:FV.increment(diff),...meta}:{stock:e.q,track:true,...meta}]);
@@ -3081,7 +3209,7 @@ function fetchTakes(){
 }
 function takesPane(){
   return `<section class="pane"><h2>الجرد السابق</h2>${S.takes&&S.takes.length?`<ul class="rows">${S.takes.map(x=>`<li><button class="r" type="button" data-take="${esc(x.id)}">
-      <div class="m"><b>${esc(dayName(x.date))} · ${esc(hm12(x.at))}</b><span>${esc(x.by||"")} · <span class="num">${x.n}</span> مادة${x.note?" · "+esc(x.note):""}</span></div>
+      <div class="m"><b>${x.kind==="day"?"جرد يومي":"جرد كامل"} · ${esc(dayName(x.date))} · ${esc(hm12(x.at))}</b><span>${esc(x.by||"")} · <span class="num">${x.n}</span> مادة${x.note?" · "+esc(x.note):""}</span></div>
       <div class="a">${x.short?`<span class="chip debt">ناقص <span class="num">${x.short}</span></span>`:`<span class="chip paid">ماكو نقص</span>`}${x.shortValue?`<small>بقيمة <span class="num">${fmt(x.shortValue)}</span></small>`:""}</div></button></li>`).join("")}</ul>`
     :`<div class="empty">${S.takes?"ماكو جرد محفوظ بعد.":"…"}</div>`}</section>`;
 }
@@ -3092,14 +3220,24 @@ function takeModal(x){
       +(diffs.length>80?`<div class="ln"><span>… و <span class="num">${diffs.length-80}</span> غيرها بملف PDF</span></div>`:"")
       :`<div class="ln"><span>كل المواد المعدودة مضبوطة.</span></div>`}
       <hr><div class="ln" style="color:var(--debt)"><span>قيمة النقص</span><span class="num">${fmt(x.shortValue)}</span></div><div class="ln" style="color:var(--warn)"><span>قيمة الزيادة</span><span class="num">${fmt(x.extraValue)}</span></div></div>
-    <div class="foot"><button class="btn primary" type="button" id="tkPdf">${I.pdf}تقرير PDF</button><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
-    m.querySelector("#tkPdf").onclick=()=>takePdf(x);
+    <div class="foot"><button class="btn primary" type="button" id="tkPdf">${I.pdf}تقرير PDF</button><button class="btn" type="button" id="tkXl">${I.sheet}ملف Excel</button><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
+    m.querySelector("#tkPdf").onclick=()=>takePdf(x);m.querySelector("#tkXl").onclick=()=>takeXlsx(x);
   });
+}
+// The stocktake as a spreadsheet: one row per counted item, shortages first, with a totals block underneath.
+function takeXlsx(x){
+  const items=(x.items||[]).slice().sort((a,b)=>(a.diff===0)-(b.diff===0)||(a.diff||0)-(b.diff||0));
+  const catOf=i=>i.cat!=null?i.cat:(S.products.get(i.pid)||{}).category||"";
+  const rows=[["المادة","الصنف","الوحدة","بالبرنامج","المعدود","الفرق","الحالة","سعر الشراء","قيمة الفرق"],
+    ...items.map(i=>[i.name,catOf(i),i.unit||"",i.sys===null?"":i.sys,i.counted,i.diff===null?"":i.diff,i.diff===null?"بدت تتابَع":i.diff===0?"مضبوط":i.diff<0?"ناقص":"زايد",i.cost||"",i.diff&&i.cost?Math.round(i.diff*i.cost):""]),
+    [],["التاريخ",x.date],["الوقت",hm12(x.at)],["اللي سوّى الجرد",x.by||""],["النوع",x.kind==="day"?"جرد يومي":"جرد كامل"],["المواد المعدودة",x.n],["مضبوطة",x.same||0],
+    ["ناقصة",x.short||0],["قيمة النقص",x.shortValue||0],["زايدة",x.extra||0],["قيمة الزيادة",x.extraValue||0],...(x.note?[["ملاحظة",x.note]]:[])];
+  saveFile(`جرد-${x.date}-${hm12(x.at).replace(/[^\d]+/g,"")}.xlsx`,xlsxBlob(rows,"الجرد",[30,16,10,12,12,10,12,12,14])).then(ok=>{if(ok)toast("تم تنزيل ملف Excel")}).catch(()=>toast("تعذّر حفظ الملف."));
 }
 async function takePdf(x){
   toast("جارِ تجهيز التقرير…");if(!await pdfReady())return;
   const items=(x.items||[]).slice().sort((a,b)=>(a.diff===0)-(b.diff===0)||Math.abs(b.diff||0)*(b.cost||0)-Math.abs(a.diff||0)*(a.cost||0));
-  await a4Pdf(`جرد المخزن · ${dayName(x.date)} · ${x.by||""}`,x.date,({kv,table,gap})=>{
+  await a4Pdf(`${x.kind==="day"?"جرد يومي":"جرد المخزن"} · ${dayName(x.date)} · ${x.by||""}`,x.date,({kv,table,gap})=>{
     kv("المواد المعدودة",String(x.n));kv("مضبوطة",String(x.same||0),PDFC.paid);
     kv("ناقصة",`${x.short||0}${x.shortValue?` · ${fmt(x.shortValue)} ${CUR}`:""}`,PDFC.debt);kv("زايدة",`${x.extra||0}${x.extraValue?` · ${fmt(x.extraValue)} ${CUR}`:""}`);
     if(x.note)kv("ملاحظة",x.note);gap(16);
@@ -4227,7 +4365,10 @@ document.addEventListener("click",e=>{
     case "closeshift":closeShiftForm();break;
     case "newinv":newInvoice();break;
     case "whole":if(canSell())setWhole(!S.whole);break;
-    case "countstart":S.count={startedAt:Date.now(),by:S.me.name,items:{}};saveCount();S.cshow="all";S.cq="";renderCount();setTimeout(()=>{const q=$("#cq");if(q)q.focus()},30);break;
+    case "countday":case "countstart":{const day=a.dataset.act==="countday";
+      if(day&&!S.ready.s){toast("لحظة، جارِ تحميل مبيعات اليوم…");break}
+      const only=day?soldToday():null;if(day&&!only.length){toast("ما انباعت مواد اليوم لحد هسه.",3000);break}
+      S.count={startedAt:Date.now(),by:S.me.name,items:{},...(day?{only,kind:"day"}:{})};saveCount();S.cshow="all";S.cq="";renderCount();setTimeout(()=>{const q=$("#cq");if(q)q.focus()},30);break}
     case "countsave":countSaveForm();break;
     case "countcancel":if(confirm("إلغاء الجرد؟ العد اللي سويته ينمسح وما تتغير أي كمية.")){S.count=null;saveCount();renderCount()}break;
     case "countscan":scanBarcode(countCode);break;
@@ -4239,6 +4380,8 @@ document.addEventListener("click",e=>{
     case "rvphoto":rvPhoto();break;
     case "prices":pricesModal();break;
     case "excel":excelForm();break;
+    case "webpics":webPicsForm();break;
+    case "codes":codesForm();break;
     case "catalog":catalogForm();break;
     case "weighlist":weighListForm();break;
     case "delnocode":delNoCode();break;
