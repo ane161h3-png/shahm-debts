@@ -1800,8 +1800,8 @@ function setPage(k){
     <div class="banner info">بياناتك محفوظة على السحابة (Firebase)، فإذا حذفت البرنامج أو بدّلت الموبايل ثبّته من جديد وسجّل دخول وكل شي يرجع. ملف النسخة الاحتياطية للأمان الإضافي: إذا انحذف شي بالغلط تقدر ترجّعه منه.</div>
     <div class="tpl"><h3>${I.save}نسخة اليوم (النسخة + تقرير اليوم PDF)</h3>
       <span class="ro-note">تحفظ ملفين سوا: النسخة الاحتياطية، وتقرير شامل لليوم (حركات اليوم بأوقاتها، والمجاميع، وكل زبون وشكد عليه). اليوم يحسب من 2 الفجر لـ 2 الفجر، فإذا حفظت بعد نص الليل يبقى نفس يوم الشغل.</span>
-      ${FOLDER_OK?`<span class="ro-note">يسألك وين تحفظ: اختار مجلد اليوم بالفلاش، والملفين ينحفظون بيه مباشرة بدون ما يسوي أي مجلد.</span>`:""}
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button></div></div>
+      ${FOLDER_OK?`<span class="ro-note">بالفلاش: إذا عندك مجلدات السنة الجاهزة (السنة ثم الشهر ثم اليوم)، أول مرة اختار مجلد <b>Shahm-Backups</b>، وبعدها كل يوم ينحفظ بمجلد يومه وحده بدون ما يسألك. البرنامج ما يسوي مجلدات.</span>`:""}
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button>${FOLDER_OK?`<button class="btn ghost sm" type="button" data-act="bkrootreset">تغيير مجلد الفلاش</button>`:""}</div></div>
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
       <span class="ro-note">${lb?"آخر نسخة: "+esc(timeAgo(lb)):"لم تحفظ أي نسخة بعد"}</span>
       <p class="ro-note" style="margin:0">الملف يحتوي: <span class="num">${S.customers.size-sups}</span> زبون، <span class="num">${sups}</span> مورد، <span class="num">${S.txns.size}</span> حركة، مع معلومات المتجر وقوالب الرسائل وسجل النشاط.</p>
@@ -2410,21 +2410,41 @@ const kv=(()=>{let p;const open=()=>p||(p=new Promise((res,rej)=>{const r=indexe
   const run=(mode,fn)=>open().then(d=>new Promise((res,rej)=>{const t=d.transaction("kv",mode),q=fn(t.objectStore("kv"));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error)}));
   return {get:k=>run("readonly",s=>s.get(k)).catch(()=>null),set:(k,v)=>run("readwrite",s=>s.put(v,k)).catch(()=>{})}})();
 const FOLDER_OK=!NATIVE&&typeof window.showDirectoryPicker==="function";
-/* Daily backup in one tap: the backup file and the customers' debt PDF together. On a laptop (Chrome/Edge) the owner picks the
-   flash drive's backup folder once; after that every tap writes both files to <folder>/YYYY-MM/YYYY-MM-DD/ with no dialog.
-   Elsewhere both files are saved/shared together. The folder is asked for first, while the tap still counts as a user action. */
-// The chosen folder can be the backup root (Shahm-Backups), a month folder (2026-10) or the day's own folder (2026-10-08);
-// the files go into the day's folder under it, and an existing month/day folder is reused, never made twice.
-// The shop keeps its own year/month/day folders on the flash drive, so the app never makes folders:
-// it asks which folder (opening where it saved last time) and writes the two files straight into it.
+/* Daily backup in one tap: the backup file and the customers' debt PDF together. On a laptop (Chrome/Edge) the files go to the
+   flash drive; elsewhere both files are saved/shared together. The folder is asked for first, while the tap still counts as a
+   user action. The app never makes folders: the shop keeps its own ready folders on the flash drive.
+   - Year/month/day tree (Shahm-Backups/2026/10/21, from the ready-folders zip): the owner picks the tree's top folder (or a year
+     folder) once; after that each tap writes straight into the day's folder with no dialog. If that day's folder is missing,
+     it asks as below, opening at the top folder.
+   - Any other folder: it asks which folder each time (opening where it saved last time) and writes the two files into it. */
+// The day's folder under the tree, or null if the tree doesn't have it (nothing is created).
+async function dayDir(root,day){
+  const [y,m,d]=day.split("-");
+  try{let dir=root.name===y?root:await root.getDirectoryHandle(y);dir=await dir.getDirectoryHandle(m);return await dir.getDirectoryHandle(d)}catch(e){return null}
+}
+// A picked folder is a tree if it is a year folder or holds year folders (four digits).
+async function isTree(dir){
+  if(/^\d{4}$/.test(dir.name))return true;
+  try{for await(const [n,h] of dir.entries())if(h.kind==="directory"&&/^\d{4}$/.test(n))return true}catch(e){}
+  return false;
+}
 async function dailyBackup(){
-  const day=shopDay();let dir=null;
+  const day=shopDay();let dir=null,where="";
   if(FOLDER_OK){
     try{
-      const prev=await kv.get("backupDir");
-      dir=await window.showDirectoryPicker({id:"shahm-backup",mode:"readwrite",startIn:prev||"desktop"});
-      await kv.set("backupDir",dir);
-      if(await dir.queryPermission({mode:"readwrite"})!=="granted"&&await dir.requestPermission({mode:"readwrite"})!=="granted"){toast("لازم توافق حتى البرنامج يحفظ بالمجلد.");return}
+      const root=await kv.get("backupRoot");
+      if(root&&(await root.queryPermission({mode:"readwrite"})==="granted"||await root.requestPermission({mode:"readwrite"})==="granted"))
+        {dir=await dayDir(root,day);if(dir)where=day.replace(/-/g,"/")}
+      if(!dir){
+        const prev=await kv.get("backupDir");
+        const picked=await window.showDirectoryPicker({id:"shahm-backup",mode:"readwrite",startIn:root||prev||"desktop"});
+        if(await picked.queryPermission({mode:"readwrite"})!=="granted"&&await picked.requestPermission({mode:"readwrite"})!=="granted"){toast("لازم توافق حتى البرنامج يحفظ بالمجلد.");return}
+        if(await isTree(picked)){
+          await kv.set("backupRoot",picked);dir=await dayDir(picked,day);
+          if(!dir){toast(`ما لكيت مجلد يوم ${day.replace(/-/g,"/")} داخل \u2066${picked.name}\u2069. نزّل المجلدات الجاهزة للسنة على الفلاش، أو اختار مجلد اليوم.`,{ms:12000});return}
+          where=day.replace(/-/g,"/");
+        }else{dir=picked;await kv.set("backupDir",picked)}
+      }
     }catch(e){if(e&&e.name==="AbortError")return;console.warn(e);dir=null}
   }
   toast("جارِ تجهيز النسخة والتقرير اليومي…");
@@ -2437,7 +2457,7 @@ async function dailyBackup(){
       const put1=async(names,blob)=>{for(const n of names){try{const w=await (await dir.getFileHandle(n,{create:true})).createWritable();await w.write(blob);await w.close();return}catch(e){if(n===names[names.length-1])throw e}}};
       await put1([bk.name,`backup-${day}.json`],new Blob([bk.data],{type:"application/json"}));await put1([pdf.fname,`report-${day}.pdf`],pdf.blob);
       backupDone("حفظ نسخة اليوم بالمجلد");
-      toast(`✓ انحفظ الملفين بمجلد \u2066${dir.name}\u2069`,{ms:7000});render();return;
+      toast(`✓ انحفظ الملفين بمجلد \u2066${where||dir.name}\u2069`,{ms:7000});render();return;
     }catch(e){console.warn(e);
       toast(e&&e.name==="NotFoundError"?"ما لكيت المجلد. ركّب الفلاش وحاول مرة ثانية.":"تعذّر الحفظ بالمجلد.",{label:"حاول مرة ثانية",onClick:()=>dailyBackup(),ms:12000});return}
   }
@@ -3105,6 +3125,7 @@ document.addEventListener("click",e=>{
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
     case "daybackup":if(isAdmin())dailyBackup();break;
+    case "bkrootreset":kv.set("backupRoot",null).then(()=>toast("بالمرة الجاية يسألك وين مجلد النسخ بالفلاش."));break;
     case "pastebackup":if(isAdmin())pasteBackup();break;
     case "gobackup":S.view="settings";S.setPage="backup";render();window.scrollTo(0,0);break;
     case "addphone":if(canWrite()&&c)phoneForm(c);break;
