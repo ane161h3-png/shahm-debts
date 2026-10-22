@@ -1842,9 +1842,9 @@ function setPage(k){
     return `<h2>النسخ الاحتياطي والاستعادة</h2>
     <div class="banner info">بياناتك محفوظة على السحابة (Firebase)، فإذا حذفت البرنامج أو بدّلت الموبايل ثبّته من جديد وسجّل دخول وكل شي يرجع. ملف النسخة الاحتياطية للأمان الإضافي: إذا انحذف شي بالغلط تقدر ترجّعه منه.</div>
     <div class="tpl"><h3>${I.save}نسخة اليوم (النسخة + تقرير اليوم PDF)</h3>
-      <span class="ro-note">تحفظ ملفين سوا: النسخة الاحتياطية، وتقرير شامل لليوم (حركات اليوم بأوقاتها، والمجاميع، وكل زبون وشكد عليه). اليوم يحسب من 2 الفجر لـ 2 الفجر، فإذا حفظت بعد نص الليل يبقى نفس يوم الشغل.</span>
+      <span class="ro-note">تحفظ ملفين سوا: النسخة الاحتياطية، وتقرير شامل لليوم (حركات اليوم بأوقاتها، والمجاميع، وكل زبون وشكد عليه). اليوم يحسب من 2 الفجر لـ 2 الفجر، فإذا حفظت بعد نص الليل يبقى نفس يوم الشغل. وإذا عبرت 2 الفجر وما لحكت تحفظ، اضغط «نسخة أمس» وتنحفظ نسخة اليوم اللي فات بمجلده وتقريره.</span>
       ${FOLDER_OK?`<span class="ro-note">بالفلاش: إذا عندك مجلدات السنة الجاهزة (السنة ثم الشهر ثم اليوم)، أول مرة اختار مجلد <b>Shahm-Backups</b>، وبعدها كل يوم ينحفظ بمجلد يومه وحده بدون ما يسألك. البرنامج ما يسوي مجلدات.</span>`:""}
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button>${FOLDER_OK?`<button class="btn ghost sm" type="button" data-act="bkrootreset">تغيير مجلد الفلاش</button>`:""}</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button><button class="btn" type="button" data-act="daybackup" data-prev="1">${I.save}نسخة أمس (${prevShopDay().split("-").slice(1).reverse().join("/")})</button>${FOLDER_OK?`<button class="btn ghost sm" type="button" data-act="bkrootreset">تغيير مجلد الفلاش</button>`:""}</div></div>
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
       <span class="ro-note">${lb?"آخر نسخة: "+esc(timeAgo(lb)):"لم تحفظ أي نسخة بعد"}</span>
       <p class="ro-note" style="margin:0">الملف يحتوي: <span class="num">${S.customers.size-sups}</span> زبون، <span class="num">${sups}</span> مورد، <span class="num">${S.txns.size}</span> حركة، مع معلومات المتجر وقوالب الرسائل وسجل النشاط.</p>
@@ -2471,8 +2471,10 @@ async function isTree(dir){
   try{for await(const [n,h] of dir.entries())if(h.kind==="directory"&&/^\d{4}$/.test(n))return true}catch(e){}
   return false;
 }
-async function dailyBackup(){
-  const day=shopDay();let dir=null,where="";
+// The business day before the current one (for a backup missed before 2am).
+const prevShopDay=()=>{const [y,m,d]=shopDay().split("-").map(Number);return msISO(new Date(y,m-1,d-1,12).getTime())};
+async function dailyBackup(day=shopDay()){
+  let dir=null,where="";
   if(FOLDER_OK){
     try{
       const root=await kv.get("backupRoot");
@@ -2499,15 +2501,15 @@ async function dailyBackup(){
       // Some file systems refuse Arabic file names; then the same file is written under a plain English name.
       const put1=async(names,blob)=>{for(const n of names){try{const w=await (await dir.getFileHandle(n,{create:true})).createWritable();await w.write(blob);await w.close();return}catch(e){if(n===names[names.length-1])throw e}}};
       await put1([bk.name,`backup-${day}.json`],new Blob([bk.data],{type:"application/json"}));await put1([pdf.fname,`report-${day}.pdf`],pdf.blob);
-      backupDone("حفظ نسخة اليوم بالمجلد");
+      backupDone((day===shopDay()?"حفظ نسخة اليوم":"حفظ نسخة يوم "+day)+" بالمجلد");
       toast(`✓ انحفظ الملفين بمجلد \u2066${where||dir.name}\u2069`,{ms:7000});render();return;
     }catch(e){console.warn(e);
-      toast(e&&e.name==="NotFoundError"?"ما لكيت المجلد. ركّب الفلاش وحاول مرة ثانية.":"تعذّر الحفظ بالمجلد.",{label:"حاول مرة ثانية",onClick:()=>dailyBackup(),ms:12000});return}
+      toast(e&&e.name==="NotFoundError"?"ما لكيت المجلد. ركّب الفلاش وحاول مرة ثانية.":"تعذّر الحفظ بالمجلد.",{label:"حاول مرة ثانية",onClick:()=>dailyBackup(day),ms:12000});return}
   }
-  openModal(`<h3>نسخة اليوم جاهزة</h3><p class="hint">الملفين جاهزين: النسخة الاحتياطية والتقرير اليومي الشامل. اضغط حفظ حتى ينزلون سوا.</p>
+  openModal(`<h3>${day===shopDay()?"نسخة اليوم جاهزة":"نسخة يوم "+day.split("-").reverse().join("/")+" جاهزة"}</h3><p class="hint">الملفين جاهزين: النسخة الاحتياطية والتقرير اليومي الشامل. اضغط حفظ حتى ينزلون سوا.</p>
     <div class="foot"><button class="btn primary" type="button" id="bkBoth">${I.save}حفظ الملفين</button><button class="btn" type="button" data-close>إلغاء</button></div>`,
     m=>m.querySelector("#bkBoth").addEventListener("click",async()=>{
-      try{if(await saveFiles([{name:bk.name,blob:new Blob([bk.data],{type:"application/json"})},{name:pdf.fname,blob:pdf.blob}])){backupDone("حفظ نسخة اليوم");closeModal();toast("تم حفظ الملفين")}}
+      try{if(await saveFiles([{name:bk.name,blob:new Blob([bk.data],{type:"application/json"})},{name:pdf.fname,blob:pdf.blob}])){backupDone(day===shopDay()?"حفظ نسخة اليوم":"حفظ نسخة يوم "+day);closeModal();toast("تم حفظ الملفين")}}
       catch(e){console.warn(e);toast("تعذّر حفظ الملفات.")}}));
 }
 // Several files in one go: the Android app and phones share them together; a laptop downloads them one after the other.
@@ -3170,7 +3172,7 @@ document.addEventListener("click",e=>{
     case "listpdf":listPdf();break;
     case "remseq":if(canWrite())remSeq();break;
     case "remall":if(canWrite())remAll();break;
-    case "daybackup":if(isAdmin())dailyBackup();break;
+    case "daybackup":if(isAdmin())dailyBackup(b.dataset.prev?prevShopDay():shopDay());break;
     case "bkrootreset":kv.set("backupRoot",null).then(()=>toast("بالمرة الجاية يسألك وين مجلد النسخ بالفلاش."));break;
     case "pastebackup":if(isAdmin())pasteBackup();break;
     case "gobackup":S.view="settings";S.setPage="backup";render();window.scrollTo(0,0);break;
