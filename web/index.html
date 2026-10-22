@@ -289,9 +289,10 @@ td.x{width:64px;white-space:nowrap}
 .calc-t{border:1px solid var(--line);background:var(--paper-2);border-radius:99px;padding:3px 11px;font-size:12.5px;cursor:pointer;color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:5px}
 .calc-t svg{width:15px;height:15px}
 .amt-tools{display:inline-flex;gap:6px;flex-wrap:wrap}.calc-t[aria-pressed=true]{background:var(--debt);color:var(--paper);border-color:var(--debt)}
-.search .s-mic{position:absolute;left:5px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:0;background:transparent;color:var(--accent);display:grid;place-items:center;cursor:pointer}
-.search .s-mic svg{position:static;transform:none;width:19px;height:19px;color:inherit}.search .s-mic.on{background:var(--debt);color:var(--paper)}
-.search:has(.s-mic) input,.home-search .search:has(.s-mic) input{padding-left:44px}
+.search .s-mic{position:absolute;left:3px;top:3px;bottom:3px;width:52px;border-radius:8px;border:0;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;cursor:pointer}
+.search .s-mic svg{position:static;transform:none;width:26px;height:26px;color:inherit}.search .s-mic.on{background:var(--debt);color:var(--paper)}
+.search .s-mic:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.search:has(.s-mic) input,.home-search .search:has(.s-mic) input,.sr-pick .search:has(.s-mic) input{padding-left:62px;min-height:46px}
 .calc-t[aria-expanded="true"]{background:var(--accent-soft);border-color:var(--accent-soft);color:var(--accent)}
 .calc{direction:ltr;display:flex;flex-direction:column;gap:6px;background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:8px}
 .calc[hidden]{display:none}
@@ -2735,7 +2736,8 @@ const VC_ERR={"not-allowed":"البرنامج ما عنده إذن يستعمل 
 // The mic buttons on search boxes and on the amount field: browsers with speech recognition listen themselves; in the Android app
 // (no speech recognition in its web view) the search mic opens the keyboard so its own mic types the name. One listen per press; the words reach onText as they come and once more at the end.
 const VC_LIVE=!!SR&&!NATIVE;
-const micBtn=(attrs,label)=>VC_LIVE||NATIVE?`<button type="button" ${attrs} aria-pressed="false" aria-label="${label}" title="${label}">${I.mic}</button>`:"";
+// Search mics carry the keyboard shortcut in their tooltip (Ctrl+Enter, or \ next to Enter when not typing).
+const micBtn=(attrs,label)=>VC_LIVE||NATIVE?`<button type="button" ${attrs} aria-pressed="false" aria-label="${label}" title="${label}${/data-vsearch/.test(attrs)?" (Ctrl+Enter)":""}" ${/data-vsearch/.test(attrs)?'aria-keyshortcuts="Control+Enter"':""}>${I.mic}</button>`:"";
 function listen(btn,{onText,onState}){
   if(btn._rec){try{btn._rec.stop()}catch(e){}return}
   if(!navigator.onLine){onState(VC_ERR.network);return}
@@ -3201,7 +3203,8 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("input",e=>{if(e.target.dataset&&e.target.dataset.biz){S.bizDraft={...(S.bizDraft||{}),[e.target.dataset.biz]:e.target.value};bizRedraw()}if(e.target.id==="q"){S.q=e.target.value;renderList()}if(e.target.id==="hq"){S.hq=e.target.value;homeSearch(S.hq)}});
 /* Laptop shortcuts: Ctrl+Z undoes the last delete (while its «تراجع» is showing) or the last debt/payment saved here;
-   + / − open a debt / payment on the open account; / jumps to the search box. Typing in a field keeps its normal keys. */
+   + / − open a debt / payment on the open account; / jumps to the search box; Ctrl+Enter (or \ beside Enter when not typing)
+   starts the voice search on the search box on screen. Typing in a field keeps its normal keys. */
 let lastAdd=null;
 function undoLast(){
   const tb=[...document.querySelectorAll(".toast .toast-btn")].find(b=>b.textContent==="تراجع");if(tb){tb.click();return}
@@ -3216,6 +3219,9 @@ function undoLast(){
 document.addEventListener("keydown",e=>{
   if(!S.me||e.defaultPrevented)return;
   const t=e.target,typing=!!(t&&t.matches&&t.matches("input:not([type=checkbox]),textarea,select,[contenteditable]"));
+  if(((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&(e.key==="Enter"||e.code==="NumpadEnter"))||(!typing&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.code==="Backslash")){
+    const root=$("#modalRoot").innerHTML?$("#modalRoot"):document,mic=root.querySelector("[data-vsearch]");
+    if(mic){e.preventDefault();voiceSearch(mic)}return}
   if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.code==="KeyZ"){if(typing)return;e.preventDefault();if(!$("#modalRoot").innerHTML)undoLast();return}
   if(typing||e.ctrlKey||e.metaKey||e.altKey||$("#modalRoot").innerHTML)return;
   const act=e.key==="+"||e.code==="NumpadAdd"?"debt":e.key==="-"||e.code==="NumpadSubtract"?"pay":"";
