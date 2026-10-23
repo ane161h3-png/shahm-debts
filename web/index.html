@@ -131,6 +131,7 @@ header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .chips button{border:1px solid var(--line);background:var(--paper-2);border-radius:99px;padding:5px 13px;font-size:13px;cursor:pointer;color:var(--muted);font-weight:600}
 .chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .act-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.act-list.long{max-height:75vh;overflow-y:auto;overscroll-behavior:contain;padding-inline-end:4px}
 .act{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--paper-2)}
 .act .ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none}
 .act .ic svg{width:18px;height:18px}
@@ -1104,7 +1105,10 @@ function startData(){
   const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied")toast("ما عندك صلاحية لقراءة البيانات. راجع المدير.");else if(e&&e.code==="resource-exhausted")toast(readErrMsg(e))};
   unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.c=true;render()},fail));
   unsubs.push(db.collection(P("txns")).onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.t=true;render()},fail));
-  unsubs.push(db.collection(P("activity")).orderBy("at","desc").limit(100).onSnapshot(s=>{S.activity=s.docs.map(d=>d.data());render()},fail));
+  // Activity: the whole business day live (the home log shows every one of today's entries), plus the last 100 before it, read once.
+  const day0=shopDayRange(shopDay()).start;let actDay=[],actOld=[];const actSet=()=>{S.activity=[...actDay,...actOld];render()};
+  unsubs.push(db.collection(P("activity")).where("at",">=",day0).orderBy("at","desc").onSnapshot(s=>{actDay=s.docs.map(d=>d.data());actSet()},fail));
+  db.collection(P("activity")).where("at","<",day0).orderBy("at","desc").limit(100).get().then(s=>{actOld=s.docs.map(d=>d.data());actSet()},fail);
   unsubs.push(db.doc(P("settings/main")).onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};
     if(SHOP&&S.isOwner&&S.shop&&!s.exists&&!s.metadata.fromCache)saveSettings({shopName:S.shop.name,ownerName:S.shop.ownerName,phone:S.shop.phone||""});try{if(shopName())localStorage.setItem(GATE_NAME_KEY,shopName());localStorage.setItem(GATE_TENANT_KEY,SHOP?"1":"0")}catch(e){}if(S.me&&S.me.role==="owner")S.me.name=S.settings.ownerName||"المدير";S.ready.s=true;render()},fail));
   if(S.isOwner){
@@ -1163,7 +1167,8 @@ function homeView(){
   for(const c of S.customers.values()){const p=per.get(c.id);if(p.bal>0){if(isSup(c))supOwed+=p.bal;else{total+=p.bal;owing++}}}
   for(const t of S.txns.values()){const c=S.customers.get(t.customerId);if(c&&!isSup(c)&&(t.date||"").startsWith(m)){t.type==="debt"?mAdd+=t.amount:mPay+=t.amount}}
   const top=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal})).filter(x=>x.b>0).sort((a,b)=>b.b-a.b).slice(0,6);
-  const acts=S.activity.filter(a=>a.kind!=="login"&&(S.actFilter==="all"?a.kind!=="remind":a.kind===S.actFilter)).slice(0,60);
+  const actAll=S.activity.filter(a=>a.kind!=="login"&&(S.actFilter==="all"?a.kind!=="remind":a.kind===S.actFilter));
+  const actDay0=shopDayRange(shopDay()).start,actToday=actAll.filter(a=>a.at>=actDay0).length,acts=actAll.slice(0,Math.max(60,actToday));
   return `<div style="display:flex;flex-direction:column;gap:14px">
   <section class="pane summary" aria-label="ملخص">
     <div class="sum-hero"><div class="k">${I.wallet}مجموع الدين على الزبائن${hiddenNums().length?`<button class="eye" type="button" data-act="reveal" aria-pressed="${!!S.reveal}">${S.reveal?I.eyeOff+"إخفاء":I.eye+"إظهار"}</button>`:""}</div>
@@ -1200,11 +1205,11 @@ function homeView(){
         ${supOwed>0?`<div class="banner warn">علينا للموردين: ${shown("sup",`<b class="num">${fmt(supOwed)}</b> ${CUR}`)}</div>`:""}</div>
   <div class="home-grid">
     <section class="pane card-pad" aria-label="سجل النشاط">
-      <div class="section-title"><h2>سجل النشاط</h2></div>
+      <div class="section-title"><h2>سجل النشاط</h2><span class="ro-note">اليوم: <b class="num">${actToday}</b></span></div>
       <div class="chips" role="group" aria-label="تصفية النشاط">
         ${[["all","كل النشاطات"],["add","إضافة"],["edit","تعديل"],["delete","حذف"]].map(([k,l])=>`<button type="button" data-actf="${k}" aria-pressed="${S.actFilter===k}">${l}</button>`).join("")}
       </div>
-      ${acts.length?`<ul class="act-list">${acts.map(a=>`<li class="act"><span class="ic ${a.kind==="add"||a.kind==="edit"||a.kind==="delete"?a.kind:"add"}">${a.kind==="add"?I.plus:a.kind==="delete"?I.trash:a.kind==="remind"?I.bell:I.edit}</span>
+      ${acts.length?`<ul class="act-list${acts.length>30?" long":""}">${acts.map(a=>`<li class="act"><span class="ic ${a.kind==="add"||a.kind==="edit"||a.kind==="delete"?a.kind:"add"}">${a.kind==="add"?I.plus:a.kind==="delete"?I.trash:a.kind==="remind"?I.bell:I.edit}</span>
         <div class="body"><div class="t">${ACT_TEXT(a)}</div><div class="s"><span>بواسطة: ${esc(a.by||"غير معروف")}</span><span>${esc(timeAgo(a.at))}</span></div></div></li>`).join("")}</ul>`
       :`<div class="empty"><b>لا يوجد نشاط بعد</b>كل دين أو تسديد أو تعديل يظهر هنا مع اسم من سجّله.</div>`}
     </section>
