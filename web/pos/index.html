@@ -2992,7 +2992,7 @@ const onCard=p=>p.active!==false&&(isWeighed(p)||!p.barcode||/^0400\d{9}$/.test(
 const CARD_KEY="shahm-pos-card";
 function cardOpts(){let o={};try{o=JSON.parse(localStorage.getItem(CARD_KEY)||"null")||(S.pos&&S.pos.card)||{}}catch(e){o=(S.pos&&S.pos.card)||{}}
   return {title:o.title||"",sub:o.sub||"",cols:[2,3,4].includes(o.cols)?o.cols:3,price:o.price!==false,group:o.group!==false,page:o.page!==false,
-    extra:Array.isArray(o.extra)?o.extra:[],skip:Array.isArray(o.skip)?o.skip:[],names:o.names&&typeof o.names==="object"?{...o.names}:{},sec:o.sec&&typeof o.sec==="object"?{...o.sec}:{},off:Array.isArray(o.off)?o.off:[],at:o.at||0}}
+    extra:Array.isArray(o.extra)?o.extra:[],skip:Array.isArray(o.skip)?o.skip:[],np:Array.isArray(o.np)?o.np:[],names:o.names&&typeof o.names==="object"?{...o.names}:{},sec:o.sec&&typeof o.sec==="object"?{...o.sec}:{},off:Array.isArray(o.off)?o.off:[],at:o.at||0}}
 function saveCardOpts(o){try{localStorage.setItem(CARD_KEY,JSON.stringify(o))}catch(e){}}
 function saveCardShop(o){o.at=Date.now();saveCardOpts(o);if(!isAdmin())return false;
   try{db.doc("settings/pos").set({card:o},{mergeFields:["card"]}).catch(writeFail)}catch(x){writeFail(x)}return true}
@@ -3035,10 +3035,13 @@ function cardLayout(list,o){
 }
 // The card editor: the A4 pages themselves. Tap a card to edit it, «+» to add an item to that section,
 // the title or a section's heading for their own choices.
+// No price on the card for this item: switched off for the whole card, for its section, or for the item alone (prices that
+// change every day, like vegetables, would be out of date on paper).
+const cardNoPrice=(p,o)=>o.price===false||(o.np||[]).includes(p.id)||(o.np||[]).includes("sec:"+cardSec(p,o)[0]);
 function counterCard(top){
   // The shop's saved card wins over this device's copy when it is newer (saved from another device).
   const sh=S.pos&&S.pos.card;let o=cardOpts();if(sh&&(sh.at||0)>(o.at||0)){try{localStorage.removeItem(CARD_KEY)}catch(e){}o=cardOpts()}
-  const skip=new Set(o.skip),off=new Set(o.off),extra=new Set(o.extra.filter(id=>S.products.has(id)));
+  const skip=new Set(o.skip),off=new Set(o.off),np=new Set(o.np),extra=new Set(o.extra.filter(id=>S.products.has(id)));
   const all=()=>[...S.products.values()].filter(p=>onCard(p)||extra.has(p.id));
   const shown=()=>all().filter(p=>!skip.has(p.id)&&!off.has(cardSec(p,o)[0]));
   const secs=()=>{const m=new Map(WSEC.map(w=>[w[0],w[1]]));for(const p of S.products.values())if(p.active!==false&&!isWeighed(p)){const c=p.category||"مواد أخرى";m.set("c:"+c,c)}return m};
@@ -3051,7 +3054,7 @@ function counterCard(top){
     <div class="foot"><button class="btn primary" type="button" id="ccGo">${I.pdf}طلّع الملف PDF</button><button class="btn" type="button" id="ccSave">${I.check}حفظ التعديلات</button><button class="btn" type="button" data-close>إغلاق</button></div>
     <div class="scrim cc-pop" id="ccPop" hidden><div class="modal" id="ccPopIn"></div></div>`,m=>{
     const PG=m.querySelector("#ccPages"),N=m.querySelector("#ccN"),POP=m.querySelector("#ccPop"),IN=m.querySelector("#ccPopIn");
-    const keep=()=>{o.price=m.querySelector("#ccP").checked;o.group=m.querySelector("#ccG").checked;o.page=m.querySelector("#ccPg").checked;o.skip=[...skip];o.off=[...off];o.extra=[...extra];saveCardOpts(o)};
+    const keep=()=>{o.price=m.querySelector("#ccP").checked;o.group=m.querySelector("#ccG").checked;o.page=m.querySelector("#ccPg").checked;o.skip=[...skip];o.off=[...off];o.np=[...np];o.extra=[...extra];saveCardOpts(o)};
     const nm=p=>o.names[p.id]||p.name;
     const bars=p=>{const b=eanBars(p.barcode);if(!b)return "";let r="";for(let j=0;j<b.length;j++)if(b[j]==="1")r+=`<rect x="${j}" width="1" height="1"/>`;return `<svg viewBox="0 0 ${b.length} 1" preserveAspectRatio="none" width="${b.length}" height="1">${r}</svg>`};
     const draw=()=>{const L=cardLayout(shown(),o),C=L.C,mw=C===2?4:C===4?2:3,bh=C===4?60:68,head=`<div class="a4-h" data-cce="head"><b style="font-family:${PDF_BRAND};color:${PDFC.green}">${esc(o.title||shopName())}</b><span style="color:${PDFC.muted}">${esc(o.sub||"بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها")}</span></div><span class="a4-d num" style="color:${PDFC.muted}">${todayISO()}</span>`;
@@ -3064,7 +3067,7 @@ function counterCard(top){
         const p=it.p,bw=(eanBars(p.barcode)||"").length*mw,code=normDigits(p.barcode||"");
         return `<button type="button" class="a4-card" data-cce="${esc(p.id)}" style="${pos};background:${PDFC.shade};border-color:${PDFC.line}">
           <img src="${esc(stockPic({...p,pic:0})||`img/art/${catIcon({...p,pic:0})||"box"}.svg`)}" alt="" style="background:#fff">
-          <b class="a4-n" style="font-size:${C===4?23:27}px">${esc(nm(p))}</b>${o.price?`<span class="a4-p" style="color:${PDFC.green}">${fmt(p.price)} ${CUR}${isWeighed(p)?" للكيلو":""}</span>`:""}
+          <b class="a4-n" style="font-size:${C===4?23:27}px">${esc(nm(p))}</b>${cardNoPrice(p,o)?"":`<span class="a4-p" style="color:${PDFC.green}">${fmt(p.price)} ${CUR}${isWeighed(p)?" للكيلو":""}</span>`}
           ${bw?`<span class="a4-b" style="background:#fff;width:${bw+24}px;height:${it.h-108}px;margin-left:${-(bw+24)/2}px"><span style="height:${bh+(C===2?20:0)}px;width:${bw}px;color:#000">${bars(p)}</span><small class="num">${code.length===12?"0"+code:code}</small></span>`
             :`<span class="a4-b a4-new" style="height:${it.h-108}px;border-color:${PDFC.line};color:${PDFC.muted}">باركود جديد وقت الطباعة</span>`}</button>`}).join("")}
         <span class="a4-pg num" style="color:${PDFC.green}">${i+1} / ${L.pages.length}</span></div></div>`).join("")
@@ -3084,10 +3087,11 @@ function counterCard(top){
       productForm(p,{back,html:`<div class="field" style="border:1px solid var(--line);border-radius:var(--r);padding:12px;gap:10px"><b style="font-family:var(--f-display)">على بطاقة الكاونتر</b>
           <div class="field"><label for="cpN">الاسم على البطاقة (إذا تريده غير اسم المادة)</label><input id="cpN" maxlength="40" value="${esc(o.names[id]||"")}" placeholder="${esc(p.name)}"></div>
           <div class="field"><label for="cpS">القسم</label>${secSel(cur)}</div>
+          <label class="check"><input type="checkbox" id="cpNp" ${(o.np||[]).includes(id)?"checked":""}> بدون سعر على البطاقة (سعره يتغيّر)</label>
           <button class="btn ghost danger-text" type="button" id="cpDel" style="align-self:flex-start">${I.trash}شيلها من البطاقة بس</button></div>`,
         mount:f=>{f.querySelector("#cpDel").onclick=()=>{skip.add(id);if(!onCard(p))extra.delete(id);keep();closeModal();toast("انشالت من البطاقة. ترجّعها من «+»");back()}},
         save:f=>{const q=S.products.get(id)||p,v=f.querySelector("#cpN").value.trim(),sv=f.querySelector("#cpS").value;if(v&&v!==q.name)o.names[id]=v;else delete o.names[id];
-          delete o.sec[id];if(cardSec(q,o)[0]!==sv)o.sec[id]=sv;off.delete(sv);keep()}})};
+          delete o.sec[id];if(cardSec(q,o)[0]!==sv)o.sec[id]=sv;off.delete(sv);if(f.querySelector("#cpNp").checked)np.add(id);else np.delete(id);keep()}})};
     const addTo=k=>{const t=secs().get(k)||"";
       pop(`<h3>ضيف مادة${t?` · ${esc(t)}`:""}</h3><label class="search">${I.search}<input id="cpQ" type="search" placeholder="ابحث بالاسم أو الباركود" autocomplete="off"></label>
         <ul class="rows" id="cpL" style="max-height:46vh;overflow:auto"></ul><div class="foot"><button class="btn" type="button" data-pclose>تم</button></div>`);
@@ -3107,9 +3111,10 @@ function counterCard(top){
       IN.querySelector("#cpOk").onclick=()=>{o.title=IN.querySelector("#cpT").value.trim();o.sub=IN.querySelector("#cpU").value.trim();POP.hidden=true;keep();draw()}};
     const editSec=k=>{const t=secs().get(k)||k.replace(/^c:/,"");
       pop(`<h3>${esc(t)}</h3><p class="hint">هذا القسم بصفحته. تكدر تطبعه لحاله أو تشيله من الملف.</p>
-        <div class="foot" style="flex-wrap:wrap"><button class="btn primary" type="button" id="cpOne">${I.pdf}اطبعه لحاله</button><button class="btn" type="button" id="cpAdd">${I.plus}ضيف مادة</button><button class="btn ghost danger-text" type="button" id="cpOff">شيل القسم من الملف</button><button class="btn" type="button" data-pclose>رجوع</button></div>`);
+        <div class="foot" style="flex-wrap:wrap"><button class="btn primary" type="button" id="cpOne">${I.pdf}اطبعه لحاله</button><button class="btn" type="button" id="cpAdd">${I.plus}ضيف مادة</button><label class="check" style="flex-basis:100%"><input type="checkbox" id="cpNps" ${np.has("sec:"+k)?"checked":""}> بدون أسعار بهذا القسم (تنطبع البطاقات بدون سعر)</label><button class="btn ghost danger-text" type="button" id="cpOff">شيل القسم من الملف</button><button class="btn" type="button" data-pclose>رجوع</button></div>`);
       IN.querySelector("#cpOne").onclick=()=>{POP.hidden=true;print(m.querySelector("#ccGo"),p=>cardSec(p,o)[0]===k,true)};
       IN.querySelector("#cpAdd").onclick=()=>addTo(k);
+      IN.querySelector("#cpNps").onchange=e=>{if(e.target.checked)np.add("sec:"+k);else np.delete("sec:"+k);keep();draw()};
       IN.querySelector("#cpOff").onclick=()=>{off.add(k);POP.hidden=true;keep();draw()}};
     PG.addEventListener("click",e=>{const a=e.target.closest("[data-ccadd]");if(a)return addTo(a.dataset.ccadd);
       const s=e.target.closest("[data-ccsec]");if(s)return editSec(s.dataset.ccsec);
@@ -3133,7 +3138,7 @@ function counterCard(top){
 }
 async function counterPdf(list,o={}){
   toast("جارِ تجهيز البطاقة…");if(!await pdfReady())return;
-  const W=CARD_W,H=CARD_H,M=CARD_M,{pages:L,C,cw,ch}=cardLayout(list,o),mw=C===2?4:C===4?2:3,bh=C===4?60:68,showPrice=o.price!==false;
+  const W=CARD_W,H=CARD_H,M=CARD_M,{pages:L,C,cw,ch}=cardLayout(list,o),mw=C===2?4:C===4?2:3,bh=C===4?60:68;
   // The picture on each card: the ready-made fruit photo for fruit and vegetables, else the item's drawing.
   const picOf=p=>stockPic({...p,pic:0})||`img/art/${catIcon({...p,pic:0})||"box"}.svg`;
   const arts=new Map();await Promise.all([...new Set(list.map(picOf))].map(u=>new Promise(res=>{const i=new Image();i.onload=()=>{arts.set(u,i);res()};i.onerror=res;i.src=u})));
@@ -3152,7 +3157,7 @@ async function counterPdf(list,o={}){
       const img=arts.get(picOf(p));if(img){x.save();rr(cx+14,cy+12,68,68,12);x.clip();x.fillStyle="#fff";x.fillRect(cx+14,cy+12,68,68);const k=Math.min(68/img.width,68/img.height);x.drawImage(img,cx+14+(68-img.width*k)/2,cy+12+(68-img.height*k)/2,img.width*k,img.height*k);x.restore()}
       x.direction="rtl";x.textAlign="right";x.fillStyle=PDFC.ink;x.font=`700 ${C===4?23:27}px ${PDF_F}`;
       const full=(o.names&&o.names[p.id])||p.name;let nm=full;while(nm.length>2&&x.measureText(nm).width>cw-110)nm=nm.slice(0,-1);if(nm!==full)nm+="…";x.fillText(nm,cx+cw-18,cy+44);
-      if(showPrice){x.fillStyle=PDFC.green;x.font=`800 25px ${PDF_D}`;x.fillText(`${fmt(p.price)} ${CUR}${isWeighed(p)?" للكيلو":""}`,cx+cw-18,cy+78)}
+      if(!cardNoPrice(p,o)){x.fillStyle=PDFC.green;x.font=`800 25px ${PDF_D}`;x.fillText(`${fmt(p.price)} ${CUR}${isWeighed(p)?" للكيلو":""}`,cx+cw-18,cy+78)}
       const bars=eanBars(p.barcode),bw=bars.length*mw,bx=cx+(cw-bw)/2;
       x.fillStyle="#fff";x.fillRect(bx-12,cy+94,bw+24,ch-108);x.fillStyle="#000";
       for(let j=0;j<bars.length;j++)if(bars[j]==="1")x.fillRect(bx+j*mw,cy+102,mw,bh+(C===2?20:0));
