@@ -2964,14 +2964,31 @@ const onCard=p=>p.active!==false&&(isWeighed(p)||!p.barcode||/^0400\d{9}$/.test(
 const CARD_KEY="shahm-pos-card";
 function cardOpts(){let o={};try{o=JSON.parse(localStorage.getItem(CARD_KEY)||"null")||(S.pos&&S.pos.card)||{}}catch(e){o=(S.pos&&S.pos.card)||{}}
   return {title:o.title||"",sub:o.sub||"",cols:[2,3,4].includes(o.cols)?o.cols:3,price:o.price!==false,group:o.group!==false,page:o.page!==false,
-    extra:Array.isArray(o.extra)?o.extra:[],skip:Array.isArray(o.skip)?o.skip:[],names:o.names&&typeof o.names==="object"?{...o.names}:{},at:o.at||0}}
+    extra:Array.isArray(o.extra)?o.extra:[],skip:Array.isArray(o.skip)?o.skip:[],names:o.names&&typeof o.names==="object"?{...o.names}:{},sec:o.sec&&typeof o.sec==="object"?{...o.sec}:{},off:Array.isArray(o.off)?o.off:[],at:o.at||0}}
 function saveCardOpts(o){try{localStorage.setItem(CARD_KEY,JSON.stringify(o))}catch(e){}}
 function saveCardShop(o){o.at=Date.now();saveCardOpts(o);if(!isAdmin())return false;
   try{db.doc("settings/pos").set({card:o},{mergeFields:["card"]}).catch(writeFail)}catch(x){writeFail(x)}return true}
+// Weighed goods are split into the counter's own sections (each can be printed alone); other items go by their category.
+// The section comes from the name, or from the card's own choice for that item (o.sec, set in the edit row).
+const WSEC=[["veg","خضرة وفواكه"],["sweet","حلويات بالوزن",/بقلاو|زلابي|برمه|داطلي|كناف|بسبوس|زنود|هريس|حلاوه|مدقوق|كليج|ملبن|من السما|حلويات|شعر بنات/],
+  ["dairy","ألبان وأجبان",/قيمر|كيمر|(^| )لور|جبن|لبن|روب|زبد|قشط|شنين|شنينه/],
+  ["nuts","جبس ومكسرات وجكليت",/جبس|شيبس|فستق|كاجو|لوز|بندق|جوز|بزر|بزور|مكسر|جكليت|شوكول|سكاكر|ملبس|علك|كرزات|سوداني/],
+  ["food","حليب فل ومواد غذائية"]];
+function cardSec(p,o){
+  if(!isWeighed(p)){const c=p.category||"مواد أخرى";return ["c:"+c,c]}
+  const f=o&&o.sec&&o.sec[p.id],own=f&&WSEC.find(w=>w[0]===f);if(own)return [own[0],own[1]];
+  const n=foldAr(p.name);
+  if(/فواك|خضر/.test(foldAr(p.category||"")))return WSEC[0];
+  for(const w of WSEC)if(w[2]&&w[2].test(n))return [w[0],w[1]];
+  return stockPic({...p,pic:0})?[WSEC[0][0],WSEC[0][1]]:[WSEC[4][0],WSEC[4][1]]}
+// Sections in print order: the weighed ones first, then the categories by name.
+function cardGroups(list,o){const by=new Map();for(const p of list){const [k,t]=cardSec(p,o);if(!by.has(k))by.set(k,[t,[]]);by.get(k)[1].push(p)}
+  const ord=k=>{const i=WSEC.findIndex(w=>w[0]===k);return i<0?99:i};
+  return [...by.entries()].sort((a,b)=>ord(a[0])-ord(b[0])||a[1][0].localeCompare(b[1][0],"ar")).map(([k,[t,a]])=>[k,t,a])}
 function counterCard(){
   // The shop's saved card wins over this device's copy when it is newer (saved from another device).
   const sh=S.pos&&S.pos.card;let o=cardOpts();if(sh&&(sh.at||0)>(o.at||0)){try{localStorage.removeItem(CARD_KEY)}catch(e){}o=cardOpts()}
-  const skip=new Set(o.skip),extra=new Set(o.extra.filter(id=>S.products.has(id))),open=new Set();
+  const skip=new Set(o.skip),off=new Set(o.off),extra=new Set(o.extra.filter(id=>S.products.has(id))),open=new Set();
   const base=()=>[...S.products.values()].filter(p=>onCard(p)||extra.has(p.id)).sort((a,b)=>(isWeighed(b)-isWeighed(a))||(a.category||"").localeCompare(b.category||"","ar")||a.name.localeCompare(b.name,"ar"));
   openModal(`<h3>بطاقة الكاونتر</h3>
     <p class="hint">عدّل البطاقة قبل الطباعة: شيل أو ضيف مواد، وغيّر العنوان والشكل. اختياراتك تنحفظ للمرة الجاية. المادة اللي بلا باركود ياخذ باركود جديد وقت الطباعة.</p>
@@ -2986,19 +3003,26 @@ function counterCard(){
     <ul class="rows" id="ccL" style="max-height:34vh;overflow:auto"></ul>
     <div class="foot"><button class="btn primary" type="button" id="ccGo">${I.pdf}طلّع الملف PDF</button><button class="btn" type="button" id="ccSave">${I.check}حفظ التعديلات</button><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
     const L=m.querySelector("#ccL"),A=m.querySelector("#ccAdd"),N=m.querySelector("#ccN");
-    const keep=()=>{o.title=m.querySelector("#ccT").value.trim();o.sub=m.querySelector("#ccS").value.trim();o.price=m.querySelector("#ccP").checked;o.group=m.querySelector("#ccG").checked;o.page=m.querySelector("#ccPg").checked;o.skip=[...skip];o.extra=[...extra];saveCardOpts(o)};
-    const draw=()=>{const l=base(),on=l.filter(p=>!skip.has(p.id)).length;N.innerHTML=`على البطاقة <span class="num">${on}</span> من <span class="num">${l.length}</span>`;
-      L.innerHTML=l.length?l.map(p=>`<li class="crow"><label class="check" style="flex:1;min-width:0"><input type="checkbox" data-cc="${esc(p.id)}" ${skip.has(p.id)?"":"checked"}>
+    const keep=()=>{o.title=m.querySelector("#ccT").value.trim();o.sub=m.querySelector("#ccS").value.trim();o.price=m.querySelector("#ccP").checked;o.group=m.querySelector("#ccG").checked;o.page=m.querySelector("#ccPg").checked;o.skip=[...skip];o.off=[...off];o.extra=[...extra];saveCardOpts(o)};
+    const row=p=>`<li class="crow" style="flex-wrap:wrap"><label class="check" style="flex:1;min-width:0"><input type="checkbox" data-cc="${esc(p.id)}" ${skip.has(p.id)?"":"checked"}>
         <span class="m"><b>${esc(o.names[p.id]||p.name)}</b><span>${o.names[p.id]?`(${esc(p.name)}) · `:""}${esc(p.category||"بدون صنف")} · <span class="num">${fmt(p.price)}</span>${isWeighed(p)?" للكيلو":""}${p.barcode?"":" · ياخذ باركود جديد"}</span></span></label>
         <button class="btn sm ghost" type="button" data-ccn="${esc(p.id)}" title="الاسم اللي يطلع بالبطاقة">${I.edit}</button>
         ${extra.has(p.id)?`<button class="btn sm ghost danger-text" type="button" data-ccx="${esc(p.id)}">شيلها</button>`:""}
-        ${open.has(p.id)?`<div style="flex-basis:100%;display:flex;gap:6px;margin-top:6px"><input data-ccname="${esc(p.id)}" maxlength="40" value="${esc(o.names[p.id]||"")}" placeholder="${esc(p.name)}" aria-label="الاسم بالبطاقة" style="flex:1"><button class="btn sm" type="button" data-ccok="${esc(p.id)}">${I.check}</button></div>`:""}</li>`).join("")
+        ${open.has(p.id)?`<div style="flex-basis:100%;display:flex;gap:6px;margin-top:6px"><input data-ccname="${esc(p.id)}" maxlength="40" value="${esc(o.names[p.id]||"")}" placeholder="${esc(p.name)}" aria-label="الاسم بالبطاقة" style="flex:1">${isWeighed(p)?`<select data-ccsec="${esc(p.id)}" aria-label="القسم">${WSEC.map(w=>`<option value="${w[0]}" ${cardSec(p,o)[0]===w[0]?"selected":""}>${w[1]}</option>`).join("")}</select>`:""}<button class="btn sm" type="button" data-ccok="${esc(p.id)}">${I.check}</button></div>`:""}</li>`;
+    const draw=()=>{const l=base(),gs=cardGroups(l,o),on=gs.reduce((n,[k,,a])=>n+(off.has(k)?0:a.filter(p=>!skip.has(p.id)).length),0);
+      N.innerHTML=`على البطاقة <span class="num">${on}</span> من <span class="num">${l.length}</span>`;
+      L.innerHTML=l.length?gs.map(([k,t,a])=>`<li class="crow" style="background:var(--paper-2);position:sticky;top:0;z-index:1"><label class="check" style="flex:1;min-width:0"><input type="checkbox" data-ccs="${esc(k)}" ${off.has(k)?"":"checked"}><b style="font-family:var(--f-display)">${esc(t)} · <span class="num">${a.length}</span></b></label>
+        <button class="btn sm" type="button" data-cc1="${esc(k)}" title="يطلّع ملف بهذا القسم بس">${I.pdf}اطبعه لحاله</button></li>${off.has(k)?"":a.map(row).join("")}`).join("")
         :`<li class="empty">ماكو مواد. ضيف مواد من البحث فوك.</li>`};
-    L.addEventListener("change",e=>{const c=e.target.closest("[data-cc]");if(!c)return;if(c.checked)skip.delete(c.dataset.cc);else skip.add(c.dataset.cc);keep();draw()});
+    L.addEventListener("change",e=>{const s=e.target.closest("[data-ccs]");if(s){if(s.checked)off.delete(s.dataset.ccs);else off.add(s.dataset.ccs);keep();draw();return}
+      const c=e.target.closest("[data-cc]");if(!c)return;if(c.checked)skip.delete(c.dataset.cc);else skip.add(c.dataset.cc);keep();draw()});
     L.addEventListener("click",e=>{const x=e.target.closest("[data-ccx]");if(x){extra.delete(x.dataset.ccx);keep();draw();return}
       const n=e.target.closest("[data-ccn]");if(n){const id=n.dataset.ccn;if(open.has(id))open.delete(id);else open.add(id);draw();const i=L.querySelector(`[data-ccname="${CSS.escape(id)}"]`);if(i)i.focus();return}
       const ok=e.target.closest("[data-ccok]");if(ok){const id=ok.dataset.ccok,v=L.querySelector(`[data-ccname="${CSS.escape(id)}"]`).value.trim();
-        if(v)o.names[id]=v;else delete o.names[id];open.delete(id);keep();draw()}});
+        if(v)o.names[id]=v;else delete o.names[id];
+        const sel=L.querySelector(`[data-ccsec="${CSS.escape(id)}"]`);if(sel){delete o.sec[id];if(cardSec(S.products.get(id),o)[0]!==sel.value)o.sec[id]=sel.value}
+        open.delete(id);keep();draw();return}
+      const one=e.target.closest("[data-cc1]");if(one)print(one,p=>cardSec(p,o)[0]===one.dataset.cc1)});
     L.addEventListener("keydown",e=>{const i=e.target.closest("[data-ccname]");if(i&&e.key==="Enter"){e.preventDefault();L.querySelector(`[data-ccok="${CSS.escape(i.dataset.ccname)}"]`).click()}});
     m.querySelector("#ccQ").addEventListener("input",e=>{const q=e.target.value.trim();
       A.innerHTML=q?productList().filter(p=>p.active!==false&&!onCard(p)&&!extra.has(p.id)&&matchScore(p.name,q,p.category)>0).slice(0,20).map(p=>`<li class="crow"><div class="m"><b>${esc(p.name)}</b><span>${esc(p.category||"")}</span></div><button class="btn sm" type="button" data-cca="${esc(p.id)}">${I.plus}ضيف</button></li>`).join("")||`<li class="empty">ماكو مادة بهذا الاسم، أو موجودة بالبطاقة.</li>`:""});
@@ -3008,7 +3032,8 @@ function counterCard(){
     m.querySelector("#ccSave").onclick=()=>{keep();toast(saveCardShop(o)?"انحفظت البطاقة، وتكدر ترجعلها وتعدّلها بعدين":"انحفظت البطاقة بهذا الجهاز",3000)};
     m.querySelector("#ccAll").onclick=()=>{skip.clear();keep();draw()};
     m.querySelector("#ccNone").onclick=()=>{for(const p of base())skip.add(p.id);keep();draw()};
-    m.querySelector("#ccGo").onclick=async e=>{keep();const btn=e.currentTarget,list=base().filter(p=>!skip.has(p.id));
+    // Print the chosen items, or only one section's («اطبعه لحاله»).
+    const print=async(btn,pick)=>{keep();const list=base().filter(p=>!skip.has(p.id)&&pick(p));
       if(!list.length){toast("اختار مادة وحدة على الأقل.");return}
       btn.disabled=true;
       try{const miss=list.filter(p=>!p.barcode),codes=newCodes(miss.length),now=Date.now();
@@ -3016,6 +3041,7 @@ function counterCard(){
         miss.forEach((p,i)=>{p.barcode=codes[i]});if(miss.length)toast(`انولّد ${miss.length} باركود جديد`,2500);
         saveCardShop(o);await counterPdf(list.filter(p=>eanBars(p.barcode)),o);draw()}
       catch(err){writeFail(err)}finally{btn.disabled=false}};
+    m.querySelector("#ccGo").onclick=e=>print(e.currentTarget,p=>!off.has(cardSec(p,o)[0]));
     draw();
   });
 }
@@ -3031,10 +3057,8 @@ async function counterPdf(list,o={}){
     x.font=`500 24px ${PDF_F}`;x.fillStyle=PDFC.muted;x.fillText(o.sub||"بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها",W-M,M+80);
     x.direction="ltr";x.textAlign="left";x.fillText(todayISO(),M,M+40);y=M+120};
   const rr=(X,Y,w,h,r)=>{x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+w,Y,X+w,Y+h,r);x.arcTo(X+w,Y+h,X,Y+h,r);x.arcTo(X,Y+h,X,Y,r);x.arcTo(X,Y,X+w,Y,r);x.closePath()};
-  const groups=[];const add=(t,a)=>{if(a.length)groups.push([t,a.sort((p,q)=>p.name.localeCompare(q.name,"ar"))])};
-  if(o.group===false)add("",list.slice());else{add("مواد الوزن",list.filter(isWeighed));
-  const rest=list.filter(p=>!isWeighed(p)),byCat=new Map();for(const p of rest){const c=p.category||"مواد أخرى";if(!byCat.has(c))byCat.set(c,[]);byCat.get(c).push(p)}
-  for(const c of [...byCat.keys()].sort((a,b)=>a.localeCompare(b,"ar")))add(c,byCat.get(c))}
+  const srt=a=>a.sort((p,q)=>p.name.localeCompare(q.name,"ar"));
+  const groups=o.group===false?[["",srt(list.slice())]]:cardGroups(list,o).map(([,t,a])=>[t,srt(a)]);
   page();
   groups.forEach(([title,items],gi)=>{
     // Each section on its own page (so a page can be cut out and kept where those items are), or packed one after another.
