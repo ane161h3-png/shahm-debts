@@ -2648,7 +2648,8 @@ function readProductForm(m,p){
 // The category of the last item added, so a row of items from one category needs it picked once.
 const LASTCAT_KEY="shahm-pos-lastcat";
 const lastCat=()=>{let c="";try{c=localStorage.getItem(LASTCAT_KEY)||""}catch(e){}return c&&cats().includes(c)?c:cats()[0]};
-function productForm(p){
+// ex (optional): opened from another screen (the counter card), with extra fields, what to save with them, and where to go back to.
+function productForm(p,ex){
   // A draft coming back from the camera scan carries __new, so a new item stays new.
   const isNew=!p||!!p.__new;p=p||{name:"",price:"",category:!["all","alerts","offers","nocode","est"].includes(S.pcat)?S.pcat:lastCat(),barcode:"",active:true,unit:"حبة",packs:[]};
   const cl=cats().includes(p.category)||!p.category?cats():[p.category,...cats()];
@@ -2686,10 +2687,11 @@ function productForm(p){
         <button class="btn sm" type="button" id="addPack">${I.plus}إضافة وحدة</button>
       </fieldset>
       ${isNew?"":`<label class="check"><input type="checkbox" id="pActive" ${p.active!==false?"checked":""}> تطلع بشاشة البيع</label>`}
-      <p class="err" id="pErr"></p>
+      ${ex&&ex.html||""}<p class="err" id="pErr"></p>
       <div class="foot"><button class="btn primary" type="submit">${isNew?"إضافة":"حفظ"}</button>${isNew?"":`<button class="btn ghost danger-text" type="button" id="pDel">${I.trash}حذف</button>`}<button class="btn" type="button" data-close>رجوع</button></div>
     </form>`,m=>{
     if(!isNew)priceHist(p.id,m.querySelector("#pHist"));
+    if(ex){ex.mount&&ex.mount(m);m.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",ex.back));const sc=$("#scrim");sc.addEventListener("click",e=>{if(e.target===sc)ex.back()})}
     const ph=m.querySelector("#pPhoto");if(ph)ph.onclick=plOpen;
     const pic=picField(m,"pPic",p,p.__picSt);
     const pc=m.querySelector("#pCat"),pcn=m.querySelector("#pCatNew");
@@ -2717,12 +2719,12 @@ function productForm(p){
       const draft={name:g("pName"),price:pv>=0?pv:"",category:g("pCat")==="__new"?g("pCatNew").trim():g("pCat"),unit:g("pUnit"),wprice:numVal(g("pW"))||0,cost:numVal(g("pCost"))||0,
         weighed:m.querySelector("#pWeighed").checked,plu:g("pPlu"),track:m.querySelector("#pTrack").checked,stock:numVal(g("pStock"))||0,min:numVal(g("pMin"))||0,expiry:g("pExp"),packs,active:p.active,
         offer:{type:m.querySelector('#ofT [aria-pressed="true"]').dataset.of,n:numVal(g("ofN"))||0,price:numVal(g("ofP"))||0,to:g("ofTo")}};
-      scanBarcode(code=>productForm({...p,...draft,barcode:code,__new:isNew,__picSt:pic}))};
+      scanBarcode(code=>productForm({...p,...draft,barcode:code,__new:isNew,__picSt:pic},ex))};
     const d=m.querySelector("#pDel");
     if(d)d.onclick=()=>{if(!confirm(`حذف «${p.name}» من القائمة؟ الفواتير القديمة تبقى مثل ما هي.`))return;
       S.products.delete(p.id);try{db.collection("products").doc(p.id).delete().catch(writeFail)}catch(e){writeFail(e)}
       if(p.pic)commitPic(p.id,{url:"",changed:true});
-      log("delete","product",{detail:`حذف المادة ${p.name}`});closeModal();renderProducts();toast("انحذفت المادة")};
+      log("delete","product",{detail:`حذف المادة ${p.name}`});closeModal();renderProducts();toast("انحذفت المادة");if(ex)ex.back()};
     m.querySelector("#pf").addEventListener("submit",e=>{e.preventDefault();const err=m.querySelector("#pErr");
       const r=readProductForm(m,p);if(r.err){err.textContent=r.err;return}
       const o=r.obj,now=Date.now(),meta={updatedAt:now,updatedBy:S.me.name};
@@ -2754,6 +2756,7 @@ function productForm(p){
       }
       if(isNew&&o.category)try{localStorage.setItem(LASTCAT_KEY,o.category)}catch(e){}
       closeModal();renderProducts();renderHeader();toast(isNew?"انضافت المادة":"انحفظ التعديل");
+      if(ex){ex.save&&ex.save(m);ex.back();return}
       // Adding items one after another, except on the receiving list, where the new item goes back to its invoice line.
       if(isNew&&S.view!=="recv")setTimeout(()=>productForm(),50);
     });
@@ -3032,7 +3035,7 @@ function cardLayout(list,o){
 }
 // The card editor: the A4 pages themselves. Tap a card to edit it, «+» to add an item to that section,
 // the title or a section's heading for their own choices.
-function counterCard(){
+function counterCard(top){
   // The shop's saved card wins over this device's copy when it is newer (saved from another device).
   const sh=S.pos&&S.pos.card;let o=cardOpts();if(sh&&(sh.at||0)>(o.at||0)){try{localStorage.removeItem(CARD_KEY)}catch(e){}o=cardOpts()}
   const skip=new Set(o.skip),off=new Set(o.off),extra=new Set(o.extra.filter(id=>S.products.has(id)));
@@ -3040,7 +3043,7 @@ function counterCard(){
   const shown=()=>all().filter(p=>!skip.has(p.id)&&!off.has(cardSec(p,o)[0]));
   const secs=()=>{const m=new Map(WSEC.map(w=>[w[0],w[1]]));for(const p of S.products.values())if(p.active!==false&&!isWeighed(p)){const c=p.category||"مواد أخرى";m.set("c:"+c,c)}return m};
   openModal(`<h3>بطاقة الكاونتر</h3>
-    <p class="hint">هذي نفس صفحات الملف. اضغط على أي مربع حتى تعدّله، و${I.plus.replace("<svg",'<svg width="14" height="14"')} حتى تضيف مادة بهذا القسم، والعنوان أو اسم القسم حتى تعدّلهم.</p>
+    <p class="hint">هذي نفس صفحات الملف. اضغط على أي مربع حتى تعدّل المادة (السعر، الرسم، الاسم…)، و${I.plus.replace("<svg",'<svg width="14" height="14"')} حتى تضيف مادة بهذا القسم، والعنوان أو اسم القسم حتى تعدّلهم.</p>
     <div class="tool-row" style="flex-wrap:wrap;gap:12px"><div class="seg" role="group" aria-label="عدد الأعمدة" style="flex:none">${[2,3,4].map(n=>`<button type="button" data-cols="${n}" aria-pressed="${o.cols===n}"><span class="num">${n}</span> بالسطر</button>`).join("")}</div>
       <label class="check"><input type="checkbox" id="ccP" ${o.price?"checked":""}> السعر</label><label class="check"><input type="checkbox" id="ccG" ${o.group?"checked":""}> حسب الأقسام</label>
       <label class="check"><input type="checkbox" id="ccPg" ${o.page?"checked":""}> كل قسم بصفحة</label><b style="margin-inline-start:auto;font-family:var(--f-display)" id="ccN"></b></div>
@@ -3074,15 +3077,17 @@ function counterCard(){
     POP.addEventListener("click",e=>{if(e.target===POP)POP.hidden=true});
     POP.addEventListener("keydown",e=>{if(e.key==="Escape"){e.stopPropagation();POP.hidden=true}});
     const secSel=(cur)=>`<select id="cpS" aria-label="القسم">${[...secs()].map(([k,t])=>`<option value="${esc(k)}" ${k===cur?"selected":""}>${esc(t)}</option>`).join("")}</select>`;
-    const editCard=id=>{const p=S.products.get(id);if(!p)return;const cur=cardSec(p,o)[0];
-      pop(`<h3>${esc(p.name)}</h3><p class="hint">${esc(p.category||"بدون صنف")} · <span class="num">${fmt(p.price)}</span> ${CUR}${isWeighed(p)?" للكيلو":""} · ${p.barcode?`<span class="num">${esc(p.barcode)}</span>`:"ياخذ باركود جديد وقت الطباعة"}</p>
-        <div class="field"><label for="cpN">الاسم على البطاقة</label><input id="cpN" maxlength="40" value="${esc(o.names[id]||"")}" placeholder="${esc(p.name)}"></div>
-        <div class="field"><label for="cpS">القسم</label>${secSel(cur)}</div>
-        <div class="foot"><button class="btn primary" type="button" id="cpOk">${I.check}تم</button><button class="btn ghost danger-text" type="button" id="cpDel">${I.trash}شيلها من البطاقة</button><button class="btn" type="button" data-pclose>رجوع</button></div>`);
-      const ok=()=>{const v=IN.querySelector("#cpN").value.trim(),s=IN.querySelector("#cpS").value;if(v&&v!==p.name)o.names[id]=v;else delete o.names[id];
-        delete o.sec[id];if(cardSec(p,o)[0]!==s)o.sec[id]=s;off.delete(s);POP.hidden=true;keep();draw()};
-      IN.querySelector("#cpOk").onclick=ok;IN.querySelector("#cpN").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();ok()}};
-      IN.querySelector("#cpDel").onclick=()=>{skip.add(id);if(!onCard(p))extra.delete(id);POP.hidden=true;keep();draw();toast("انشالت من البطاقة. ترجّعها من «+»")}};
+    // Tapping a card opens the item's full form (price, drawing, everything), with the card's own choices at its end;
+    // saving or going back returns to the card where it was.
+    const editCard=id=>{const p=S.products.get(id);if(!p)return;const cur=cardSec(p,o)[0],top=PG.scrollTop;
+      const back=()=>setTimeout(()=>{if(!modalOpen())counterCard(top)},0);
+      productForm(p,{back,html:`<div class="field" style="border:1px solid var(--line);border-radius:var(--r);padding:12px;gap:10px"><b style="font-family:var(--f-display)">على بطاقة الكاونتر</b>
+          <div class="field"><label for="cpN">الاسم على البطاقة (إذا تريده غير اسم المادة)</label><input id="cpN" maxlength="40" value="${esc(o.names[id]||"")}" placeholder="${esc(p.name)}"></div>
+          <div class="field"><label for="cpS">القسم</label>${secSel(cur)}</div>
+          <button class="btn ghost danger-text" type="button" id="cpDel" style="align-self:flex-start">${I.trash}شيلها من البطاقة بس</button></div>`,
+        mount:f=>{f.querySelector("#cpDel").onclick=()=>{skip.add(id);if(!onCard(p))extra.delete(id);keep();closeModal();toast("انشالت من البطاقة. ترجّعها من «+»");back()}},
+        save:f=>{const q=S.products.get(id)||p,v=f.querySelector("#cpN").value.trim(),sv=f.querySelector("#cpS").value;if(v&&v!==q.name)o.names[id]=v;else delete o.names[id];
+          delete o.sec[id];if(cardSec(q,o)[0]!==sv)o.sec[id]=sv;off.delete(sv);keep()}})};
     const addTo=k=>{const t=secs().get(k)||"";
       pop(`<h3>ضيف مادة${t?` · ${esc(t)}`:""}</h3><label class="search">${I.search}<input id="cpQ" type="search" placeholder="ابحث بالاسم أو الباركود" autocomplete="off"></label>
         <ul class="rows" id="cpL" style="max-height:46vh;overflow:auto"></ul><div class="foot"><button class="btn" type="button" data-pclose>تم</button></div>`);
@@ -3123,7 +3128,7 @@ function counterCard(){
         saveCardShop(o);await counterPdf(list.filter(p=>eanBars(p.barcode)),one?{...o,page:true}:o);draw()}
       catch(err){writeFail(err)}finally{btn.disabled=false}};
     m.querySelector("#ccGo").onclick=e=>print(e.currentTarget,p=>!off.has(cardSec(p,o)[0]));
-    draw();
+    draw();if(top)requestAnimationFrame(()=>{PG.scrollTop=top});
   },"a4ed");
 }
 async function counterPdf(list,o={}){
