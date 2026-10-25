@@ -175,6 +175,31 @@ input:disabled{opacity:.55}
 .pack{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;align-items:end;padding-bottom:10px;border-bottom:1px dashed var(--line)}
 .pack .icon-btn{justify-self:end}
 .modal.wide{max-width:620px}
+/* Counter card editor: the A4 pages at print size (1240×1754), scaled to the window by --k. */
+.modal.a4ed{max-width:920px}
+.a4-list{display:flex;flex-direction:column;gap:14px;overflow:auto;max-height:62vh;padding:4px;--k:.5}
+.a4{width:100%;aspect-ratio:1240/1754;position:relative;overflow:hidden;border-radius:6px;box-shadow:var(--shadow);flex:none}
+.a4-in{position:absolute;top:0;left:0;width:1240px;height:1754px;transform:scale(var(--k));transform-origin:top left;direction:rtl}
+.a4-in::before{content:"";position:absolute;top:0;left:0;right:0;height:14px;background:var(--brand-deep);box-shadow:0 5px 0 var(--brand-orange)}
+.a4-in button{font:inherit;color:inherit;cursor:pointer}
+.a4-h{position:absolute;right:70px;top:46px;display:flex;flex-direction:column;align-items:flex-end;gap:2px;cursor:pointer;border-radius:12px;padding:4px 8px}
+.a4-h b{font-size:46px;font-weight:400;line-height:1.2}.a4-h span{font-size:24px;font-weight:500}
+.a4-d{position:absolute;left:70px;top:86px;font-size:24px}
+.a4-pg{position:absolute;bottom:22px;left:0;right:0;text-align:center;font-size:18px}
+.a4-in .a4-sec{position:absolute;right:70px;left:70px;height:40px;display:flex;align-items:center;gap:16px;background:none;border:0;padding:0;font-size:30px;font-family:var(--f-display)}
+.a4-sec::after{content:"";flex:1;border-top:2px solid;border-color:inherit}
+.a4-card{position:absolute;border:2px solid;border-radius:18px;padding:0;text-align:right}
+.a4-card img{position:absolute;left:14px;top:12px;width:68px;height:68px;border-radius:12px;object-fit:contain}
+.a4-n{position:absolute;right:18px;left:96px;top:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
+.a4-p{position:absolute;right:18px;top:52px;font-size:25px;font-weight:800;font-family:var(--f-display)}
+.a4-b{position:absolute;left:50%;top:94px;display:flex;flex-direction:column;align-items:center;padding-top:8px}
+.a4-b>span>svg{width:100%;height:100%;display:block;fill:currentColor}
+.a4-b small{margin-top:auto;margin-bottom:6px;font-size:20px;font-weight:500;direction:ltr}
+.a4-new{left:24px;right:24px;margin:0;border:3px dashed;border-radius:12px;justify-content:center;font-size:22px;padding:0}
+.a4-in .a4-add{border-style:dashed;border-width:3px;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:26px;font-weight:700}
+.a4-add svg{width:56px;height:56px}
+.a4-card:hover,.a4-h:hover,.a4-sec:hover{outline:4px solid var(--accent);outline-offset:3px}
+.cc-pop{z-index:30}.cc-pop[hidden]{display:none}
 .pack .field input{padding:8px 8px}
 .search{position:relative;flex:1;min-width:0}
 .search input{width:100%;padding:10px 38px 10px 12px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--paper-2);height:42px}
@@ -2975,8 +3000,8 @@ const WSEC=[["veg","خضرة وفواكه"],["sweet","حلويات بالوزن"
   ["nuts","جبس ومكسرات وجكليت",/جبس|شيبس|فستق|كاجو|لوز|بندق|جوز|بزر|بزور|مكسر|جكليت|شوكول|سكاكر|ملبس|علك|كرزات|سوداني/],
   ["food","حليب فل ومواد غذائية"]];
 function cardSec(p,o){
+  const f=o&&o.sec&&o.sec[p.id],own=f&&WSEC.find(w=>w[0]===f);if(own)return [own[0],own[1]];if(f&&f.startsWith("c:"))return [f,f.slice(2)];
   if(!isWeighed(p)){const c=p.category||"مواد أخرى";return ["c:"+c,c]}
-  const f=o&&o.sec&&o.sec[p.id],own=f&&WSEC.find(w=>w[0]===f);if(own)return [own[0],own[1]];
   const n=foldAr(p.name);
   if(/فواك|خضر/.test(foldAr(p.category||"")))return WSEC[0];
   for(const w of WSEC)if(w[2]&&w[2].test(n))return [w[0],w[1]];
@@ -2985,89 +3010,139 @@ function cardSec(p,o){
 function cardGroups(list,o){const by=new Map();for(const p of list){const [k,t]=cardSec(p,o);if(!by.has(k))by.set(k,[t,[]]);by.get(k)[1].push(p)}
   const ord=k=>{const i=WSEC.findIndex(w=>w[0]===k);return i<0?99:i};
   return [...by.entries()].sort((a,b)=>ord(a[0])-ord(b[0])||a[1][0].localeCompare(b[1][0],"ar")).map(([k,[t,a]])=>[k,t,a])}
+// Where everything sits on the A4 card (1240×1754 px). The PDF draws this layout and the editor shows the same pages,
+// so what the owner edits on screen is what prints. «add» places (the editor's «+») are skipped by the PDF.
+const CARD_W=1240,CARD_H=1754,CARD_M=70,CARD_G=22;
+function cardLayout(list,o){
+  const W=CARD_W,H=CARD_H,M=CARD_M,G=CARD_G,C=o.cols||3,cw=(W-2*M-(C-1)*G)/C,ch=C===2?236:C===4?196:214,pages=[];let pg,y;
+  const srt=a=>a.sort((p,q)=>((o.names&&o.names[p.id])||p.name).localeCompare((o.names&&o.names[q.id])||q.name,"ar"));
+  const groups=o.group===false?[["","",srt(list.slice())]]:cardGroups(list,o).map(([k,t,a])=>[k,t,srt(a)]);
+  const page=()=>{pg=[];pages.push(pg);y=M+120};const X=col=>W-M-(col+1)*cw-col*G;
+  page();
+  groups.forEach(([k,title,items],gi)=>{
+    // Each section on its own page (so a page can be cut out and kept where those items are), or packed one after another.
+    if(gi&&o.page!==false)page();else if(y+60+ch>H-M)page();
+    if(title){pg.push({t:"sec",k,title,n:items.length,y});y+=56}
+    items.forEach((p,i)=>{const col=i%C;if(col===0&&i)y+=ch+G;if(y+ch>H-M)page();pg.push({t:"card",p,k,x:X(col),y,w:cw,h:ch})});
+    const nc=items.length%C,py=nc?y:y+ch+G;
+    if(py+ch<=H-M&&(nc||o.page!==false||gi===groups.length-1))pg.push({t:"add",k,x:X(nc),y:py,w:cw,h:ch});
+    y+=ch+G+16;
+  });
+  return {pages,C,cw,ch};
+}
+// The card editor: the A4 pages themselves. Tap a card to edit it, «+» to add an item to that section,
+// the title or a section's heading for their own choices.
 function counterCard(){
   // The shop's saved card wins over this device's copy when it is newer (saved from another device).
   const sh=S.pos&&S.pos.card;let o=cardOpts();if(sh&&(sh.at||0)>(o.at||0)){try{localStorage.removeItem(CARD_KEY)}catch(e){}o=cardOpts()}
-  const skip=new Set(o.skip),off=new Set(o.off),extra=new Set(o.extra.filter(id=>S.products.has(id))),open=new Set();
-  const base=()=>[...S.products.values()].filter(p=>onCard(p)||extra.has(p.id)).sort((a,b)=>(isWeighed(b)-isWeighed(a))||(a.category||"").localeCompare(b.category||"","ar")||a.name.localeCompare(b.name,"ar"));
+  const skip=new Set(o.skip),off=new Set(o.off),extra=new Set(o.extra.filter(id=>S.products.has(id)));
+  const all=()=>[...S.products.values()].filter(p=>onCard(p)||extra.has(p.id));
+  const shown=()=>all().filter(p=>!skip.has(p.id)&&!off.has(cardSec(p,o)[0]));
+  const secs=()=>{const m=new Map(WSEC.map(w=>[w[0],w[1]]));for(const p of S.products.values())if(p.active!==false&&!isWeighed(p)){const c=p.category||"مواد أخرى";m.set("c:"+c,c)}return m};
   openModal(`<h3>بطاقة الكاونتر</h3>
-    <p class="hint">عدّل البطاقة قبل الطباعة: شيل أو ضيف مواد، وغيّر العنوان والشكل. اختياراتك تنحفظ للمرة الجاية. المادة اللي بلا باركود ياخذ باركود جديد وقت الطباعة.</p>
-    <div class="row2"><div class="field"><label for="ccT">العنوان</label><input id="ccT" maxlength="40" placeholder="${esc(shopName())}" value="${esc(o.title)}"></div>
-      <div class="field"><label for="ccS">السطر الثاني</label><input id="ccS" maxlength="70" placeholder="بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها" value="${esc(o.sub)}"></div></div>
-    <div class="tool-row" style="flex-wrap:wrap;gap:12px;margin:4px 0 8px"><div class="seg" role="group" aria-label="عدد الأعمدة" style="flex:none">${[2,3,4].map(n=>`<button type="button" data-cols="${n}" aria-pressed="${o.cols===n}"><span class="num">${n}</span> بالسطر</button>`).join("")}</div>
-      <label class="check"><input type="checkbox" id="ccP" ${o.price?"checked":""}> السعر</label><label class="check"><input type="checkbox" id="ccG" ${o.group?"checked":""}> حسب الصنف</label>
-      <label class="check"><input type="checkbox" id="ccPg" ${o.page?"checked":""}> كل قسم بصفحة</label></div>
-    <label class="search">${I.search}<input id="ccQ" type="search" placeholder="ضيف مادة للبطاقة: ابحث بالاسم" autocomplete="off"></label>
-    <ul class="rows" id="ccAdd" style="max-height:22vh;overflow:auto"></ul>
-    <div class="tool-row" style="margin:8px 0 4px"><b style="flex:1;font-family:var(--f-display)" id="ccN"></b><button class="btn sm" type="button" id="ccAll">اختار الكل</button><button class="btn sm ghost" type="button" id="ccNone">شيل الكل</button></div>
-    <ul class="rows" id="ccL" style="max-height:34vh;overflow:auto"></ul>
-    <div class="foot"><button class="btn primary" type="button" id="ccGo">${I.pdf}طلّع الملف PDF</button><button class="btn" type="button" id="ccSave">${I.check}حفظ التعديلات</button><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
-    const L=m.querySelector("#ccL"),A=m.querySelector("#ccAdd"),N=m.querySelector("#ccN");
-    const keep=()=>{o.title=m.querySelector("#ccT").value.trim();o.sub=m.querySelector("#ccS").value.trim();o.price=m.querySelector("#ccP").checked;o.group=m.querySelector("#ccG").checked;o.page=m.querySelector("#ccPg").checked;o.skip=[...skip];o.off=[...off];o.extra=[...extra];saveCardOpts(o)};
-    const row=p=>`<li class="crow" style="flex-wrap:wrap"><label class="check" style="flex:1;min-width:0"><input type="checkbox" data-cc="${esc(p.id)}" ${skip.has(p.id)?"":"checked"}>
-        <span class="m"><b>${esc(o.names[p.id]||p.name)}</b><span>${o.names[p.id]?`(${esc(p.name)}) · `:""}${esc(p.category||"بدون صنف")} · <span class="num">${fmt(p.price)}</span>${isWeighed(p)?" للكيلو":""}${p.barcode?"":" · ياخذ باركود جديد"}</span></span></label>
-        <button class="btn sm ghost" type="button" data-ccn="${esc(p.id)}" title="الاسم اللي يطلع بالبطاقة">${I.edit}</button>
-        ${extra.has(p.id)?`<button class="btn sm ghost danger-text" type="button" data-ccx="${esc(p.id)}">شيلها</button>`:""}
-        ${open.has(p.id)?`<div style="flex-basis:100%;display:flex;gap:6px;margin-top:6px"><input data-ccname="${esc(p.id)}" maxlength="40" value="${esc(o.names[p.id]||"")}" placeholder="${esc(p.name)}" aria-label="الاسم بالبطاقة" style="flex:1">${isWeighed(p)?`<select data-ccsec="${esc(p.id)}" aria-label="القسم">${WSEC.map(w=>`<option value="${w[0]}" ${cardSec(p,o)[0]===w[0]?"selected":""}>${w[1]}</option>`).join("")}</select>`:""}<button class="btn sm" type="button" data-ccok="${esc(p.id)}">${I.check}</button></div>`:""}</li>`;
-    const draw=()=>{const l=base(),gs=cardGroups(l,o),on=gs.reduce((n,[k,,a])=>n+(off.has(k)?0:a.filter(p=>!skip.has(p.id)).length),0);
-      N.innerHTML=`على البطاقة <span class="num">${on}</span> من <span class="num">${l.length}</span>`;
-      L.innerHTML=l.length?gs.map(([k,t,a])=>`<li class="crow" style="background:var(--paper-2);position:sticky;top:0;z-index:1"><label class="check" style="flex:1;min-width:0"><input type="checkbox" data-ccs="${esc(k)}" ${off.has(k)?"":"checked"}><b style="font-family:var(--f-display)">${esc(t)} · <span class="num">${a.length}</span></b></label>
-        <button class="btn sm" type="button" data-cc1="${esc(k)}" title="يطلّع ملف بهذا القسم بس">${I.pdf}اطبعه لحاله</button></li>${off.has(k)?"":a.map(row).join("")}`).join("")
-        :`<li class="empty">ماكو مواد. ضيف مواد من البحث فوك.</li>`};
-    L.addEventListener("change",e=>{const s=e.target.closest("[data-ccs]");if(s){if(s.checked)off.delete(s.dataset.ccs);else off.add(s.dataset.ccs);keep();draw();return}
-      const c=e.target.closest("[data-cc]");if(!c)return;if(c.checked)skip.delete(c.dataset.cc);else skip.add(c.dataset.cc);keep();draw()});
-    L.addEventListener("click",e=>{const x=e.target.closest("[data-ccx]");if(x){extra.delete(x.dataset.ccx);keep();draw();return}
-      const n=e.target.closest("[data-ccn]");if(n){const id=n.dataset.ccn;if(open.has(id))open.delete(id);else open.add(id);draw();const i=L.querySelector(`[data-ccname="${CSS.escape(id)}"]`);if(i)i.focus();return}
-      const ok=e.target.closest("[data-ccok]");if(ok){const id=ok.dataset.ccok,v=L.querySelector(`[data-ccname="${CSS.escape(id)}"]`).value.trim();
-        if(v)o.names[id]=v;else delete o.names[id];
-        const sel=L.querySelector(`[data-ccsec="${CSS.escape(id)}"]`);if(sel){delete o.sec[id];if(cardSec(S.products.get(id),o)[0]!==sel.value)o.sec[id]=sel.value}
-        open.delete(id);keep();draw();return}
-      const one=e.target.closest("[data-cc1]");if(one)print(one,p=>cardSec(p,o)[0]===one.dataset.cc1)});
-    L.addEventListener("keydown",e=>{const i=e.target.closest("[data-ccname]");if(i&&e.key==="Enter"){e.preventDefault();L.querySelector(`[data-ccok="${CSS.escape(i.dataset.ccname)}"]`).click()}});
-    m.querySelector("#ccQ").addEventListener("input",e=>{const q=e.target.value.trim();
-      A.innerHTML=q?productList().filter(p=>p.active!==false&&!onCard(p)&&!extra.has(p.id)&&matchScore(p.name,q,p.category)>0).slice(0,20).map(p=>`<li class="crow"><div class="m"><b>${esc(p.name)}</b><span>${esc(p.category||"")}</span></div><button class="btn sm" type="button" data-cca="${esc(p.id)}">${I.plus}ضيف</button></li>`).join("")||`<li class="empty">ماكو مادة بهذا الاسم، أو موجودة بالبطاقة.</li>`:""});
-    A.addEventListener("click",e=>{const b=e.target.closest("[data-cca]");if(!b)return;extra.add(b.dataset.cca);skip.delete(b.dataset.cca);b.closest("li").remove();keep();draw()});
-    m.querySelectorAll("[data-cols]").forEach(b=>b.onclick=()=>{o.cols=Number(b.dataset.cols);m.querySelectorAll("[data-cols]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));keep()});
-    ["#ccT","#ccS","#ccP","#ccG","#ccPg"].forEach(k=>m.querySelector(k).addEventListener("change",keep));
+    <p class="hint">هذي نفس صفحات الملف. اضغط على أي مربع حتى تعدّله، و${I.plus.replace("<svg",'<svg width="14" height="14"')} حتى تضيف مادة بهذا القسم، والعنوان أو اسم القسم حتى تعدّلهم.</p>
+    <div class="tool-row" style="flex-wrap:wrap;gap:12px"><div class="seg" role="group" aria-label="عدد الأعمدة" style="flex:none">${[2,3,4].map(n=>`<button type="button" data-cols="${n}" aria-pressed="${o.cols===n}"><span class="num">${n}</span> بالسطر</button>`).join("")}</div>
+      <label class="check"><input type="checkbox" id="ccP" ${o.price?"checked":""}> السعر</label><label class="check"><input type="checkbox" id="ccG" ${o.group?"checked":""}> حسب الأقسام</label>
+      <label class="check"><input type="checkbox" id="ccPg" ${o.page?"checked":""}> كل قسم بصفحة</label><b style="margin-inline-start:auto;font-family:var(--f-display)" id="ccN"></b></div>
+    <div class="a4-list" id="ccPages"></div>
+    <div class="foot"><button class="btn primary" type="button" id="ccGo">${I.pdf}طلّع الملف PDF</button><button class="btn" type="button" id="ccSave">${I.check}حفظ التعديلات</button><button class="btn" type="button" data-close>إغلاق</button></div>
+    <div class="scrim cc-pop" id="ccPop" hidden><div class="modal" id="ccPopIn"></div></div>`,m=>{
+    const PG=m.querySelector("#ccPages"),N=m.querySelector("#ccN"),POP=m.querySelector("#ccPop"),IN=m.querySelector("#ccPopIn");
+    const keep=()=>{o.price=m.querySelector("#ccP").checked;o.group=m.querySelector("#ccG").checked;o.page=m.querySelector("#ccPg").checked;o.skip=[...skip];o.off=[...off];o.extra=[...extra];saveCardOpts(o)};
+    const nm=p=>o.names[p.id]||p.name;
+    const bars=p=>{const b=eanBars(p.barcode);if(!b)return "";let r="";for(let j=0;j<b.length;j++)if(b[j]==="1")r+=`<rect x="${j}" width="1" height="1"/>`;return `<svg viewBox="0 0 ${b.length} 1" preserveAspectRatio="none" width="${b.length}" height="1">${r}</svg>`};
+    const draw=()=>{const L=cardLayout(shown(),o),C=L.C,mw=C===2?4:C===4?2:3,bh=C===4?60:68,head=`<div class="a4-h" data-cce="head"><b style="font-family:${PDF_BRAND};color:${PDFC.green}">${esc(o.title||shopName())}</b><span style="color:${PDFC.muted}">${esc(o.sub||"بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها")}</span></div><span class="a4-d num" style="color:${PDFC.muted}">${todayISO()}</span>`;
+      N.innerHTML=`على البطاقة <span class="num">${shown().length}</span> مادة`;
+      const hid=[...off].map(k=>[k,secs().get(k)||k.replace(/^c:/,"")]);
+      PG.innerHTML=L.pages.map((pg,i)=>`<div class="a4"><div class="a4-in" style="background:#fff;color:${PDFC.ink}">${head}${pg.map(it=>{
+        if(it.t==="sec")return `<button type="button" class="a4-sec" data-ccsec="${esc(it.k)}" style="top:${it.y}px;color:${PDFC.green};border-color:${PDFC.line}"><b>${esc(it.title)} · <span class="num">${it.n}</span></b></button>`;
+        const pos=`left:${it.x}px;top:${it.y}px;width:${it.w}px;height:${it.h}px`;
+        if(it.t==="add")return `<button type="button" class="a4-card a4-add" data-ccadd="${esc(it.k)}" style="${pos};color:${PDFC.green};border-color:${PDFC.green}">${I.plus}<span>ضيف مادة</span></button>`;
+        const p=it.p,bw=(eanBars(p.barcode)||"").length*mw,code=normDigits(p.barcode||"");
+        return `<button type="button" class="a4-card" data-cce="${esc(p.id)}" style="${pos};background:${PDFC.shade};border-color:${PDFC.line}">
+          <img src="${esc(stockPic({...p,pic:0})||`img/art/${catIcon({...p,pic:0})||"box"}.svg`)}" alt="" style="background:#fff">
+          <b class="a4-n" style="font-size:${C===4?23:27}px">${esc(nm(p))}</b>${o.price?`<span class="a4-p" style="color:${PDFC.green}">${fmt(p.price)} ${CUR}${isWeighed(p)?" للكيلو":""}</span>`:""}
+          ${bw?`<span class="a4-b" style="background:#fff;width:${bw+24}px;height:${it.h-108}px;margin-left:${-(bw+24)/2}px"><span style="height:${bh+(C===2?20:0)}px;width:${bw}px;color:#000">${bars(p)}</span><small class="num">${code.length===12?"0"+code:code}</small></span>`
+            :`<span class="a4-b a4-new" style="height:${it.h-108}px;border-color:${PDFC.line};color:${PDFC.muted}">باركود جديد وقت الطباعة</span>`}</button>`}).join("")}
+        <span class="a4-pg num" style="color:${PDFC.green}">${i+1} / ${L.pages.length}</span></div></div>`).join("")
+        +(hid.length?`<div class="tool-row" style="flex-wrap:wrap;gap:6px"><span class="hint" style="margin:0">أقسام مشالة من الملف:</span>${hid.map(([k,t])=>`<button class="btn sm" type="button" data-ccon="${esc(k)}">${I.plus}${esc(t)}</button>`).join("")}</div>`:"");
+      fit()};
+    // The pages are drawn at print size and scaled down to the window's width.
+    const fit=()=>{const a=PG.querySelector(".a4");if(a)PG.style.setProperty("--k",String(a.clientWidth/CARD_W))};
+    const ro=new ResizeObserver(fit);ro.observe(PG);modalCleanup=()=>ro.disconnect();
+    const pop=html=>{IN.innerHTML=html;POP.hidden=false;IN.querySelectorAll("[data-pclose]").forEach(b=>b.onclick=()=>{POP.hidden=true});const f=IN.querySelector("input");if(f)f.focus()};
+    POP.addEventListener("click",e=>{if(e.target===POP)POP.hidden=true});
+    POP.addEventListener("keydown",e=>{if(e.key==="Escape"){e.stopPropagation();POP.hidden=true}});
+    const secSel=(cur)=>`<select id="cpS" aria-label="القسم">${[...secs()].map(([k,t])=>`<option value="${esc(k)}" ${k===cur?"selected":""}>${esc(t)}</option>`).join("")}</select>`;
+    const editCard=id=>{const p=S.products.get(id);if(!p)return;const cur=cardSec(p,o)[0];
+      pop(`<h3>${esc(p.name)}</h3><p class="hint">${esc(p.category||"بدون صنف")} · <span class="num">${fmt(p.price)}</span> ${CUR}${isWeighed(p)?" للكيلو":""} · ${p.barcode?`<span class="num">${esc(p.barcode)}</span>`:"ياخذ باركود جديد وقت الطباعة"}</p>
+        <div class="field"><label for="cpN">الاسم على البطاقة</label><input id="cpN" maxlength="40" value="${esc(o.names[id]||"")}" placeholder="${esc(p.name)}"></div>
+        <div class="field"><label for="cpS">القسم</label>${secSel(cur)}</div>
+        <div class="foot"><button class="btn primary" type="button" id="cpOk">${I.check}تم</button><button class="btn ghost danger-text" type="button" id="cpDel">${I.trash}شيلها من البطاقة</button><button class="btn" type="button" data-pclose>رجوع</button></div>`);
+      const ok=()=>{const v=IN.querySelector("#cpN").value.trim(),s=IN.querySelector("#cpS").value;if(v&&v!==p.name)o.names[id]=v;else delete o.names[id];
+        delete o.sec[id];if(cardSec(p,o)[0]!==s)o.sec[id]=s;off.delete(s);POP.hidden=true;keep();draw()};
+      IN.querySelector("#cpOk").onclick=ok;IN.querySelector("#cpN").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();ok()}};
+      IN.querySelector("#cpDel").onclick=()=>{skip.add(id);if(!onCard(p))extra.delete(id);POP.hidden=true;keep();draw();toast("انشالت من البطاقة. ترجّعها من «+»")}};
+    const addTo=k=>{const t=secs().get(k)||"";
+      pop(`<h3>ضيف مادة${t?` · ${esc(t)}`:""}</h3><label class="search">${I.search}<input id="cpQ" type="search" placeholder="ابحث بالاسم أو الباركود" autocomplete="off"></label>
+        <ul class="rows" id="cpL" style="max-height:46vh;overflow:auto"></ul><div class="foot"><button class="btn" type="button" data-pclose>تم</button></div>`);
+      const Q=IN.querySelector("#cpQ"),UL=IN.querySelector("#cpL");
+      const list=()=>{const q=Q.value.trim(),on=new Set(shown().map(p=>p.id));
+        const r=q?productList().filter(p=>p.active!==false&&!on.has(p.id)&&(matchScore(p.name,q,p.category)>0||normDigits(p.barcode||"").includes(normDigits(q)))).slice(0,30)
+          :all().filter(p=>skip.has(p.id));
+        UL.innerHTML=r.length?(q?"":`<li class="empty" style="padding:6px 14px;text-align:start">المواد اللي شلتها من البطاقة:</li>`)+r.map(p=>`<li class="crow"><div class="m"><b>${esc(p.name)}</b><span>${esc(p.category||"بدون صنف")} · <span class="num">${fmt(p.price)}</span>${isWeighed(p)?" للكيلو":""}</span></div><button class="btn sm" type="button" data-cpa="${esc(p.id)}">${I.plus}ضيف</button></li>`).join("")
+          :`<li class="empty">${q?"ماكو مادة بهذا الاسم، أو موجودة بالبطاقة.":"اكتب اسم المادة اللي تريد تضيفها."}</li>`};
+      Q.oninput=list;list();
+      UL.onclick=e=>{const b=e.target.closest("[data-cpa]");if(!b)return;const p=S.products.get(b.dataset.cpa);if(!p)return;
+        if(!onCard(p))extra.add(p.id);skip.delete(p.id);delete o.sec[p.id];if(k&&cardSec(p,o)[0]!==k)o.sec[p.id]=k;
+        keep();draw();b.closest("li").remove();toast(`انضافت ${p.name}`)}};
+    const editHead=()=>{pop(`<h3>عنوان البطاقة</h3><div class="field"><label for="cpT">العنوان</label><input id="cpT" maxlength="40" placeholder="${esc(shopName())}" value="${esc(o.title)}"></div>
+        <div class="field"><label for="cpU">السطر الثاني</label><input id="cpU" maxlength="70" placeholder="بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها" value="${esc(o.sub)}"></div>
+        <div class="foot"><button class="btn primary" type="button" id="cpOk">${I.check}تم</button><button class="btn" type="button" data-pclose>رجوع</button></div>`);
+      IN.querySelector("#cpOk").onclick=()=>{o.title=IN.querySelector("#cpT").value.trim();o.sub=IN.querySelector("#cpU").value.trim();POP.hidden=true;keep();draw()}};
+    const editSec=k=>{const t=secs().get(k)||k.replace(/^c:/,"");
+      pop(`<h3>${esc(t)}</h3><p class="hint">هذا القسم بصفحته. تكدر تطبعه لحاله أو تشيله من الملف.</p>
+        <div class="foot" style="flex-wrap:wrap"><button class="btn primary" type="button" id="cpOne">${I.pdf}اطبعه لحاله</button><button class="btn" type="button" id="cpAdd">${I.plus}ضيف مادة</button><button class="btn ghost danger-text" type="button" id="cpOff">شيل القسم من الملف</button><button class="btn" type="button" data-pclose>رجوع</button></div>`);
+      IN.querySelector("#cpOne").onclick=()=>{POP.hidden=true;print(m.querySelector("#ccGo"),p=>cardSec(p,o)[0]===k,true)};
+      IN.querySelector("#cpAdd").onclick=()=>addTo(k);
+      IN.querySelector("#cpOff").onclick=()=>{off.add(k);POP.hidden=true;keep();draw()}};
+    PG.addEventListener("click",e=>{const a=e.target.closest("[data-ccadd]");if(a)return addTo(a.dataset.ccadd);
+      const s=e.target.closest("[data-ccsec]");if(s)return editSec(s.dataset.ccsec);
+      const on=e.target.closest("[data-ccon]");if(on){off.delete(on.dataset.ccon);keep();draw();return}
+      const c=e.target.closest("[data-cce]");if(c)return c.dataset.cce==="head"?editHead():editCard(c.dataset.cce)});
+    m.querySelectorAll("[data-cols]").forEach(b=>b.onclick=()=>{o.cols=Number(b.dataset.cols);m.querySelectorAll("[data-cols]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));keep();draw()});
+    ["#ccP","#ccG","#ccPg"].forEach(k=>m.querySelector(k).addEventListener("change",()=>{keep();draw()}));
     m.querySelector("#ccSave").onclick=()=>{keep();toast(saveCardShop(o)?"انحفظت البطاقة، وتكدر ترجعلها وتعدّلها بعدين":"انحفظت البطاقة بهذا الجهاز",3000)};
-    m.querySelector("#ccAll").onclick=()=>{skip.clear();keep();draw()};
-    m.querySelector("#ccNone").onclick=()=>{for(const p of base())skip.add(p.id);keep();draw()};
-    // Print the chosen items, or only one section's («اطبعه لحاله»).
-    const print=async(btn,pick)=>{keep();const list=base().filter(p=>!skip.has(p.id)&&pick(p));
-      if(!list.length){toast("اختار مادة وحدة على الأقل.");return}
+    // Print the card, or one section alone. Items with no barcode get one first.
+    const print=async(btn,pick,one)=>{keep();const list=all().filter(p=>!skip.has(p.id)&&pick(p));
+      if(!list.length){toast("ماكو مواد بالبطاقة.");return}
       btn.disabled=true;
       try{const miss=list.filter(p=>!p.barcode),codes=newCodes(miss.length),now=Date.now();
         for(let i=0;i<miss.length;i+=450){const bt=db.batch();miss.slice(i,i+450).forEach((p,j)=>bt.update(db.collection("products").doc(p.id),{barcode:codes[i+j],updatedAt:now,updatedBy:S.me.name}));await bt.commit()}
         miss.forEach((p,i)=>{p.barcode=codes[i]});if(miss.length)toast(`انولّد ${miss.length} باركود جديد`,2500);
-        saveCardShop(o);await counterPdf(list.filter(p=>eanBars(p.barcode)),o);draw()}
+        saveCardShop(o);await counterPdf(list.filter(p=>eanBars(p.barcode)),one?{...o,page:true}:o);draw()}
       catch(err){writeFail(err)}finally{btn.disabled=false}};
     m.querySelector("#ccGo").onclick=e=>print(e.currentTarget,p=>!off.has(cardSec(p,o)[0]));
     draw();
-  });
+  },"a4ed");
 }
 async function counterPdf(list,o={}){
   toast("جارِ تجهيز البطاقة…");if(!await pdfReady())return;
-  const W=1240,H=1754,M=70,G=22,C=o.cols||3,cw=(W-2*M-(C-1)*G)/C,ch=C===2?236:C===4?196:214,mw=C===2?4:C===4?2:3,bh=C===4?60:68,showPrice=o.price!==false,pages=[];let x,y;
+  const W=CARD_W,H=CARD_H,M=CARD_M,{pages:L,C,cw,ch}=cardLayout(list,o),mw=C===2?4:C===4?2:3,bh=C===4?60:68,showPrice=o.price!==false;
   // The picture on each card: the ready-made fruit photo for fruit and vegetables, else the item's drawing.
   const picOf=p=>stockPic({...p,pic:0})||`img/art/${catIcon({...p,pic:0})||"box"}.svg`;
   const arts=new Map();await Promise.all([...new Set(list.map(picOf))].map(u=>new Promise(res=>{const i=new Image();i.onload=()=>{arts.set(u,i);res()};i.onerror=res;i.src=u})));
-  const page=()=>{const cv=document.createElement("canvas");cv.width=W;cv.height=H;x=cv.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,W,H);pages.push(cv);
+  let x;const rr=(X,Y,w,h,r)=>{x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+w,Y,X+w,Y+h,r);x.arcTo(X+w,Y+h,X,Y+h,r);x.arcTo(X,Y+h,X,Y,r);x.arcTo(X,Y,X+w,Y,r);x.closePath()};
+  const pages=L.map((pg,pi)=>{const cv=document.createElement("canvas");cv.width=W;cv.height=H;x=cv.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,W,H);
     x.fillStyle=PDFC.green;x.fillRect(0,0,W,14);x.fillStyle=PDFC.orange;x.fillRect(0,14,W,5);x.direction="rtl";x.textAlign="right";
     x.font=`400 46px ${PDF_BRAND}`;x.fillStyle=PDFC.green;x.fillText(o.title||shopName(),W-M,M+40);
     x.font=`500 24px ${PDF_F}`;x.fillStyle=PDFC.muted;x.fillText(o.sub||"بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها",W-M,M+80);
-    x.direction="ltr";x.textAlign="left";x.fillText(todayISO(),M,M+40);y=M+120};
-  const rr=(X,Y,w,h,r)=>{x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+w,Y,X+w,Y+h,r);x.arcTo(X+w,Y+h,X,Y+h,r);x.arcTo(X,Y+h,X,Y,r);x.arcTo(X,Y,X+w,Y,r);x.closePath()};
-  const srt=a=>a.sort((p,q)=>p.name.localeCompare(q.name,"ar"));
-  const groups=o.group===false?[["",srt(list.slice())]]:cardGroups(list,o).map(([,t,a])=>[t,srt(a)]);
-  page();
-  groups.forEach(([title,items],gi)=>{
-    // Each section on its own page (so a page can be cut out and kept where those items are), or packed one after another.
-    if(gi&&o.page!==false)page();else if(y+60+ch>H-M)page();
-    if(title){x.direction="rtl";x.textAlign="right";x.font=`700 30px ${PDF_D}`;x.fillStyle=PDFC.green;const tt=`${title} · ${items.length}`;x.fillText(tt,W-M,y+30);
-      const tw=x.measureText(tt).width;x.strokeStyle=PDFC.line;x.lineWidth=2;x.beginPath();x.moveTo(M,y+20);x.lineTo(W-M-tw-16,y+20);x.stroke();y+=56}
-    items.forEach((p,i)=>{const col=i%C;if(col===0&&i){y+=ch+G}
-      if(y+ch>H-M)page();
-      const cx=W-M-(col+1)*cw-col*G,cy=y;
+    x.direction="ltr";x.textAlign="left";x.fillText(todayISO(),M,M+40);
+    for(const it of pg){
+      if(it.t==="sec"){const y=it.y;x.direction="rtl";x.textAlign="right";x.font=`700 30px ${PDF_D}`;x.fillStyle=PDFC.green;const tt=`${it.title} · ${it.n}`;x.fillText(tt,W-M,y+30);
+        const tw=x.measureText(tt).width;x.strokeStyle=PDFC.line;x.lineWidth=2;x.beginPath();x.moveTo(M,y+20);x.lineTo(W-M-tw-16,y+20);x.stroke();continue}
+      if(it.t!=="card")continue;
+      const p=it.p,cx=it.x,cy=it.y;
       rr(cx,cy,cw,ch,18);x.fillStyle=PDFC.shade;x.fill();x.strokeStyle=PDFC.line;x.lineWidth=2;x.stroke();
       const img=arts.get(picOf(p));if(img){x.save();rr(cx+14,cy+12,68,68,12);x.clip();x.fillStyle="#fff";x.fillRect(cx+14,cy+12,68,68);const k=Math.min(68/img.width,68/img.height);x.drawImage(img,cx+14+(68-img.width*k)/2,cy+12+(68-img.height*k)/2,img.width*k,img.height*k);x.restore()}
       x.direction="rtl";x.textAlign="right";x.fillStyle=PDFC.ink;x.font=`700 ${C===4?23:27}px ${PDF_F}`;
@@ -3076,11 +3151,9 @@ async function counterPdf(list,o={}){
       const bars=eanBars(p.barcode),bw=bars.length*mw,bx=cx+(cw-bw)/2;
       x.fillStyle="#fff";x.fillRect(bx-12,cy+94,bw+24,ch-108);x.fillStyle="#000";
       for(let j=0;j<bars.length;j++)if(bars[j]==="1")x.fillRect(bx+j*mw,cy+102,mw,bh+(C===2?20:0));
-      let c=normDigits(p.barcode);if(c.length===12)c="0"+c;x.direction="ltr";x.textAlign="center";x.fillStyle=PDFC.ink;x.font=`500 20px ${PDF_F}`;x.fillText(c,cx+cw/2,cy+ch-22);
-    });
-    y+=ch+G+16;
-  });
-  pages.forEach((cv,i)=>{const c=cv.getContext("2d");c.direction="ltr";c.textAlign="center";c.fillStyle=PDFC.green;c.font=`400 18px ${PDF_F}`;c.fillText(`${i+1} / ${pages.length}`,W/2,H-34)});
+      let c=normDigits(p.barcode);if(c.length===12)c="0"+c;x.direction="ltr";x.textAlign="center";x.fillStyle=PDFC.ink;x.font=`500 20px ${PDF_F}`;x.fillText(c,cx+cw/2,cy+ch-22)}
+    x.direction="ltr";x.textAlign="center";x.fillStyle=PDFC.green;x.font=`400 18px ${PDF_F}`;x.fillText(`${pi+1} / ${L.length}`,W/2,H-34);
+    return cv});
   const {jsPDF}=window.jspdf;const pdf=new jsPDF({unit:"pt",format:"a4"});
   pages.forEach((cv,i)=>{if(i)pdf.addPage();pdf.addImage(cv.toDataURL("image/png"),"PNG",0,0,595.28,841.89)});
   try{if(await saveFile(`بطاقة-الكاونتر-${todayISO()}.pdf`,pdf.output("blob")))toast("تم حفظ بطاقة الكاونتر")}catch(e){console.warn(e);toast("تعذّر حفظ الملف.")}
