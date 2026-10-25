@@ -525,7 +525,7 @@ const monthEndISO=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.ge
 const monthEndLeft=()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,0).getDate()-d.getDate()}; // 0 on the last day
 const monthEndStart=()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,1-MONTH_END_DAYS).getTime()};
 const S={customers:new Map(),txns:new Map(),accounts:new Map(),activity:[],settings:{},
-  me:null,isOwner:false,superOwner:false,shop:null,shops:new Map(),view:"home",kind:"customer",period:"all",remTab:"send",remFilter:"all",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,rep:{tab:"rep",per:"month",from:"",to:"",wf:"all",wlimit:40,pym:""},ready:{c:false,t:false,a:false,s:false}};
+  me:null,isOwner:false,superOwner:false,shop:null,shops:new Map(),view:"home",kind:"customer",period:"all",remTab:"send",remFilter:"all",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,rep:{tab:"rep",per:"month",from:"",to:"",wf:"all",wlimit:40,pym:"",pmode:"month",pday:""},ready:{c:false,t:false,a:false,s:false}};
 let db=null,auth=null,unsubs=[],dataOn=false,flash=null,REG=null,installEvt=null;
 /* Shops: other shops sign up in this same app and each gets its own notebook under shops/{its owner's uid}.
    SHOP is the signed-in person's shop (null = this shop's own data at the root, as it always was); P() puts a path inside it.
@@ -2982,7 +2982,10 @@ function repExport(kind){
     `تقرير-الديون-${R.from}-${R.end}.pdf`);
 }
 
-/* ---------- payments of one month: every customer payment as a row (suppliers left out), downloadable ---------- */
+/* ---------- payments of one month or one day: every customer payment as a row (suppliers left out), downloadable ---------- */
+// The chosen period: a month (YYYY-MM) or a day (YYYY-MM-DD); payments match on their date.
+const paysKey=()=>S.rep.pmode==="day"?S.rep.pday||todayISO():S.rep.pym||todayISO().slice(0,7);
+const paysLabel=k=>k.length>7?Number(k.slice(8))+" "+ymLabel(k.slice(0,7)):ymLabel(k);
 function monthPays(ym){
   const rows=[];
   for(const t of S.txns.values()){if(t.type!=="pay"||!(t.date||"").startsWith(ym))continue;const c=S.customers.get(t.customerId);if(!c||isSup(c))continue;rows.push({t,c})}
@@ -2990,30 +2993,32 @@ function monthPays(ym){
   return {rows,total:rows.reduce((n,r)=>n+r.t.amount,0),people:new Set(rows.map(r=>r.c.id)).size};
 }
 function paysView(){
-  const ym=S.rep.pym||todayISO().slice(0,7),m=monthPays(ym);
+  const ym=paysKey(),day=S.rep.pmode==="day",m=monthPays(ym);
   return `<section class="pane card-pad rep-filter">
-    <div class="two"><div class="field"><label for="payYm">الشهر</label><input id="payYm" type="month" value="${esc(ym)}" max="${todayISO().slice(0,7)}"></div>
+    <div class="chips" role="group" aria-label="الفترة"><button type="button" data-paymode="month" aria-pressed="${!day}">شهر</button><button type="button" data-paymode="day" aria-pressed="${day}">يوم</button></div>
+    <div class="two">${day?`<div class="field"><label for="payDay">اليوم</label><input id="payDay" type="date" value="${esc(ym)}" max="${todayISO()}"></div>`
+      :`<div class="field"><label for="payYm">الشهر</label><input id="payYm" type="month" value="${esc(ym)}" max="${todayISO().slice(0,7)}"></div>`}
       <div class="field"><label>&nbsp;</label><div class="rep-exp"><button class="btn sm" type="button" data-act="payspdf"${m.rows.length?"":" disabled"}>${I.pdf}PDF</button><button class="btn sm" type="button" data-act="payscsv"${m.rows.length?"":" disabled"}>${I.save}Excel (CSV)</button></div></div></div>
-    <p class="ro-note" style="margin:0"><b>${esc(ymLabel(ym))}</b> · <span class="num">${m.rows.length}</span> تسديد من <span class="num">${m.people}</span> زبون · المجموع <b class="num" style="color:var(--paid)">${fmt(m.total)}</b> ${CUR}</p>
+    <p class="ro-note" style="margin:0"><b>${esc(paysLabel(ym))}</b> · <span class="num">${m.rows.length}</span> تسديد من <span class="num">${m.people}</span> زبون · المجموع <b class="num" style="color:var(--paid)">${fmt(m.total)}</b> ${CUR}</p>
   </section>
   <section class="pane card-pad">${m.rows.length?`<ul class="act-list${m.rows.length>30?" long":""}">${m.rows.map(({t,c})=>`<li class="act"><span class="ic add">${I.plus}</span>
     <div class="body"><div class="t"><button class="linkish" type="button" data-open="${esc(c.id)}">${esc(c.name)}</button> سدّد <b class="num">${fmt(t.amount)}</b> ${CUR}${t.note?` · ${esc(t.note)}`:""}</div>
     <div class="s"><span class="num">${esc(t.date)}${t.createdAt?" · "+esc(hm12(t.createdAt)):""}</span>${t.by?`<span>بواسطة: ${esc(t.by)}</span>`:""}</div></div></li>`).join("")}</ul>`
-    :`<div class="empty"><b>ماكو تسديدات بهذا الشهر</b>كل تسديد يسجّل لزبون يطلع هنا.</div>`}</section>`;
+    :`<div class="empty"><b>ماكو تسديدات ${day?"بهذا اليوم":"بهذا الشهر"}</b>كل تسديد يسجّل لزبون يطلع هنا.</div>`}</section>`;
 }
 function paysExport(kind){
-  const ym=S.rep.pym||todayISO().slice(0,7),m=monthPays(ym),base=`تسديدات-${ym}`;
-  if(!m.rows.length){toast("ماكو تسديدات بهذا الشهر");return}
+  const ym=paysKey(),m=monthPays(ym),base=`تسديدات-${ym}`,per=ym.length>7?"اليوم":"الشهر";
+  if(!m.rows.length){toast("ماكو تسديدات بهذا "+per);return}
   const rows=[...m.rows].reverse();
   if(kind==="csv"){
     const q=v=>{const s=String(v??"");return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
-    const lines=[["تسديدات الزبائن",shopName()],["الشهر",ymLabel(ym)],["عدد التسديدات",m.rows.length],["عدد الزبائن",m.people],["المجموع",m.total],[],
+    const lines=[["تسديدات الزبائن",shopName()],[per,paysLabel(ym)],["عدد التسديدات",m.rows.length],["عدد الزبائن",m.people],["المجموع",m.total],[],
       ["ت","التاريخ","الوقت","الزبون","الهاتف","المبلغ","الملاحظة","بواسطة"],
       ...rows.map(({t,c},i)=>[i+1,t.date,t.createdAt?hm12(t.createdAt):"",c.name,c.phone||"",t.amount,t.note||"",t.by||""])];
     saveFile(base+".csv","\ufeff"+lines.map(r=>r.map(q).join(",")).join("\r\n"),"text/csv").then(ok=>ok&&toast("تم حفظ الملف")).catch(()=>toast("تعذّر حفظ الملف."));
     return}
-  buildPdf({shop:shopName(),title:"تسديدات الزبائن: "+ymLabel(ym),
-    info:[["الشهر",{text:ymLabel(ym)}],["عدد التسديدات",{text:String(m.rows.length)}],["عدد الزبائن",{text:String(m.people)}],["المجموع",{text:fmt(m.total)+" "+CUR,color:PDFC.paid}]],
+  buildPdf({shop:shopName(),title:"تسديدات الزبائن: "+paysLabel(ym),
+    info:[[per,{text:paysLabel(ym)}],["عدد التسديدات",{text:String(m.rows.length)}],["عدد الزبائن",{text:String(m.people)}],["المجموع",{text:fmt(m.total)+" "+CUR,color:PDFC.paid}]],
     sections:[{title:"التسديدات",columns:[{label:"ت",w:.06,num:true},{label:"التاريخ",w:.15,num:true},{label:"الوقت",w:.12,num:true},{label:"الزبون",w:.3},{label:"المبلغ",w:.17,num:true},{label:"الملاحظة",w:.2}],
       rows:rows.map(({t,c},i)=>({cells:[String(i+1),t.date,t.createdAt?hm12(t.createdAt):"",c.name,fmt(t.amount),t.note||""],colors:[null,null,null,null,PDFC.paid,null],shade:i%2===1}))}],
     totals:[["مجموع التسديدات",fmt(m.total)+" "+CUR,PDFC.paid]]},base+".pdf");
@@ -3171,6 +3176,7 @@ document.addEventListener("click",e=>{
   const tr=t.closest("[data-tplreset]");if(tr){document.getElementById("tpl-"+tr.dataset.tplreset).value=DEFAULT_TPL[tr.dataset.tplreset];return}
   const ua=t.closest("[data-uact]");if(ua&&isAdmin()){userAction(ua.dataset.uact,ua.dataset.id);return}
   const sa=t.closest("[data-shopact]");if(sa){shopAction(sa.dataset.shopact,sa.dataset.id);return}
+  const pm=t.closest("[data-paymode]");if(pm){S.rep.pmode=pm.dataset.paymode;render();return}
   const rpt=t.closest("[data-reptab]");if(rpt){S.rep.tab=rpt.dataset.reptab;render();return}
   const rpp=t.closest("[data-repper]");if(rpp){S.rep.per=rpp.dataset.repper;if(S.rep.per==="custom"&&!S.rep.from){S.rep.to=todayISO();S.rep.from=addDays(todayISO(),-29)}render();return}
   const wf=t.closest("[data-wf]");if(wf){S.rep.wf=wf.dataset.wf;S.rep.wlimit=40;render();return}
@@ -3293,6 +3299,7 @@ document.addEventListener("change",e=>{
   if(e.target.id==="sort"){S.sort=e.target.value;renderList()}
   if(e.target.id==="period"){S.period=e.target.value;renderDetail()}
   if(e.target.id==="payYm"&&e.target.value){S.rep.pym=e.target.value;render()}
+  if(e.target.id==="payDay"&&e.target.value){S.rep.pday=e.target.value;render()}
   if(e.target.id==="repFrom"||e.target.id==="repTo"){if(e.target.value){S.rep[e.target.id==="repFrom"?"from":"to"]=e.target.value;render()}}
   if(e.target.id==="importFile"){const f=e.target.files[0];if(f&&isAdmin())importData(f);e.target.value=""}
   const ur=e.target.closest&&e.target.closest("[data-urole]");
