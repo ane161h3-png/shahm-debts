@@ -175,6 +175,50 @@ input:disabled{opacity:.55}
 .pack{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;align-items:end;padding-bottom:10px;border-bottom:1px dashed var(--line)}
 .pack .icon-btn{justify-self:end}
 .modal.wide{max-width:620px}
+/* The sell screen as an invoice: action bar, customer + search, a row per item, totals bar. */
+.ib{display:flex;flex-direction:column;gap:10px}
+.ib-bar{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;background:var(--accent);border-radius:var(--r);padding:6px}
+.ib-bar::-webkit-scrollbar{display:none}
+.ib-bar button{flex:1 0 auto;min-width:70px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 8px;border:0;border-radius:10px;background:none;color:var(--accent-ink);font:600 11.5px var(--f-body);cursor:pointer;white-space:nowrap}
+.ib-bar button:hover:not(:disabled){background:rgba(255,255,255,.16)}
+.ib-bar button:disabled{opacity:.45;cursor:default}
+.ib-bar button[aria-pressed="true"]{background:var(--accent-ink);color:var(--accent)}
+.ib-bar svg{width:21px;height:21px}
+.ib-top{display:flex;gap:8px;align-items:stretch}
+.ib-cust{flex:0 0 210px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--paper);border-radius:var(--r-ctl);padding:0 12px;cursor:pointer;font:600 15px var(--f-display);color:var(--ink);min-height:46px}
+.ib-cust svg{width:18px;height:18px;color:var(--muted);flex:none}
+.ib-cust span{flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ib-search{flex:1;min-width:0;position:relative}
+.ib-res{position:absolute;top:calc(100% + 4px);inset-inline:0;z-index:6;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);max-height:48vh;overflow:auto}
+.ib-res[hidden]{display:none}
+.ib-r{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px 14px;border:0;border-bottom:1px solid var(--line);background:none;cursor:pointer;text-align:right;color:var(--ink);font:inherit}
+.ib-r:hover:not(:disabled){background:var(--accent-soft)}
+.ib-r b{font-weight:600}.ib-r>span{color:var(--muted);font-size:13px;white-space:nowrap}
+.ib-quick{flex:none}.ib-quick svg{color:var(--brand-orange)}
+.ib-body{min-height:240px;overflow:auto}
+.ib-lines{list-style:none;margin:0;padding:0}
+.ib-line{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.ib-line .nm{flex:1 1 190px;min-width:0;text-align:right}
+.ib-line .nm b{display:block;font-weight:700}
+.ib-line .nm>span{font-size:12.5px;color:var(--muted)}
+.ib-line .nm .low{color:var(--debt)}
+.ib-line .note{display:block;color:var(--accent);font-size:12.5px}
+.ib-chips{display:flex;gap:4px}
+.ib-chips button{border:1px solid var(--line);background:var(--paper-2);border-radius:8px;padding:5px 11px;font-size:12px;cursor:pointer;color:var(--muted);font-weight:600}
+.ib-chips button:hover{border-color:var(--accent);color:var(--accent)}
+.ib-line .lt{font-family:var(--f-display);font-weight:800;font-size:17px;min-width:84px;text-align:left}
+.ib-ico{width:34px;height:34px;display:grid;place-items:center;border:0;background:none;cursor:pointer;border-radius:50%;color:var(--muted)}
+.ib-ico:hover{background:var(--paper-2)}.ib-ico.del{color:var(--debt)}.ib-ico svg{width:18px;height:18px}
+.ib-empty{display:grid;place-items:center;min-height:240px}.ib-empty svg{width:42px;height:42px;display:block;margin:0 auto 8px;color:var(--muted)}
+.ib-foot{position:sticky;bottom:8px;z-index:4;display:flex;flex-direction:column;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--line);background:var(--paper)}
+.ib-foot .inv-tabs{padding:8px 12px}
+.ib-tot{background:var(--ink);color:var(--paper);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;flex-wrap:wrap}
+.ib-sum>span{display:block;font-size:13.5px;opacity:.85}
+.ib-sum b{display:block;font:800 40px var(--f-display);line-height:1.1}.ib-sum b small{font-size:16px;font-weight:700}
+.ib-btns{display:flex;gap:8px;flex-wrap:wrap}
+.ib-tot .btn:not(.primary){background:transparent;color:var(--paper);border-color:var(--muted)}
+.ib-go{font-size:18px;padding:12px 26px}
+@media (max-width:700px){.ib-top{flex-wrap:wrap}.ib-cust{flex:1 1 100%}.ib-search{flex:1 1 60%}.ib-line .lt{min-width:70px}.ib-sum b{font-size:32px}.ib-btns{width:100%}.ib-btns .btn{flex:1}}
 .modal.bgen{max-width:860px}
 .bg-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
 @media (max-width:700px){.bg-grid{grid-template-columns:1fr}}
@@ -669,6 +713,17 @@ const I={
   bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/></svg>',
   list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>'
 };
+Object.assign(I,{
+  history:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>',
+  redo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/></svg>',
+  ban:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>',
+  percent:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/></svg>',
+  tag:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12l-8 8-9-9V3h8z"/><circle cx="7.5" cy="7.5" r="1.3"/></svg>',
+  pause:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/></svg>',
+  bolt:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>',
+  user:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
+  note:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M9 12h6M9 16h6"/></svg>'
+});
 function toast(msg,ms){
   document.querySelectorAll(".toast").forEach(t=>t.remove());
   const t=document.createElement("div");t.className="toast";t.setAttribute("role","status");t.textContent=msg;
@@ -925,8 +980,8 @@ function loadCart(){try{const d=JSON.parse(localStorage.getItem(CART_KEY)||"null
 /* ---------- several open invoices: the customer in front is the active one (S.cart…); the others wait with their own lines,
    discount and wholesale flag, and a tap on their tab swaps them in. ---------- */
 const MAX_INV=6;
-const snapInv=()=>({cart:S.cart,discount:S.discount,whole:S.whole,approval:S.approval});
-function loadInv(x){S.cart=x.cart||[];S.discount=x.discount||0;S.whole=!!x.whole;S.approval=x.approval||null;S.lastSale=null}
+const snapInv=()=>({cart:S.cart,discount:S.discount,whole:S.whole,approval:S.approval,cust:S.invCust||null});
+function loadInv(x){S.cart=x.cart||[];S.discount=x.discount||0;S.whole=!!x.whole;S.approval=x.approval||null;S.invCust=x.cust||null;S.lastSale=null}
 function invTotal(x){const sub=x.cart.reduce((a,l)=>a+lineTotal(l),0);return sub-Math.max(0,Math.min(Math.round(x.discount)||0,sub))}
 function switchInvoice(i){
   if(i===S.cur||!S.slots[i])return;
@@ -969,7 +1024,7 @@ function setQty(key,q){
   if(!(q>0))S.cart=S.cart.filter(x=>x!==l);else{if(round3(q)!==l.qty)delete l.fix;l.qty=round3(q)}
   if(!S.cart.length){S.discount=0;S.whole=false}saveCart();refresh("cart");
 }
-function clearCart(){S.cart=[];S.discount=0;S.whole=false;S.approval=null;saveCart();refresh("cart")}
+function clearCart(){S.cart=[];S.discount=0;S.whole=false;S.approval=null;S.invCust=null;saveCart();refresh("cart")}
 // Switch the whole invoice between retail and wholesale prices.
 function setWhole(v){
   S.whole=v;
@@ -1022,7 +1077,11 @@ function refresh(what){
 let refreshPicker=null;
 
 /* ---------- sell view ---------- */
+const SELLMODE_KEY="shahm-pos-sellmode";
+// The sell screen shows either the invoice (a row per item, with a bar of actions) or the item tiles; the choice stays on this device.
+const invMode=()=>{try{return localStorage.getItem(SELLMODE_KEY)!=="tiles"}catch(e){return true}};
 function sellView(){
+  if(invMode())return invView();
   return `<div class="sell">
     <section class="pane catalog" aria-label="المواد">
       <div class="cat-tools">
@@ -1030,6 +1089,7 @@ function sellView(){
           <label class="search">${I.search}<input id="q" type="search" placeholder="ابحث باسم المادة أو الباركود${keyOf("search")?keyHint(` (${esc(keyName(keyOf("search")))})`):""}" autocomplete="off" value="${esc(S.q)}" aria-label="بحث عن مادة"></label>
           ${canScan()?`<button class="icon-btn" type="button" data-act="scan" aria-label="مسح باركود بالكاميرا" title="مسح باركود بالكاميرا">${I.scan}</button>`:""}
           ${canSell()&&canKick()?`<button class="icon-btn" type="button" data-act="drawer" aria-label="فتح الدرج" title="فتح الدرج">${I.drawer}</button>`:""}
+          <button class="icon-btn" type="button" data-act="sellmode" aria-label="شاشة الفاتورة" title="شاشة الفاتورة">${I.list}</button>
         </div>
         <div class="chips" id="chips"></div>
       </div>
@@ -1058,6 +1118,7 @@ function filteredProducts(q,cat){
   return list.map(p=>({p,s:(p.barcode&&p.barcode===t)||packsOf(p).some(k=>k.barcode&&k.barcode===t)?20:matchScore(p.name,t,p.category)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s||a.p.name.localeCompare(b.p.name,"ar")).map(x=>x.p);
 }
 function renderTiles(){
+  if(invMode()){renderInvRes();return}
   const el=$("#tiles");if(!el)return;
   const inCart=new Map();for(const l of S.cart)if(l.pid)inCart.set(l.pid,round3((inCart.get(l.pid)||0)+l.qty*(l.n||1)));
   const list=filteredProducts(S.q,S.cat);
@@ -1081,6 +1142,7 @@ function renderTiles(){
   hydratePics(el);
 }
 function renderCart(){
+  if(invMode()){renderInv();return}
   const el=$("#cart"),bar=$("#cartBar");if(!el)return;
   const t=totals();
   el.innerHTML=`${canSell()&&(S.cart.length||S.slots.length>1)?invTabs():""}<div class="cart-head"><h2>الفاتورة ${S.cart.length?`<span class="chip zero num">${S.cart.length}</span>`:""}</h2>
@@ -1106,6 +1168,134 @@ function renderCart(){
   if(!S.cart.length&&!waiting)document.body.classList.remove("show-cart");
   if(!S.cart.length&&!S.lastSale)document.body.classList.remove("splitv");
   hydratePics(el);
+}
+
+
+/* ---------- the sell screen as an invoice ----------
+   A bar of actions on top, the customer and a search box, a row for each item (price, stock, quantity, note, amount),
+   the open invoices as tabs, and the total with the buttons to finish. */
+function invView(){
+  return `<div class="ib">
+    <div class="ib-bar" id="ibBar" role="toolbar" aria-label="أدوات الفاتورة"></div>
+    <div class="ib-top">
+      <button class="ib-cust" type="button" id="ibCust" data-act="custpick" aria-label="اختيار الزبون"></button>
+      <div class="ib-search"><label class="search">${I.search}<input id="q" type="search" placeholder="فحص الباركود أو ابحث بالاسم…${keyOf("search")?keyHint(` (${esc(keyName(keyOf("search")))})`):""}" autocomplete="off" value="${esc(S.q)}" aria-label="بحث عن مادة"></label><div class="ib-res" id="ibRes" hidden></div></div>
+      ${canSell()?`<button class="btn ib-quick" type="button" data-act="quickprices">${I.bolt}أسعار سريعة</button>`:""}
+      ${canScan()?`<button class="icon-btn" type="button" data-act="scan" aria-label="مسح باركود بالكاميرا" title="مسح باركود بالكاميرا">${I.scan}</button>`:""}
+      ${canSell()&&canKick()?`<button class="icon-btn" type="button" data-act="drawer" aria-label="فتح الدرج" title="فتح الدرج">${I.drawer}</button>`:""}
+      <button class="icon-btn" type="button" data-act="sellmode" aria-label="شاشة البطاقات" title="شاشة البطاقات">${I.box}</button>
+    </div>
+    ${canSell()?"":`<div class="banner warn ro-note">حسابك «مشاهد»، تكدر تشوف المواد والمبيعات بس ما تكدر تبيع.</div>`}
+    <div id="prNote">${prNoteHtml()}</div>
+    <section class="pane ib-body" id="ibLines" aria-label="الفاتورة"></section>
+    <div class="ib-foot" id="ibFoot"></div>
+  </div>`;
+}
+function renderInvRes(){
+  const el=$("#ibRes");if(!el)return;const q=normDigits(S.q).trim();
+  if(!q||!S.ready.p){el.hidden=true;el.innerHTML="";return}
+  const list=filteredProducts(q,"all").slice(0,8);el.hidden=false;
+  el.innerHTML=list.length?list.map(p=>`<button type="button" class="ib-r" data-add="${esc(p.id)}"${canSell()?"":" disabled"}><b>${esc(p.name)}</b><span><span class="num">${fmt(priceFor(p,null,S.whole))}</span>${isWeighed(p)?" للكيلو":""}${tracked(p)?` · المخزن <span class="num">${qtyText(stockOf(p))}</span>`:""}</span></button>`).join("")
+    :`<div class="empty" style="padding:14px"><b>ماكو مادة بهذا الاسم</b>${canSell()?"بيعها بـ «أسعار سريعة».":""}</div>`;
+}
+function renderInv(){
+  const root=$("#ibLines");if(!root)return;
+  const t=totals(),sell=canSell(),has=S.cart.length>0,adm=isAdmin(),cust=S.invCust&&S.customers.get(S.invCust);
+  const nm=$("#ibCust");if(nm)nm.innerHTML=`${I.user}<span>${cust?esc(cust.name):"زبون نقدي"}</span>`;
+  const B=(act,ico,label,dis,x="")=>`<button type="button" data-act="${act}"${dis?" disabled":""}${x}>${ico}<span>${label}</span></button>`;
+  $("#ibBar").innerHTML=`<button type="button" data-go="sales">${I.history}<span>سجل الفواتير</span></button>`
+    +B("redolast",I.redo,"إعادة آخر عملية",!sell)+B("undoline",I.ban,"إلغاء",!has||!sell)+B("discount",I.percent,"خصم %",!has||!sell)
+    +B("ibprice",I.tag,"سعر مختلف",!has||!sell)+B("whole",I.box,"جملة",!sell,` aria-pressed="${!!S.whole}"`)
+    +B("ibprint",I.print,"طباعة",!has)+B("newinv",I.pause,"تعليق الفاتورة",!has||!sell)+B("clear",I.trash,"حذف الكل",!has||!sell);
+  const inCart=new Map();for(const l of S.cart)if(l.pid)inCart.set(l.pid,round3((inCart.get(l.pid)||0)+l.qty*(l.n||1)));
+  root.innerHTML=has?`<ul class="ib-lines">${S.cart.map(l=>{const p=l.pid&&S.products.get(l.pid),left=p&&tracked(p)?round3(stockOf(p)-(inCart.get(l.pid)||0)):null,k=esc(l.key);
+    return `<li class="ib-line"><div class="nm"><b>${esc(l.name)}</b>
+        <span><span class="num">${fmt(l.price)}</span> ${CUR}${l.w?" للكيلو":""}${left!==null?` | <span class="${left<=0?"low":""}">المخزن: <span class="num">${qtyText(left)}</span></span>`:""}${l.was?` <s class="was num">${fmt(l.was)}</s>`:""}${l.deal||l.was?` <span class="of">عرض${l.deal?" "+offerHtml(l.deal):""}</span>`:""}${l.fix>0&&l.disc>0?` <span class="of">خصم <span class="num">${fmt(l.disc)}</span></span>`:""}</span>
+        ${l.note?`<small class="note">${esc(l.note)}</small>`:""}</div>
+      ${adm&&sell?`<div class="ib-chips"><button type="button" data-lprice="${k}">سعر</button><button type="button" data-ldisc="${k}">خصم</button><button type="button" data-lpct="${k}">%</button></div>`:""}
+      ${l.w?`<button class="wpill" type="button" data-line="${k}" aria-label="تعديل الوزن">${kgHtml(l.qty)}</button>`
+        :`<div class="stepper"><button type="button" data-dec="${k}" aria-label="نقصان">${I.minus}</button><span class="num">${qtyText(l.qty)}</span><button type="button" data-inc="${k}" aria-label="زيادة">${I.plus}</button></div>`}
+      ${sell?`<button class="ib-ico" type="button" data-lnote="${k}" aria-label="ملاحظة" title="ملاحظة">${I.note}</button>`:""}
+      <b class="lt num">${fmt(lineTotal(l))}</b>
+      ${sell?`<button class="ib-ico del" type="button" data-ldel="${k}" aria-label="حذف">${I.trash}</button>`:""}</li>`}).join("")}</ul>`
+    :S.lastSale?soldHtml(S.lastSale)
+    :`<div class="empty ib-empty"><div>${I.scan}<b>الفاتورة فارغة</b>امسح باركود المادة أو ابحث عنها باسمها.</div></div>`;
+  $("#ibFoot").innerHTML=`${sell?invTabs():""}<div class="ib-tot"><div class="ib-sum"><span>المجموع الكلي${has?` · <span class="num">${qtyText(round3(S.cart.reduce((a,l)=>a+(l.w?1:l.qty),0)))}</span> قطعة`:""}${t.disc?` · خصم <span class="num">${fmt(t.disc)}</span>`:""}${S.whole?" · جملة":""}</span><b><span class="num">${fmt(t.total)}</span> <small>${CUR}</small></b></div>
+    <div class="ib-btns"><button class="btn" type="button" data-act="kbd">${I.keypad}<span>لوحة المفاتيح</span></button>
+      <button class="btn" type="button" data-act="quickcash"${has&&sell?"":" disabled"}>كاش${kk("cash")}</button>
+      <button class="btn primary ib-go" type="button" data-act="checkout"${has&&sell?"":" disabled"}>${I.check}إتمام وحفظ${kk("pay")}</button></div></div>`;
+  hydratePics(root);
+}
+// Items back onto the invoice from the last sale made on this device (the same customer buying again).
+function redoLast(){
+  if(!canSell())return;let last=null;for(const x of S.sales.values())if(x.status!=="void"&&x.items&&x.items.length&&(!last||x.at>last.at))last=x;
+  if(!last){toast("ماكو فاتورة سابقة اليوم.",2500);return}
+  for(const it of last.items){const p=it.pid&&S.products.get(it.pid);
+    if(p&&p.active!==false){const pack=it.unit&&it.unit!==baseUnit(p)?packsOf(p).find(k=>k.name===it.unit)||null:null;addToCart(p,it.qty,pack)}
+    else{S.cart.push({key:"c-"+uid(),pid:null,name:it.name,price:Math.round(it.price)||0,qty:it.qty,cat:it.cat||""})}}
+  S.lastSale=null;saveCart();refresh("cart");toast(`رجّعت مواد فاتورة #${last.no}`,2200);
+}
+function undoLine(){const l=S.cart[S.cart.length-1];if(!l||!canSell())return;setQty(l.key,0);toast("انشال آخر سطر: "+l.name,1800)}
+// «سعر مختلف»: change the price of the last item (the owner only; an editor asks for a discount instead).
+function otherPrice(){
+  const l=S.cart[S.cart.length-1];if(!l||!canSell())return;
+  if(!isAdmin()&&l.pid){toast("تعديل السعر للمدير بس. اطلب خصم من «خصم %».",3500);return}
+  editLine(l.key,true);
+}
+function printDraft(){
+  if(!S.cart.length)return;const t=totals();
+  const sale={id:"draft",no:"—",at:Date.now(),date:todayISO(),items:S.cart.map(l=>({pid:l.pid||null,name:l.name,unit:l.unit||"",n:l.n||1,price:Math.round(l.price),qty:l.qty,total:lineTotal(l),cat:l.cat||"",...(l.w?{w:1}:{}),...(l.deal?{deal:l.deal}:{}),...(l.was?{was:l.was}:{})})),
+    subtotal:t.sub,discount:t.disc,total:t.total,cash:0,debt:0,by:S.me.name,status:"draft"};
+  if(canPrint())printReceipt(sale,{ask:true});else receiptPdf(sale);
+}
+function custPick(){
+  openModal(`<h3>اختيار الزبون</h3><p class="hint">الزبون يبقى على هذي الفاتورة، ويظهر بالدفع إذا انباع دين.</p>
+    <label class="search">${I.search}<input id="cpq" type="search" placeholder="ابحث باسم الزبون أو رقمه" autocomplete="off"></label>
+    <ul class="rows" id="cpl" style="max-height:48vh;overflow:auto"></ul><div class="foot"><button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
+    const q=m.querySelector("#cpq"),ul=m.querySelector("#cpl");
+    needCust();
+    const draw=()=>{if(!custReady){ul.innerHTML=`<li class="empty">جارِ تحميل الزبائن…</li>`;return}const t=q.value.trim(),all=[...S.customers.values()].filter(c=>!isSup(c));
+      const arr=(t?all.map(c=>({c,s:custScore(c,t)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s||a.c.name.localeCompare(b.c.name,"ar")).map(x=>x.c):all.sort((a,b)=>a.name.localeCompare(b.name,"ar"))).slice(0,40);
+      ul.innerHTML=(t?"":`<li class="crow"><button type="button" class="btn" data-cid="" style="flex:1">زبون نقدي (بدون زبون)</button></li>`)
+        +arr.map(c=>`<li class="crow"><button type="button" class="btn ghost" data-cid="${esc(c.id)}" style="flex:1;justify-content:flex-start">${esc(c.name)}</button></li>`).join("")||`<li class="empty">ماكو زبون بهذا الاسم.</li>`};
+    q.addEventListener("input",draw);draw();refreshPicker=()=>{if(document.body.contains(ul))draw()};
+    ul.addEventListener("click",e=>{const b=e.target.closest("[data-cid]");if(!b)return;S.invCust=b.dataset.cid||null;closeModal();renderInv()});
+  });
+}
+// «أسعار سريعة»: a tap adds an item that isn't in the list, at that price.
+function quickPrices(){
+  if(!canSell())return;const amts=[250,500,750,1000,1500,2000,3000,5000,10000,25000];let n=0;
+  openModal(`<h3>أسعار سريعة</h3><p class="hint">اضغط المبلغ حتى ينضاف للفاتورة كمادة متفرقة. تكدر تضغط أكثر من مرة.</p>
+    <div class="quick qp">${amts.map(v=>`<button type="button" data-qp="${v}"><span class="num">${fmt(v)}</span></button>`).join("")}</div><p class="hint" id="qpN"></p>
+    <div class="foot"><button class="btn" type="button" id="qpO">${I.keypad}مبلغ ثاني…</button><button class="btn primary" type="button" data-close>تم</button></div>`,m=>{
+    m.querySelectorAll("[data-qp]").forEach(b=>b.onclick=()=>{const price=Number(b.dataset.qp);
+      const l=S.cart.find(x=>!x.pid&&x.price===price&&x.name==="مادة متفرقة"&&!x.note);if(l)l.qty=round3(l.qty+1);else S.cart.push({key:"c-"+uid(),pid:null,name:"مادة متفرقة",price,qty:1,cat:cats()[0]||""});
+      S.lastSale=null;saveCart();refresh("cart");sound("add");n++;m.querySelector("#qpN").textContent=`انضافت ${n} مرة`});
+    m.querySelector("#qpO").onclick=()=>{closeModal();keypadForm()};
+  });
+}
+// A discount on one item: an amount, or a percent of its price (the owner only; the invoice discount is the editor's way, with approval).
+function lineDiscForm(key,pct){
+  const l=S.cart.find(x=>x.key===key);if(!l||!isAdmin())return;const base=Math.round(l.price*l.qty);
+  openModal(`<h3>${pct?"نسبة خصم":"خصم"} على ${esc(l.name)}</h3><p class="hint">سعر السطر <b class="num">${fmt(base)}</b> ${CUR}${l.fix>0&&l.disc>0?` · الخصم الحالي <b class="num">${fmt(l.disc)}</b>`:""}</p>
+    <form id="ldf" class="field" style="gap:12px" novalidate><div class="field"><input id="ldv" class="big" inputmode="decimal" placeholder="${pct?"10":"0"}" aria-label="${pct?"النسبة %":"مبلغ الخصم"}"></div>
+      ${pct?`<div class="quick">${[5,10,15,20,25].map(v=>`<button type="button" data-dq="${v}">${v}%</button>`).join("")}</div>`:""}<p class="err" id="ldE"></p>
+      <div class="foot"><button class="btn primary" type="submit">تطبيق</button>${l.fix>0&&l.disc>0?`<button class="btn ghost danger-text" type="button" id="ldDel">إلغاء الخصم</button>`:""}<button class="btn" type="button" data-close>رجوع</button></div></form>`,m=>{
+    const inp=m.querySelector("#ldv");m.querySelectorAll("[data-dq]").forEach(b=>b.onclick=()=>{inp.value=b.dataset.dq;inp.focus()});
+    const d=m.querySelector("#ldDel");if(d)d.onclick=()=>{delete l.fix;delete l.disc;saveCart();refresh("cart");closeModal()};
+    m.querySelector("#ldf").addEventListener("submit",e=>{e.preventDefault();const v=parseAmt(inp.value),amt=pct?Math.round(base*v/100):Math.round(v);
+      if(!(v>0)||amt>=base){m.querySelector("#ldE").textContent=pct?"اكتب نسبة من 1 إلى 99.":"اكتب مبلغ أقل من سعر السطر.";return}
+      l.fix=base-amt;l.disc=amt;saveCart();refresh("cart");closeModal()});
+  });
+}
+function lineNoteForm(key){
+  const l=S.cart.find(x=>x.key===key);if(!l)return;
+  openModal(`<h3>ملاحظة على ${esc(l.name)}</h3><form id="lnnf" class="field" style="gap:12px" novalidate><div class="field"><input id="lnn" maxlength="60" value="${esc(l.note||"")}" placeholder="مثال: بدون ثلج"></div>
+    <div class="foot"><button class="btn primary" type="submit">تم</button>${l.note?`<button class="btn ghost danger-text" type="button" id="lnnDel">حذف الملاحظة</button>`:""}<button class="btn" type="button" data-close>رجوع</button></div></form>`,m=>{
+    const set=v=>{if(v)l.note=v;else delete l.note;saveCart();refresh("cart");closeModal()};
+    const d=m.querySelector("#lnnDel");if(d)d.onclick=()=>set("");
+    m.querySelector("#lnnf").addEventListener("submit",e=>{e.preventDefault();set(m.querySelector("#lnn").value.trim())});
+  });
 }
 
 /* line editing: quantity and unit for everyone, price only for the owner (the editor sells at the listed price) */
@@ -1628,7 +1818,7 @@ function itemsText(items,max){const s=items.map(i=>i.w?`${itemName(i)} ${itemQty
 function saveSale(pay){
   const t=totals(),now=Date.now(),id=uid(),no=saleNo();
   const items=S.cart.map(l=>({pid:l.pid||null,name:l.name,unit:l.unit||"",n:l.n||1,price:Math.round(l.price),qty:l.qty,total:lineTotal(l),cat:l.cat||"",...(l.w?{w:1}:{}),
-    ...(l.deal?{deal:l.deal}:{}),...(l.was?{was:l.was}:{}),cost:l.cost>0?l.cost:null}));
+    ...(l.deal?{deal:l.deal}:{}),...(l.was?{was:l.was}:{}),...(l.note?{note:l.note}:{}),cost:l.cost>0?l.cost:null}));
   const sale={id,no,at:now,date:todayISO(),items,count:items.length,subtotal:t.sub,discount:t.disc,total:t.total,cash:pay.cash,debt:pay.debt,
     ...(S.whole?{wholesale:true}:{}),...(S.shift?{shiftId:S.shift.id}:{}),...(S.approval&&t.disc>0?{approvalId:S.approval.id}:{}),...(pay.received?{received:pay.received,change:pay.received-t.total}:{}),
     ...(pay.usd?{usd:pay.usd,rate:pay.rate,usdIqd:pay.usdIqd,...(pay.usdIqd>t.total?{change:pay.usdIqd-t.total}:{}),...(pay.usdIqd<t.total?{topUp:t.total-pay.usdIqd}:{})}:{}),by:S.me.name,byId:S.me.id,status:"done"};
@@ -1655,7 +1845,7 @@ function saveSale(pay){
     b2.commit().then(()=>toast(`انحفظت فاتورة #${no}، بس مخزون موادها ما تحدّث. راجعه من المواد.`,6000))
       .catch(e2=>{console.warn(e2);S.sales.delete(id);if(sale.txnId)S.txns.delete(sale.txnId);unsentAdd({no,at:now,total:sale.total,core,err:e2&&e2.code||""});refresh("sales")});
   });
-  S.cart=[];S.discount=0;S.whole=false;S.approval=null;saveCart();document.body.classList.remove("show-cart");refresh("cart");
+  S.cart=[];S.discount=0;S.whole=false;S.approval=null;S.invCust=null;saveCart();document.body.classList.remove("show-cart");refresh("cart");
   return sale;
 }
 /* Invoices the server refused stay on this device (localStorage) until they are sent: retried on every start, when the
@@ -4690,10 +4880,16 @@ document.addEventListener("click",e=>{
   const t=e.target;
   const g=t.closest("[data-go]");if(g){e.preventDefault();go(g.dataset.go);return}
   if(t.closest("#meBox")){accountMenu();return}
-  const add=t.closest("[data-add]");if(add){const p=S.products.get(add.dataset.add);if(p)sellItem(p);return}
+  const add=t.closest("[data-add]");if(add){const p=S.products.get(add.dataset.add);if(p)sellItem(p);
+    if(invMode()&&S.q){S.q="";const qi=$("#q");if(qi){qi.value="";qi.focus()}renderInvRes()}return}
   const inc=t.closest("[data-inc]");if(inc){const l=S.cart.find(x=>x.key===inc.dataset.inc);if(l)setQty(l.key,l.qty+1);return}
   const dec=t.closest("[data-dec]");if(dec){const l=S.cart.find(x=>x.key===dec.dataset.dec);if(l)setQty(l.key,l.qty>1?l.qty-1:0);return}
   const ln=t.closest("[data-line]");if(ln){editLine(ln.dataset.line);return}
+  const lp=t.closest("[data-lprice]");if(lp){editLine(lp.dataset.lprice,true);return}
+  const ld=t.closest("[data-ldisc]");if(ld){lineDiscForm(ld.dataset.ldisc,false);return}
+  const lc=t.closest("[data-lpct]");if(lc){lineDiscForm(lc.dataset.lpct,true);return}
+  const lnn=t.closest("[data-lnote]");if(lnn){lineNoteForm(lnn.dataset.lnote);return}
+  const ldl=t.closest("[data-ldel]");if(ldl){setQty(ldl.dataset.ldel,0);return}
   const iv=t.closest("[data-inv]");if(iv){switchInvoice(+iv.dataset.inv);return}
   const c=t.closest("[data-cat]");if(c){S.cat=c.dataset.cat;renderChips();renderTiles();return}
   const pc=t.closest("[data-pcat]");if(pc){S.pcat=pc.dataset.pcat;renderProducts();return}
@@ -4721,9 +4917,17 @@ document.addEventListener("click",e=>{
   switch(a.dataset.act){
     case "scan":scanBarcode(sellCode);break;
     case "keypad":keypadForm();break;
+    case "sellmode":{try{localStorage.setItem(SELLMODE_KEY,invMode()?"tiles":"inv")}catch(e){}S.q="";render();break}
+    case "redolast":redoLast();break;
+    case "undoline":undoLine();break;
+    case "ibprice":otherPrice();break;
+    case "ibprint":printDraft();break;
+    case "custpick":custPick();break;
+    case "quickprices":quickPrices();break;
+    case "kbd":{const q=$("#q");if(q){q.focus();padShow(q)}break}
     case "clear":if(confirm("تفريغ الفاتورة؟"))clearCart();break;
     case "discount":discountForm();break;
-    case "checkout":checkout();break;
+    case "checkout":checkout(S.invCust&&S.customers.get(S.invCust)?{cust:S.customers.get(S.invCust)}:undefined);break;
     case "unsentRetry":unsentRetry(true);break;
     case "quickcash":quickCash();break;
     case "soldok":nextInvoice();break;
