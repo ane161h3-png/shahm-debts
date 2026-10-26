@@ -175,6 +175,13 @@ input:disabled{opacity:.55}
 .pack{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;align-items:end;padding-bottom:10px;border-bottom:1px dashed var(--line)}
 .pack .icon-btn{justify-self:end}
 .modal.wide{max-width:620px}
+.modal.bgen{max-width:860px}
+.bg-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:700px){.bg-grid{grid-template-columns:1fr}}
+.bg-prev{display:flex;flex-direction:column;gap:8px;position:sticky;top:0}
+.bg-frame{background:var(--paper-2);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:grid;place-items:center}
+.bg-frame canvas{max-width:100%;max-height:300px;background:#fff;box-shadow:var(--shadow);height:auto}
+.quick button[aria-pressed="true"],.quick button[aria-pressed="true"]:hover{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 /* Counter card editor: the A4 pages at print size (1240×1754), scaled to the window by --k. */
 .modal.a4ed{max-width:920px}
 .a4-list{display:flex;flex-direction:column;gap:14px;overflow:auto;max-height:62vh;padding:4px;--k:.5}
@@ -2556,6 +2563,7 @@ function productsView(){
         <button class="btn sm" type="button" data-act="weighlist">${I.scale}مواد الوزن</button>
         <button class="btn sm" type="button" data-act="linkscan">${I.scan}ربط باركود</button>
         <button class="btn sm" type="button" data-act="codes">${I.scan}توليد باركود وطباعة ملصقات</button>
+        <button class="btn sm" type="button" data-act="bgen">${I.scan}مولد الباركود</button>
         <button class="btn sm" type="button" data-act="ccard">${I.pdf}بطاقة الكاونتر</button></div>
       <div class="chips" id="pchips"></div></div>
     <ul class="rows" id="plist"></ul></section>`;
@@ -2941,6 +2949,134 @@ function eanBars(code){
   let out="101";for(let i=1;i<7;i++){const l=EAN_L[Number(c[i])];out+=par[i-1]==="L"?l:inv(l).split("").reverse().join("")}
   out+="01010";for(let i=7;i<13;i++)out+=inv(EAN_L[Number(c[i])]);return out+"101";
 }
+/* ---------- free barcode labels: encoders (Code 128, Code 39, EAN-13, EAN-8) ----------
+   Each returns the bars as a string of modules, "1" = bar and "0" = space, or "" when the text can't be encoded. */
+const C128="212222,222122,222221,121223,121322,131222,122213,122312,132212,221213,221312,231212,112232,122132,122231,113222,123122,123221,223211,221132,221231,213212,223112,312131,311222,321122,321221,312212,322112,322211,212123,212321,232121,111323,131123,131321,112313,132113,132311,211313,231113,231311,112133,112331,132131,113123,113321,133121,313121,211331,231131,213113,213311,213131,311123,311321,331121,312113,312311,332111,314111,221411,431111,111224,111422,121124,121421,141122,141221,112214,112412,122114,122411,142112,142211,241211,221114,413111,241112,134111,111242,121142,121241,114212,124112,124211,411212,421112,421211,212141,214121,412121,111143,111341,131141,114113,114311,411113,411311,113141,114131,311141,411131,211412,211214,211232,2331112".split(",");
+const runBars=(w,first)=>{let s="",bar=first!==false;for(const d of w){s+=(bar?"1":"0").repeat(Number(d));bar=!bar}return s};
+function code128Bars(text){
+  const t=normDigits(String(text||""));if(!t||/[^\x20-\x7e]/.test(t))return "";
+  const v=[],digs=j=>{let n=0;while(/\d/.test(t[j+n]||""))n++;return n};let set="",i=0;
+  while(i<t.length){
+    const n=digs(i);
+    if(n>=4||(n>=2&&!(n%2)&&n===t.length&&!set)){
+      // Digits go in pairs under code C; an odd run puts its first digit under B.
+      if(set!=="C"){if(n%2){if(!set){v.push(104);set="B"}v.push(t.charCodeAt(i++)-32)}v.push(set?99:105);set="C"}
+      let m=digs(i);m-=m%2;for(let k=0;k<m;k+=2)v.push(Number(t.slice(i+k,i+k+2)));i+=m;continue}
+    if(set!=="B"){v.push(set?100:104);set="B"}
+    v.push(t.charCodeAt(i++)-32)}
+  let sum=v[0];for(let k=1;k<v.length;k++)sum+=v[k]*k;v.push(sum%103,106);
+  return v.map(x=>runBars(C128[x])).join("");
+}
+const C39={"0":"nnnwwnwnn","1":"wnnwnnnnw","2":"nnwwnnnnw","3":"wnwwnnnnn","4":"nnnwwnnnw","5":"wnnwwnnnn","6":"nnwwwnnnn","7":"nnnwnnwnw","8":"wnnwnnwnn","9":"nnwwnnwnn",A:"wnnnnwnnw",B:"nnwnnwnnw",C:"wnwnnwnnn",D:"nnnnwwnnw",E:"wnnnwwnnn",F:"nnwnwwnnn",G:"nnnnnwwnw",H:"wnnnnwwnn",I:"nnwnnwwnn",J:"nnnnwwwnn",K:"wnnnnnnww",L:"nnwnnnnww",M:"wnwnnnnwn",N:"nnnnwnnww",O:"wnnnwnnwn",P:"nnwnwnnwn",Q:"nnnnnnwww",R:"wnnnnnwwn",S:"nnwnnnwwn",T:"nnnnwnwwn",U:"wwnnnnnnw",V:"nwwnnnnnw",W:"wwwnnnnnn",X:"nwnnwnnnw",Y:"wwnnwnnnn",Z:"nwwnwnnnn","-":"nwnnnnwnw",".":"wwnnnnwnn"," ":"nwwnnnwnn",$:"nwnwnwnnn","/":"nwnwnnnwn","+":"nwnnnwnwn","%":"nnnwnwnwn","*":"nwnnwnwnn"};
+function code39Bars(text){
+  const t=String(text||"").toUpperCase();if(!t||/[^0-9A-Z\-. $/+%]/.test(t))return "";
+  return [..."*"+t+"*"].map(c=>{let s="",bar=true;for(const x of C39[c]){s+=(bar?"1":"0").repeat(x==="w"?3:1);bar=!bar}return s}).join("0");
+}
+// EAN-13 / EAN-8: the check digit is added when it is missing, and a wrong one is refused.
+function eanFull(text,len){
+  const c=normDigits(String(text||"")).trim();if(!/^\d+$/.test(c))return "";
+  const sum=d=>{let t=0;for(let i=0;i<d.length;i++)t+=Number(d[d.length-1-i])*(i%2?1:3);return String((10-t%10)%10)};
+  if(c.length===len-1)return c+sum(c);
+  if(c.length===len&&c[len-1]===sum(c.slice(0,len-1)))return c;
+  return "";
+}
+function ean8Bars(text){
+  const c=eanFull(text,8);if(!c)return "";const inv=b=>b.replace(/./g,x=>x==="1"?"0":"1");
+  let out="101";for(let i=0;i<4;i++)out+=EAN_L[Number(c[i])];out+="01010";for(let i=4;i<8;i++)out+=inv(EAN_L[Number(c[i])]);return out+"101";
+}
+
+/* ---------- barcode generator: a free label (any code, any size, any number of copies), apart from the items ---------- */
+const BG_KEY="shahm-pos-bgen";
+const BG_TYPES=[["c128","Code 128 (الافتراضي)"],["ean13","EAN-13"],["ean8","EAN-8"],["c39","Code 39"]];
+const BG_SIZES=[[40,20],[60,30],[80,40],[100,50]],BG_COPIES=[1,6,12,24,50,100];
+const BG_PX=12; // pixels per mm of the label picture (about 300 dpi)
+// The bars of a code in the chosen type, the text printed under them, or why it can't be made.
+function bgEncode(type,code){
+  const c=String(code||"").trim();if(!c)return {err:"اكتب الكود أو اضغط «توليد»."};
+  if(type==="ean13"||type==="ean8"){const n=type==="ean13"?13:8,full=eanFull(c,n);
+    if(!full)return {err:/^\d+$/.test(normDigits(c))?`${n} رقم (أو ${n-1} وينحسب الأخير)، والرقم الأخير لازم يكون صحيح.`:"EAN أرقام بس."};
+    return {bars:type==="ean13"?eanBars(full):ean8Bars(full),text:full}}
+  if(type==="c39"){const b=code39Bars(c);return b?{bars:b,text:c.toUpperCase()}:{err:"Code 39 يقبل حروف إنجليزية كبيرة وأرقام و - . $ / + % ومسافة."}}
+  const b=code128Bars(c);return b?{bars:b,text:normDigits(c)}:{err:"Code 128 يقبل حروف إنجليزية وأرقام ورموز، بدون عربي."}}
+function bgRandom(type){const r=n=>Array.from({length:n},()=>Math.floor(Math.random()*10)).join("");
+  if(type==="ean13"){const d="0400"+r(8);return d+eanCheck(d)}
+  if(type==="ean8"){const d="2"+r(6);let t=0;for(let i=0;i<7;i++)t+=Number(d[i])*(i%2?1:3);return d+String((10-t%10)%10)}
+  if(type==="c39")return r(8);return r(12)}
+// Draws one label (w × h mm) on a canvas.
+function bgLabel(cv,o,enc){
+  const W=Math.round(o.w*BG_PX),H=Math.round(o.h*BG_PX);cv.width=W;cv.height=H;const x=cv.getContext("2d");
+  x.fillStyle="#fff";x.fillRect(0,0,W,H);if(!enc||!enc.bars)return;
+  const padX=W*.05,padY=H*.07,avail=W-2*padX;x.textAlign="center";x.fillStyle="#000";
+  const fit=(t,size,weight,font)=>{let f=size;x.font=`${weight} ${f}px ${font}`;while(f>8&&x.measureText(t).width>avail){f-=1;x.font=`${weight} ${f}px ${font}`}return f};
+  const fs1=o.title?fit(o.title,H*.17,700,PDF_F):0,fs3=o.sub?fit(o.sub,H*.12,600,PDF_F):0,fs2=Math.min(H*.1,W*.07);
+  let top=padY;if(o.title){x.direction=/[؀-ۿ]/.test(o.title)?"rtl":"ltr";x.font=`700 ${fs1}px ${PDF_F}`;x.fillText(o.title,W/2,top+fs1*.85);top+=fs1*1.3}
+  let bot=H-padY;if(o.sub){x.direction=/[؀-ۿ]/.test(o.sub)?"rtl":"ltr";x.font=`600 ${fs3}px ${PDF_F}`;x.fillText(o.sub,W/2,bot-fs3*.15);bot-=fs3*1.3}
+  x.direction="ltr";x.font=`500 ${fs2}px ${PDF_F}`;x.fillText(enc.text,W/2,bot-fs2*.15);bot-=fs2*1.25;
+  const n=enc.bars.length;let mw=avail/(n+20);if(mw>=2)mw=Math.floor(mw);const bw=n*mw,bx=(W-bw)/2,bh=Math.max(H*.2,bot-top);
+  for(let i=0;i<n;i++)if(enc.bars[i]==="1")x.fillRect(bx+i*mw,top,Math.ceil(mw),bh);
+}
+function barcodeGen(){
+  let o={type:"c128",code:"",title:"",sub:"",w:60,h:30,copies:1,mode:"label"};
+  try{Object.assign(o,JSON.parse(localStorage.getItem(BG_KEY)||"{}"),{code:""})}catch(e){}
+  o.code=bgRandom(o.type);
+  openModal(`<h3>مولد الباركود</h3>
+    <div class="bg-grid">
+      <div class="field" style="gap:12px">
+        <div class="field"><label for="bgC">الكود</label><div class="tool-row"><input id="bgC" class="big" dir="ltr" autocomplete="off" value="${esc(o.code)}" style="flex:1;min-width:0"><button class="btn" type="button" id="bgR">توليد</button></div></div>
+        <div class="field"><label for="bgT">نوع الباركود</label><select id="bgT">${BG_TYPES.map(([k,t])=>`<option value="${k}" ${k===o.type?"selected":""}>${t}</option>`).join("")}</select></div>
+        <div class="row2"><div class="field"><label for="bgTi">عنوان (اختياري)</label><input id="bgTi" maxlength="40" value="${esc(o.title)}" placeholder="يطبع فوك الباركود"></div>
+          <div class="field"><label for="bgSu">عنوان فرعي (اختياري)</label><input id="bgSu" maxlength="40" value="${esc(o.sub)}" placeholder="يطبع تحته"></div></div>
+        <div class="field"><label>أبعاد الملصق (ملم)</label><div class="quick" id="bgS">${BG_SIZES.map(([w,h])=>`<button type="button" data-sz="${w}x${h}"><span class="num">${w}×${h}</span></button>`).join("")}</div>
+          <div class="row2"><div class="field"><label for="bgW">العرض</label><input id="bgW" inputmode="numeric" value="${o.w}"></div><div class="field"><label for="bgH">الارتفاع</label><input id="bgH" inputmode="numeric" value="${o.h}"></div></div></div>
+        <div class="field"><label>عدد النسخ</label><div class="tool-row"><div class="stepper"><button type="button" id="bgM" aria-label="نقصان">${I.minus}</button><input id="bgN" class="num" inputmode="numeric" value="${o.copies}" style="width:64px;text-align:center"><button type="button" id="bgP" aria-label="زيادة">${I.plus}</button></div>
+          <div class="quick" id="bgQ">${BG_COPIES.map(n=>`<button type="button" data-n="${n}"><span class="num">${n}</span></button>`).join("")}</div></div></div>
+        <div class="field"><label>الطباعة على</label><div class="seg" role="group" aria-label="نوع الورق"><button type="button" data-md="label" aria-pressed="${o.mode==="label"}">ملصق منفرد</button><button type="button" data-md="a4" aria-pressed="${o.mode==="a4"}">ورقة A4</button></div><span class="hint">ملصق منفرد: كل نسخة صفحة بحجم الملصق لطابعة الملصقات. ورقة A4: الملصقات متجاورة على ورقة عادية.</span></div>
+      </div>
+      <div class="bg-prev"><b style="font-family:var(--f-display)">معاينة الملصق</b><div class="bg-frame"><canvas id="bgV"></canvas></div><p class="err" id="bgE"></p><span class="hint" id="bgI"></span></div>
+    </div>
+    <div class="foot"><button class="btn primary" type="button" id="bgGo">${I.pdf}طباعة</button><button class="btn" type="button" data-close>رجوع</button></div>`,m=>{
+    const g=id=>m.querySelector(id),cv=g("#bgV"),err=g("#bgE"),info=g("#bgI");
+    const num=(v,a,b)=>{v=Math.round(Number(normDigits(v)));return v>=a&&v<=b?v:0};
+    const read=()=>{o.code=g("#bgC").value.trim();o.type=g("#bgT").value;o.title=g("#bgTi").value.trim();o.sub=g("#bgSu").value.trim();o.w=num(g("#bgW").value,20,200);o.h=num(g("#bgH").value,10,150);o.copies=num(g("#bgN").value,1,500)||0;
+      try{localStorage.setItem(BG_KEY,JSON.stringify({type:o.type,title:o.title,sub:o.sub,w:o.w,h:o.h,copies:o.copies,mode:o.mode}))}catch(e){}};
+    const draw=()=>{read();const enc=bgEncode(o.type,o.code);
+      m.querySelectorAll("[data-sz]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.sz===`${o.w}x${o.h}`)));
+      m.querySelectorAll("[data-n]").forEach(b=>b.setAttribute("aria-pressed",String(Number(b.dataset.n)===o.copies)));
+      err.textContent=enc.err||(!o.w||!o.h?"الأبعاد: العرض 20–200 والارتفاع 10–150 ملم.":!o.copies?"عدد النسخ من 1 إلى 500.":"");
+      if(!enc.err&&o.w&&o.h)bgLabel(cv,o,enc);else{cv.width=cv.height=1}
+      cv.style.aspectRatio=`${o.w||1}/${o.h||1}`;
+      info.textContent=enc.bars?`الكود: ${enc.text} · ${BG_TYPES.find(t=>t[0]===o.type)[1].replace(" (الافتراضي)","")} · ${o.copies||0} نسخة`:"";
+      g("#bgGo").disabled=!!err.textContent};
+    pdfReady().then(()=>draw());
+    ["#bgC","#bgT","#bgTi","#bgSu","#bgW","#bgH","#bgN"].forEach(k=>g(k).addEventListener("input",draw));
+    g("#bgT").addEventListener("change",()=>{g("#bgC").value=bgRandom(g("#bgT").value);draw()});
+    g("#bgR").onclick=()=>{g("#bgC").value=bgRandom(g("#bgT").value);draw()};
+    g("#bgS").onclick=e=>{const b=e.target.closest("[data-sz]");if(!b)return;const [w,h]=b.dataset.sz.split("x");g("#bgW").value=w;g("#bgH").value=h;draw()};
+    g("#bgQ").onclick=e=>{const b=e.target.closest("[data-n]");if(!b)return;g("#bgN").value=b.dataset.n;draw()};
+    g("#bgM").onclick=()=>{g("#bgN").value=Math.max(1,(num(g("#bgN").value,1,500)||1)-1);draw()};
+    g("#bgP").onclick=()=>{g("#bgN").value=Math.min(500,(num(g("#bgN").value,1,500)||0)+1);draw()};
+    m.querySelectorAll("[data-md]").forEach(b=>b.onclick=()=>{o.mode=b.dataset.md;m.querySelectorAll("[data-md]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));draw()});
+    g("#bgGo").onclick=async e=>{read();const enc=bgEncode(o.type,o.code);if(enc.err||!o.w||!o.h||!o.copies)return;
+      const btn=e.currentTarget;btn.disabled=true;
+      try{if(!await pdfReady())return;await bgPdf(o,enc)}finally{btn.disabled=false}};
+  },"wide bgen");
+}
+// One label per page at the label's own size (for a label printer), or the labels laid out on A4 sheets.
+async function bgPdf(o,enc){
+  const cv=document.createElement("canvas");bgLabel(cv,o,enc);const img=cv.toDataURL("image/png"),{jsPDF}=window.jspdf;let pdf;
+  if(o.mode==="a4"){
+    const M=8,G=2,cols=Math.floor((210-2*M+G)/(o.w+G)),rows=Math.floor((297-2*M+G)/(o.h+G));
+    if(cols<1||rows<1){toast("الملصق أكبر من ورقة A4. صغّر الأبعاد.",3500);return}
+    pdf=new jsPDF({unit:"mm",format:"a4"});const per=cols*rows;pdf.setDrawColor(200);pdf.setLineWidth(.1);
+    for(let i=0;i<o.copies;i++){if(i&&i%per===0)pdf.addPage();const k=i%per,px=M+(k%cols)*(o.w+G),py=M+Math.floor(k/cols)*(o.h+G);
+      pdf.addImage(img,"PNG",px,py,o.w,o.h,"lbl","FAST");pdf.rect(px,py,o.w,o.h)}
+  }else{
+    pdf=new jsPDF({unit:"mm",format:[o.w,o.h],orientation:o.w>=o.h?"landscape":"portrait"});
+    for(let i=0;i<o.copies;i++){if(i)pdf.addPage([o.w,o.h],o.w>=o.h?"landscape":"portrait");pdf.addImage(img,"PNG",0,0,o.w,o.h,"lbl","FAST")}
+  }
+  try{if(await saveFile(`ملصق-باركود-${enc.text}.pdf`,pdf.output("blob")))toast("تم حفظ الملصقات")}catch(e){console.warn(e);toast("تعذّر حفظ الملف.")}
+}
+
 function usedCodes(){const u=new Set();for(const p of S.products.values()){if(p.barcode)u.add(String(p.barcode));for(const k of packsOf(p))if(k.barcode)u.add(String(k.barcode))}return u}
 // The next free shop codes, in order after the highest one already given.
 function newCodes(n){
@@ -4618,6 +4754,7 @@ document.addEventListener("click",e=>{
     case "excel":excelForm();break;
     case "webpics":webPicsForm();break;
     case "codes":codesForm();break;
+    case "bgen":barcodeGen();break;
     case "ccard":counterCard();break;
     case "catalog":catalogForm();break;
     case "weighlist":weighListForm();break;
