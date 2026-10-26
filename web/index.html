@@ -236,7 +236,8 @@ td.x{width:64px;white-space:nowrap}
 .icon-btn{border:0;background:none;color:var(--muted);cursor:pointer;padding:4px;border-radius:6px;display:inline-grid;place-items:center}
 .icon-btn:hover{color:var(--accent);background:var(--accent-soft)}
 .icon-btn.del:hover{color:var(--debt);background:var(--debt-soft)}
-.icon-btn.wa-re{color:var(--paid)}.icon-btn.wa-re:hover{background:var(--paid-soft)}
+.icon-btn.wa-re{color:var(--paid)}.icon-btn.rc-btn{color:var(--accent)}
+.rc-prev img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:10px;margin:4px 0 8px}.icon-btn.wa-re:hover{background:var(--paid-soft)}
 .icon-btn svg{width:16px;height:16px}
 @media (max-width:480px){th,td{padding:8px 6px}table{font-size:13.5px;min-width:0}td.x{width:30px}td.x .icon-btn{display:grid}td.desc{min-width:90px}}
 .placeholder{padding:48px 20px;text-align:center;color:var(--muted)}
@@ -470,6 +471,14 @@ td.x{width:64px;white-space:nowrap}
   .settings.open .set-menu-pane{display:none}
   .settings:not(.open) .set-body-pane{display:none}
   .set-body{padding:14px}
+}
+/* Laptop pointer: what the mouse is over grows a little, with a short ease. Off for touch screens and reduced motion. */
+@media (hover:hover) and (prefers-reduced-motion:no-preference){
+  .btn,.icon-btn,.chips button,.seg button,.tabs button,.act.tap,.top-list li,.rem-row,.search .s-mic{transition:transform .16s ease,box-shadow .16s ease,background-color .16s ease}
+  .btn:not(:disabled):hover,.chips button:hover,.seg button:hover,.tabs button:hover{transform:scale(1.04)}
+  .icon-btn:hover,.search .s-mic:hover{transform:scale(1.12)}
+  .act.tap:hover,.top-list li:hover,.rem-row:hover{transform:scale(1.015)}
+  .btn:not(:disabled):active{transform:scale(.98)}
 }
 @media (prefers-reduced-motion:no-preference){.modal{animation:pop .16s ease-out}@keyframes pop{from{transform:translateY(8px);opacity:.6}}}
 </style>
@@ -1347,7 +1356,7 @@ function renderDetail(){
         <td class="amt-d">${t.type==="debt"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="amt-p">${t.type==="pay"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="run"><span class="num">${fmt(run)}</span></td>
-        ${w?`<td class="x">${!sup&&waNumber(c.phone)?`<button class="icon-btn wa-re" type="button" title="إرسال الرسالة مرة ثانية" aria-label="إرسال رسالة واتساب لهذه الحركة مرة ثانية" data-act="resendwa" data-id="${esc(t.id)}">${I.wa}</button>`:""}<button class="icon-btn" type="button" title="تعديل" aria-label="تعديل الحركة" data-act="edittx" data-id="${esc(t.id)}">${I.edit}</button><button class="icon-btn del" type="button" title="حذف" aria-label="حذف الحركة" data-act="deltx" data-id="${esc(t.id)}">${I.trash}</button></td>`:""}</tr>`).join("")}
+        ${w?`<td class="x">${!sup&&t.type==="pay"?`<button class="icon-btn rc-btn" type="button" title="سند قبض" aria-label="سند قبض لهذا التسديد" data-act="receipt" data-id="${esc(t.id)}">${I.pdf}</button>`:""}${!sup&&waNumber(c.phone)?`<button class="icon-btn wa-re" type="button" title="إرسال الرسالة مرة ثانية" aria-label="إرسال رسالة واتساب لهذه الحركة مرة ثانية" data-act="resendwa" data-id="${esc(t.id)}">${I.wa}</button>`:""}<button class="icon-btn" type="button" title="تعديل" aria-label="تعديل الحركة" data-act="edittx" data-id="${esc(t.id)}">${I.edit}</button><button class="icon-btn del" type="button" title="حذف" aria-label="حذف الحركة" data-act="deltx" data-id="${esc(t.id)}">${I.trash}</button></td>`:""}</tr>`).join("")}
       ${L.from?`<tr class="edge"><td colspan="3">رصيد بداية المدة · ${esc(shortDate(L.from))}</td><td class="run"><span class="num">${fmt(L.open)}</span></td>${w?"<td></td>":""}</tr>`:""}
       </tbody></table></div>`:`<div class="empty"><b>لا توجد حركات</b>${w?"سجّل أول دين بالضغط على «دين».":""}</div>`}
       <div class="mini-sums" style="margin-top:8px"><span>${sup?"مشتريات المدة":"ديون المدة"}: <b class="num">${fmt(L.dSum)}</b></span><span>دفعات المدة: <b class="num">${fmt(L.pSum)}</b></span><span>عدد الحركات: <b class="num">${L.list.length}</b></span></div>
@@ -1511,6 +1520,63 @@ const stamp=ms=>(msISO(ms)===todayISO()?"اليوم ":shortDate(msISO(ms))+" ")+
 // وقت الحركة: الساعة إذا انسجلت بنفس يومها، وإلا متى انسجلت فعلاً، ووقت آخر تعديل
 const txnTime=t=>(t.createdAt?(msISO(t.createdAt)===t.date?hm12(t.createdAt):"سُجّلت "+stamp(t.createdAt)):"")+(t.updatedAt?(t.createdAt?" · ":"")+"عُدّلت "+stamp(t.updatedAt)+(t.updatedBy&&t.updatedBy!==t.by?" ("+t.updatedBy+")":""):"");
 const iqd=n=>"IQD "+fmt(n);
+/* ---------- receipt voucher (سند قبض) for one payment: an image to send on WhatsApp, or a half-A4 PDF ---------- */
+// Whole dinars in Arabic words, for the «مبلغاً وقدره» line.
+function arWords(n){
+  n=Math.floor(Math.abs(n));if(!n)return "صفر";
+  const ones=["","واحد","اثنان","ثلاثة","أربعة","خمسة","ستة","سبعة","ثمانية","تسعة","عشرة","أحد عشر","اثنا عشر","ثلاثة عشر","أربعة عشر","خمسة عشر","ستة عشر","سبعة عشر","ثمانية عشر","تسعة عشر"];
+  const tens=["","","عشرون","ثلاثون","أربعون","خمسون","ستون","سبعون","ثمانون","تسعون"];
+  const hund=["","مئة","مئتان","ثلاثمئة","أربعمئة","خمسمئة","ستمئة","سبعمئة","ثمانمئة","تسعمئة"];
+  const u1000=k=>{const h=Math.floor(k/100),r=k%100,p=[];if(h)p.push(hund[h]);if(r)p.push(r<20?ones[r]:(r%10?ones[r%10]+" و":"")+tens[Math.floor(r/10)]);return p.join(" و")};
+  const scale=(k,one,two,few,many)=>k===1?one:k===2?two:k<=10?u1000(k)+" "+few:u1000(k)+" "+many;
+  const p=[],b=Math.floor(n/1e9),m=Math.floor(n/1e6)%1000,t=Math.floor(n/1000)%1000,r=n%1000;
+  if(b)p.push(scale(b,"مليار","ملياران","مليارات","مليار"));if(m)p.push(scale(m,"مليون","مليونان","ملايين","مليون"));
+  if(t)p.push(scale(t,"ألف","ألفان","آلاف","ألف"));if(r)p.push(u1000(r));
+  return p.join(" و");
+}
+// The customer's balance just before and just after a transaction (ledger order).
+function balAround(t){let bal=0;for(const x of txnsOf(t.customerId)){const before=bal;bal+=x.type==="debt"?x.amount:-x.amount;if(x.id===t.id)return {before,after:bal}}return {before:bal,after:bal+(t.type==="debt"?t.amount:-t.amount)}}
+const receiptNo=t=>String(t.id||"").replace(/[^a-z0-9]/gi,"").slice(-6).toUpperCase();
+async function receiptCanvas(t,c){
+  await pdfFonts();
+  const W=1240,H=877,M=70,F="'IBM Plex Sans Arabic',Tahoma,sans-serif",{before,after}=balAround(t);
+  const cv=document.createElement("canvas");cv.width=W;cv.height=H;const ctx=cv.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,W,H);pdfBar(ctx);
+  const txt=(s,x,y,o={})=>{ctx.font=`${o.w||400} ${o.s||24}px ${o.f||F}`;ctx.fillStyle=o.c||PDFC.ink;ctx.textAlign=o.a||"right";ctx.direction=o.ltr?"ltr":"rtl";ctx.fillText(s,x,y);ctx.direction="rtl"};
+  const line=(y,dash)=>{ctx.strokeStyle=PDFC.line;ctx.lineWidth=2;ctx.setLineDash(dash?[6,6]:[]);ctx.beginPath();ctx.moveTo(M,y);ctx.lineTo(W-M,y);ctx.stroke();ctx.setLineDash([])};
+  const wrap=(s,max,o)=>{ctx.font=`${o.w||400} ${o.s||24}px ${F}`;const out=[];let cur="";for(const w of s.split(" ")){const n=cur?cur+" "+w:w;if(ctx.measureText(n).width>max&&cur){out.push(cur);cur=w}else cur=n}if(cur)out.push(cur);return out};
+  let y=M+20;
+  txt(shopName(),W-M,y+30,{f:PDF_BRAND,s:46,c:PDFC.green});
+  const sub=[S.settings.phone,S.settings.address].filter(Boolean).join("  ·  ");if(sub)txt(sub,W-M,y+72,{s:21,c:PDFC.muted});
+  txt("سند قبض",M,y+34,{w:700,s:40,a:"left",c:PDFC.green});
+  txt("رقم: "+receiptNo(t),M,y+74,{s:21,c:PDFC.muted,a:"left"});
+  y+=104;line(y);y+=50;
+  txt("التاريخ: "+dmy(t.date)+" ("+wday(t.date)+")"+(t.createdAt?"   الوقت: "+hm12(t.createdAt):""),W-M,y,{s:23});y+=58;
+  txt("استلمنا من: ",W-M,y,{s:26,c:PDFC.muted});ctx.font=`400 26px ${F}`;const lw=ctx.measureText("استلمنا من: ").width;
+  txt(c.name+(c.phone?"  ("+c.phone+")":""),W-M-lw,y,{w:700,s:28});y+=66;
+  // amount box
+  const bh=120;ctx.fillStyle=PDFC.shade;ctx.fillRect(M,y-44,W-2*M,bh);ctx.strokeStyle=PDFC.paid;ctx.lineWidth=3;ctx.strokeRect(M,y-44,W-2*M,bh);
+  txt("مبلغاً وقدره",W-M-24,y,{s:22,c:PDFC.muted});
+  txt(fmt(t.amount)+" "+CUR,M+24,y+26,{w:700,s:48,c:PDFC.paid,a:"left"});
+  const words=wrap(arWords(t.amount)+" دينار عراقي فقط لا غير",W-2*M-420,{s:22});words.slice(0,2).forEach((l,i)=>txt(l,W-M-24,y+36+i*30,{s:22,w:700}));
+  y+=bh+24;
+  txt("وذلك عن: "+(t.note?t.note:"تسديد من الحساب"),W-M,y,{s:23});y+=54;
+  line(y-20,true);
+  const cw=(W-2*M)/3;[["الرصيد قبل الدفع",before,PDFC.debt],["المدفوع",t.amount,PDFC.paid],["الرصيد المتبقي",after,after>0?PDFC.debt:PDFC.paid]].forEach(([k,v,col],i)=>{
+    const cx=W-M-cw*i-cw/2;txt(k,cx,y+26,{s:21,c:PDFC.muted,a:"center"});txt(fmt(v)+" "+CUR,cx,y+70,{w:700,s:28,c:col,a:"center"})});
+  y+=118;line(y,true);y+=56;
+  txt("المستلم: "+(t.by||"")+"",W-M,y,{s:23});txt("التوقيع: ....................",M,y,{s:23,a:"left",c:PDFC.muted});
+  txt("شكراً لتعاملكم ويانا",W/2,H-40,{s:21,c:PDFC.green,a:"center",w:700});
+  return cv;
+}
+// The voucher as {png, pdf, name}; the PDF is half an A4 page, landscape.
+async function receiptFiles(t,c){
+  const cv=await receiptCanvas(t,c),base="سند قبض "+c.name+" "+t.date+" "+receiptNo(t);
+  const png=await new Promise(r=>cv.toBlob(r,"image/png"));let pdf=null;
+  try{await loadScript("vendor/jspdf.umd.min.js");const {jsPDF}=window.jspdf;const doc=new jsPDF({unit:"pt",format:[595.28,420.94],orientation:"landscape"});
+    doc.addImage(cv.toDataURL("image/jpeg",0.93),"JPEG",0,0,595.28,420.94);pdf=doc.output("blob")}catch(e){console.warn(e)}
+  return {png,pdf,base};
+}
+const receiptCaption=(t,c)=>{const {after}=balAround(t);return `${shopName()}\nسند قبض رقم ${receiptNo(t)}\nاستلمنا منك ${fmt(t.amount)} ${CUR} بتاريخ ${dmy(t.date)}.\nالرصيد المتبقي: ${fmt(after)} ${CUR}\nشكراً لك.`};
 async function custPdf(c,opt){
   if(!opt)toast("جارِ تجهيز كشف الحساب…");
   try{await loadScript("vendor/jspdf.umd.min.js")}catch(e){toast("تعذّر تحميل أداة PDF. تحقق من الإنترنت.");return}
@@ -2017,7 +2083,7 @@ function txnForm(type,existing,pre){
           <label class="btn sm" id="tPicAdd" style="align-self:flex-start;cursor:pointer">${I.camera}إضافة صورة<input type="file" accept="image/*" multiple hidden id="tPicIn"></label></div>`:""}
       <div class="field"><label for="tNote">${isDebt?(sup?"البضاعة / البيان":"المواد / البيان"):"ملاحظة"} (اختياري)</label><div class="note-row">${isDebt?`<select id="tCat" aria-label="اختر صنف"><option value="">الأصناف</option>${cats().map(x=>`<option>${esc(x)}</option>`).join("")}</select>`:""}<input id="tNote" maxlength="140" value="${esc(existing&&existing.note)}" placeholder="${isDebt?"اختر صنف أو اكتب":"مثال: دفعة نقداً"}"></div></div>
       <div class="field"><label for="tDate">التاريخ</label><input id="tDate" type="date" value="${existing?esc(existing.date):esc(pre&&pre.date||todayISO())}">${existing&&existing.createdAt?`<span class="ro-note">سُجّلت ${esc(stamp(existing.createdAt))}${existing.by?" بواسطة "+esc(existing.by):""}${existing.updatedAt?` · آخر تعديل ${esc(stamp(existing.updatedAt))}${existing.updatedBy?" بواسطة "+esc(existing.updatedBy):""}`:""}</span>`:""}</div>
-      ${!existing&&!isDebt&&!isSup(c)?`<label class="wa-auto"><input type="checkbox" id="tPdf" ${(()=>{try{return localStorage.getItem(PDF_AUTO_KEY)==="0"?"":"checked"}catch(e){return "checked"}})()}>تجهيز كشف حساب PDF بعد الحفظ حتى ترسله</label>`:""}
+      ${!existing&&!isDebt&&!isSup(c)?`<label class="wa-auto"><input type="checkbox" id="tPdf" ${(()=>{try{return localStorage.getItem(PDF_AUTO_KEY)==="0"?"":"checked"}catch(e){return "checked"}})()}>تجهيز سند قبض وكشف حساب بعد الحفظ حتى ترسله</label>`:""}
       ${existing||isSup(c)?"":autoWaOn(c)?`<span class="wa-auto">${I.wa}ترسل رسالة واتساب للزبون تلقائياً بعد الحفظ</span>`:c.phone?`<label class="wa-auto"><input type="checkbox" id="tWa" ${(()=>{try{return localStorage.getItem(WA_AUTO_KEY)==="0"?"":"checked"}catch(e){return "checked"}})()}>فتح واتساب بعد الحفظ والرسالة جاهزة</label>`:`<span class="wa-auto off">الزبون بدون رقم، أضف رقمه حتى ترسل له واتساب.</span>`}
       <p class="err" id="tErr"></p>
       <div class="foot"><button class="btn ${isDebt?"debt":"paid"}" type="submit">${existing?"حفظ التعديل":pre?"تأكيد الحفظ":sup?(isDebt?"حفظ الفاتورة":"حفظ الدفعة"):isDebt?"حفظ الدين":"حفظ التسديد"}</button><button class="btn" type="button" data-close>إلغاء</button></div>
@@ -2118,28 +2184,35 @@ function txnForm(type,existing,pre){
       const link=c.phone&&!isSup(c)?waLink(c.phone,fillTpl(what,c,{amount:amt,date,note,time:date===todayISO()?hm12(Date.now()):""})):"";
       const auto=autoWaOn(c);
       if(auto)sendAutoWa(obj).then(res=>autoWaToast(c,link,res));
-      if(autoPdf){sendStatementPdf(c,auto?"":link);return}
+      if(autoPdf){sendStatementPdf(c,auto?"":link,obj);return}
       if(link&&autoWa&&!auto)openExternal(link);
       toast((sup?(isDebt?"سُجّلت فاتورة ":"سُجّلت دفعة للمورد "):isDebt?"سُجّل دين ":"سُجّل تسديد ")+fmt(amt)+" "+CUR+(auto?" · جاري إرسال واتساب…":""),link&&!auto?{href:link,label:"إرسال واتساب"}:null);
     });
   });
 }
-/* After a payment: build the PDF statement up front, so the share sheet opens straight from the button tap (phones require a fresh tap). */
-function sendStatementPdf(c,textLink){
+/* After a payment (or from its row in the ledger): the receipt voucher and the statement are built up front, so the share sheet
+   opens straight from the button tap (phones require a fresh tap). The voucher goes as an image or a PDF. */
+function sendStatementPdf(c,textLink,t){showReceipt(t,c,{fresh:true,textLink})}
+function showReceipt(t,c,o={}){
   const canShareFiles=NATIVE||(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)&&!!navigator.canShare);
-  openModal(`<h3>كشف حساب ${esc(c.name)}</h3>
-    <p class="hint">تم تسجيل التسديد. الرصيد المتبقي: <b class="num">${fmt(balanceOf(c.id))}</b> ${CUR}</p>
-    <p class="hint" id="spState">جاري تجهيز الكشف…</p>
-    <div class="foot"><button class="btn wa" type="button" id="spSend" disabled>${I.wa}${canShareFiles?"إرسال الكشف PDF":"تنزيل الكشف وفتح واتساب"}</button>${textLink?`<button class="btn" type="button" id="spText">رسالة نصية فقط</button>`:""}<button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
-    let ready=null;const st=m.querySelector("#spState"),send=m.querySelector("#spSend");
-    const caption=fillTpl("pay",c,{amount:0}).split("\n")[0]+"\nمرفق كشف حسابك. الرصيد المتبقي: "+fmt(balanceOf(c.id))+" "+CUR+"\n"+shopName();
-    custPdf(c,{blob:true}).then(r=>{if(!r)throw 0;ready=r;send.disabled=false;
-      st.textContent=canShareFiles?"اضغط إرسال، اختار واتساب، وبعدين اختار الزبون.":"ينزل الملف وينفتح واتساب على رقم الزبون، اسحب الملف للمحادثة."}).catch(()=>{st.textContent="تعذّر تجهيز الكشف."});
-    send.addEventListener("click",async()=>{if(!ready)return;
-      try{const ok=await saveFile(ready.fname,ready.blob,"application/pdf",caption);
-        if(ok&&!canShareFiles&&c.phone)openExternal(waLink(c.phone,caption));
-        if(ok)closeModal()}catch(e){console.warn(e);toast("تعذّر إرسال الملف.")}});
-    const tx=m.querySelector("#spText");if(tx)tx.addEventListener("click",()=>{openExternal(textLink);closeModal()});
+  const has=t&&t.type==="pay";
+  openModal(`<h3>${has?"سند قبض":"كشف حساب"} ${esc(c.name)}</h3>
+    <p class="hint">${o.fresh?"تم تسجيل التسديد. ":""}${has?`المبلغ <b class="num">${fmt(t.amount)}</b> ${CUR} · `:""}الرصيد المتبقي: <b class="num">${fmt(has?balAround(t).after:balanceOf(c.id))}</b> ${CUR}</p>
+    ${has?`<div class="rc-prev" id="rcPrev" aria-label="معاينة سند القبض"></div>`:""}
+    <p class="hint" id="spState">جاري التجهيز…</p>
+    <div class="foot">${has?`<button class="btn wa" type="button" id="rcImg" disabled>${I.wa}إرسال السند صورة</button><button class="btn" type="button" id="rcPdf" disabled>${I.pdf}السند PDF</button>`:""}<button class="btn${has?"":" wa"}" type="button" id="spSend" disabled>${has?I.pdf:I.wa}${canShareFiles?"كشف الحساب PDF":"تنزيل الكشف وفتح واتساب"}</button>${o.textLink?`<button class="btn" type="button" id="spText">رسالة نصية فقط</button>`:""}<button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
+    let rc=null,st=null;const state=m.querySelector("#spState"),send=m.querySelector("#spSend"),bi=m.querySelector("#rcImg"),bp=m.querySelector("#rcPdf");
+    const hint=()=>{state.textContent=canShareFiles?"اضغط إرسال، اختار واتساب، وبعدين اختار الزبون.":"ينزل الملف وينفتح واتساب على رقم الزبون، اسحب الملف للمحادثة."};
+    const capSt=fillTpl("pay",c,{amount:0}).split("\n")[0]+"\nمرفق كشف حسابك. الرصيد المتبقي: "+fmt(balanceOf(c.id))+" "+CUR+"\n"+shopName();
+    const out=async(name,blob,mime,cap)=>{try{const ok=await saveFile(name,blob,mime,cap);
+      if(ok&&!canShareFiles&&c.phone)openExternal(waLink(c.phone,cap));if(ok)closeModal()}catch(e){console.warn(e);toast("تعذّر إرسال الملف.")}};
+    if(has)receiptFiles(t,c).then(r=>{rc=r;bi.disabled=false;if(r.pdf)bp.disabled=false;
+      const img=new Image();img.alt="سند قبض";img.src=URL.createObjectURL(r.png);m.querySelector("#rcPrev").appendChild(img);hint()}).catch(e=>{console.warn(e);state.textContent="تعذّر تجهيز السند."});
+    custPdf(c,{blob:true}).then(r=>{if(!r)throw 0;st=r;send.disabled=false;if(!has)hint()}).catch(()=>{if(!has)state.textContent="تعذّر تجهيز الكشف."});
+    if(bi)bi.addEventListener("click",()=>rc&&out(rc.base+".png",rc.png,"image/png",receiptCaption(t,c)));
+    if(bp)bp.addEventListener("click",()=>rc&&rc.pdf&&out(rc.base+".pdf",rc.pdf,"application/pdf",receiptCaption(t,c)));
+    send.addEventListener("click",()=>st&&out(st.fname,st.blob,"application/pdf",capSt));
+    const tx=m.querySelector("#spText");if(tx)tx.addEventListener("click",()=>{openExternal(o.textLink);closeModal()});
   });
 }
 /* ---------- ledger photo: read the paper notebook with AI, review, save ---------- */
@@ -3249,6 +3322,7 @@ document.addEventListener("click",e=>{
     case "wabizoff":try{localStorage.removeItem(WA_BIZ_KEY)}catch(x){}render();break;
     case "savetpl":if(isAdmin()){const tp={};for(const k of Object.keys(DEFAULT_TPL))tp[k]=document.getElementById("tpl-"+k).value;saveSettings({templates:tp}).then(ok=>ok&&toast("تم حفظ القوالب"))}break;
     case "edittx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())txnForm(null,x);break}
+    case "receipt":{const x=S.txns.get(b.dataset.id);if(x&&c&&!isSup(c)&&x.type==="pay")showReceipt(x,c);break}
     case "resendwa":{const x=S.txns.get(b.dataset.id);if(x&&c&&!isSup(c)&&waNumber(c.phone))
       openExternal(waLink(c.phone,fillTpl(x.type==="debt"?"debt":"pay",c,{amount:x.amount,date:x.date,note:x.note,time:hm12(x.createdAt)})));break}
     case "deltx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())confirmBox("حذف الحركة",`حذف ${c&&isSup(c)?(x.type==="debt"?"فاتورة":"دفعة"):(x.type==="debt"?"دين":"تسديد")} بمبلغ ${fmt(x.amount)} ${CUR} بتاريخ ${x.date}؟`,"حذف",()=>{del("txns",x.id);log("delete",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount,...(c&&isSup(c)?{sup:true}:{})});
