@@ -188,6 +188,35 @@ select.sort{border:1px solid var(--line);background:var(--paper-2);border-radius
 tr.edge td{background:var(--paper-2);color:var(--muted);font-size:13px}
 .rem-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;flex-wrap:wrap}
 .rem-row .meta{flex:1;min-width:140px}.rem-row .meta b{display:block}.rem-row .meta span{display:block;font-size:12.5px;color:var(--muted)}.rem-row .meta span.late{color:var(--debt);font-weight:600}
+.ct{overflow:hidden;display:flex;flex-direction:column}
+.ct-head{background:var(--accent);color:var(--accent-ink);padding:12px 16px;text-align:center}
+.ct-head h2{margin:0;font-size:19px;display:inline-flex;align-items:center;gap:8px;font-family:var(--f-display)}.ct-head svg{width:20px;height:20px}
+.ct-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px 6px}
+.ct-search{flex:1;min-width:200px}.ct-search input{min-height:42px}
+.ct-sort{display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--muted);font-weight:600}.ct-sort select.sort{margin:0;padding:8px 10px;min-width:140px}
+.ct-f{padding:0 14px 10px}
+.ct-wrap{overflow:auto;max-height:70vh;margin:0 14px;border:1px solid var(--line);border-radius:12px}
+.ct-table{min-width:0}
+.ct-table th{position:sticky;top:0;z-index:1;text-align:center;padding:11px 8px;font-size:12.5px}
+.ct-table td{vertical-align:middle;text-align:center;padding:8px}
+.ct-table td.ct-nm{text-align:right;font-weight:600;min-width:120px}.ct-table td.ct-nm .linkish{font-weight:700;color:var(--ink);text-align:right}
+.ct-table td.ct-n,.ct-table th.ct-n{width:38px;color:var(--muted)}.ct-table td.ct-ph{direction:ltr;white-space:nowrap}
+.ct-table tbody tr:nth-child(even) td{background:var(--paper-2)}
+.ct-table tbody tr:hover td{background:var(--accent-soft)}
+.ct-table td.ct-ops{white-space:nowrap}
+.ct-table td.num{display:table-cell;font-variant-numeric:tabular-nums;white-space:nowrap}.ct-table td.amt-d,.ct-table td.amt-p{font-weight:700}
+.ct-b{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--paper);cursor:pointer;display:inline-grid;place-items:center;margin:0 2px;vertical-align:middle}
+.ct-b svg{width:16px;height:16px}.ct-b.q-debt{color:var(--debt)}.ct-b.q-pay{color:var(--paid)}.ct-b.wa{color:var(--paid)}
+.ct-b.q-debt:hover{background:var(--debt-soft)}.ct-b.q-pay:hover,.ct-b.wa:hover{background:var(--paid-soft)}
+.ct-st{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.ct-st.debt{background:var(--debt);color:var(--paper)}.ct-st.warn{background:var(--warn-soft);color:var(--warn)}.ct-st.owe{background:var(--debt-soft);color:var(--debt)}.ct-st.paid{background:var(--paid-soft);color:var(--paid)}
+.prio.p0{background:var(--paper-2);color:var(--muted)}
+.ct-empty{padding:60px 18px;text-align:center;color:var(--muted)}.ct-empty svg{width:44px;height:44px;color:var(--line);display:block;margin:0 auto 8px}.ct-empty b{display:block;color:var(--ink);margin-bottom:2px}
+.ct-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;margin-top:10px;border-top:1px solid var(--line);background:var(--paper-2)}
+.ct-sum{display:flex;gap:18px;flex-wrap:wrap;font-size:14px;color:var(--muted)}.ct-sum b{color:var(--ink)}.ct-sum b.amt{color:var(--debt)}
+.ct-exp{display:flex;gap:8px}
+@media (max-width:820px){.ct-table th.h-sm,.ct-table td.h-sm{display:none}}
+@media (max-width:480px){.ct-table th.h-xs,.ct-table td.h-xs,.ct-table th.ct-n,.ct-table td.ct-n{display:none}.ct-table td,.ct-table th{padding:7px 4px}.ct-table td.ct-nm{min-width:90px}.ct-b{width:30px;height:30px;margin:0 1px}.ct-st{padding:2px 6px;font-size:11.5px}.ct-wrap{margin:0 8px}.ct-tools{padding:10px 8px 6px}.ct-f{padding:0 8px 8px}.ct-sort{width:100%}.ct-sort select.sort{flex:1}}
 .empty{padding:26px 18px;text-align:center;color:var(--muted)}
 .empty b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
 
@@ -536,7 +565,7 @@ const monthEndISO=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.ge
 const monthEndLeft=()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,0).getDate()-d.getDate()}; // 0 on the last day
 const monthEndStart=()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,1-MONTH_END_DAYS).getTime()};
 const S={customers:new Map(),txns:new Map(),accounts:new Map(),activity:[],settings:{},
-  me:null,isOwner:false,superOwner:false,shop:null,shops:new Map(),view:"home",kind:"customer",period:"all",remTab:"send",remFilter:"all",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,rep:{tab:"rep",per:"month",from:"",to:"",wf:"all",wlimit:40,pym:"",pmode:"month",pday:""},ready:{c:false,t:false,a:false,s:false}};
+  me:null,isOwner:false,superOwner:false,shop:null,shops:new Map(),view:"home",kind:"customer",period:"all",remTab:"send",remFilter:"all",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,rep:{tab:"rep",per:"month",from:"",to:"",wf:"all",wlimit:40,pym:"",pmode:"month",pday:""},ht:{q:"",sort:"bal",f:"all"},ready:{c:false,t:false,a:false,s:false}};
 let db=null,auth=null,unsubs=[],dataOn=false,flash=null,REG=null,installEvt=null;
 /* Shops: other shops sign up in this same app and each gets its own notebook under shops/{its owner's uid}.
    SHOP is the signed-in person's shop (null = this shop's own data at the root, as it always was); P() puts a path inside it.
@@ -1148,7 +1177,8 @@ function render(){
   $("#meBox").innerHTML=`<span class="avatar" aria-hidden="true">${initial(S.me.name)}</span><span class="nm">${esc(S.me.name)}</span><span class="role">${ROLE_LABEL[S.me.role]}</span>`;
   const v=$("#view");
   // Live data refreshes re-render the page; keep the home search text, results and focus while typing.
-  if(S.view==="home"){const hf=document.activeElement&&document.activeElement.id==="hq";v.innerHTML=homeView();
+  if(S.view==="home"){const ae=document.activeElement,hf=ae&&ae.id==="hq",tf=ae&&ae.id==="htq";v.innerHTML=homeView();renderHomeTable();
+    if(tf){const i=$("#htq");if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}}
     if(S.hq){homeSearch(S.hq);if(hf){const i=$("#hq");i.focus();i.setSelectionRange(i.value.length,i.value.length)}}}
   else if(S.view==="customers"){v.innerHTML=customersView();renderList();renderDetail()}
   else if(S.view==="reminders")v.innerHTML=remindersView();
@@ -1217,6 +1247,7 @@ function homeView(){
             h+=`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${due.length}</b> فاتورة موردين ${late?`(${late} متأخرة)`:"قرب موعد دفعها"} بمجموع ${shown("sup",`<b class="num">${fmt(tot)}</b> ${CUR}`)}</span><button class="btn sm" type="button" data-act="gosup">عرضها</button></div>`}
           return h})()}
         ${supOwed>0?`<div class="banner warn">علينا للموردين: ${shown("sup",`<b class="num">${fmt(supOwed)}</b> ${CUR}`)}</div>`:""}</div>
+  ${custTableSection()}
   <div class="home-grid">
     <section class="pane card-pad" aria-label="سجل النشاط">
       <div class="section-title"><h2>سجل النشاط</h2><span class="ro-note">اليوم: <b class="num">${actToday}</b></span></div>
@@ -1234,6 +1265,77 @@ function homeView(){
       </section>
     </div>
   </div></div>`;
+}
+
+/* ---------- home: customers table (name, phone, category, debt, limit, status, actions) ---------- */
+const HT_SORT=[["bal","الأعلى ديناً"],["name","الاسم"],["recent","آخر حركة"],["old","الأقدم حركة"],["level","الفئة (الأخطر أولاً)"]];
+function custTableSection(){
+  const H=S.ht,locked=anyLock(),fs=[["all","الكل"],["owe","عليهم دين"],["clear","مسددين"],["over","تجاوزوا الحد"],...(locked?[["locked","مقفولة"]]:[]),["nophone","بدون رقم"]];
+  if(H.f==="locked"&&!locked)H.f="all";
+  return `<section class="pane ct" aria-label="إدارة الزبائن">
+    <div class="ct-head"><h2>${I.users}إدارة الزبائن</h2></div>
+    <div class="ct-tools">
+      ${canWrite()?`<button class="btn primary" type="button" data-act="newcust">${I.plus}إضافة زبون</button>`:""}
+      <div class="search ct-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="htq" type="search" placeholder="بحث بالاسم أو الهاتف" autocomplete="off" enterkeyhint="search" value="${esc(H.q)}" aria-label="أسم الزبون"></div>
+      <label class="ct-sort">ترتيب <select class="sort" id="htsort">${HT_SORT.map(([k,l])=>`<option value="${k}" ${H.sort===k?"selected":""}>${l}</option>`).join("")}</select></label>
+    </div>
+    <div class="chips ct-f" role="group" aria-label="تصفية الزبائن">${fs.map(([k,l])=>`<button type="button" data-htf="${k}" aria-pressed="${H.f===k}">${l}</button>`).join("")}</div>
+    <div class="ct-wrap" id="htWrap"></div>
+    <div class="ct-foot" id="htFoot"></div>
+  </section>`;
+}
+// Rows the table shows now (search, filter, sort), shared by the screen, the PDF and the Excel file.
+function custTableRows(){
+  const H=S.ht,per=stats(),q=normDigits(H.q).trim().toLowerCase(),locks=lockMap(),lv=new Map();
+  for(const x of warnList())lv.set(x.c.id,x.level);
+  let arr=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>{const p=per.get(c.id),lk=locks.get(c.id);
+    return {c,p,lv:lv.get(c.id)||0,over:c.limit>0&&p.bal>c.limit,locked:!!(lk&&lk.locked)}});
+  arr=arr.filter(x=>{
+    if(H.f==="owe"&&!(x.p.bal>0))return false;
+    if(H.f==="clear"&&x.p.bal>0)return false;
+    if(H.f==="over"&&!x.over)return false;
+    if(H.f==="locked"&&!x.locked)return false;
+    if(H.f==="nophone"&&normDigits(x.c.phone).replace(/\D/g,""))return false;
+    return !q||custScore(x.c,q)>0});
+  const by={bal:(a,b)=>b.p.bal-a.p.bal,recent:(a,b)=>b.p.last-a.p.last,old:(a,b)=>a.p.last-b.p.last,level:(a,b)=>b.lv-a.lv||b.p.bal-a.p.bal,name:(a,b)=>(a.c.name||"").localeCompare(b.c.name||"","ar")};
+  return arr.sort(by[H.sort]||by.bal);
+}
+const ctStatus=x=>x.locked?["debt","مقفول"]:x.over?["warn","تجاوز الحد"]:x.p.bal>0?["owe","عليه دين"]:x.p.bal<0?["paid","له رصيد"]:["paid","مسدد"];
+function renderHomeTable(){
+  const wrap=$("#htWrap"),foot=$("#htFoot");if(!wrap)return;
+  const rows=custTableRows(),w=canWrite();let tot=0;for(const x of rows)if(x.p.bal>0)tot+=x.p.bal;
+  const all=[...S.customers.values()].filter(c=>!isSup(c)).length;
+  wrap.innerHTML=!rows.length?`<div class="ct-empty">${I.users}<b>${all?"لا توجد نتائج":"لا يوجد زبائن"}</b>${all?"جرّب اسماً آخر أو غيّر التصفية.":""}</div>`
+  :`<table class="ct-table"><thead><tr><th class="ct-n">ت</th><th>أسم الزبون</th><th class="h-sm">رقم الهاتف</th><th class="h-sm">الفئة</th><th class="h-sm">آخر حركة</th><th>الدين ${CUR}</th><th class="h-sm">سقف الدين</th><th>الحالة</th><th>الإجراءات</th><th class="h-xs">التفاصيل</th></tr></thead><tbody>
+    ${rows.map((x,i)=>{const c=x.c,p=x.p,[sc,st]=ctStatus(x),l=c.phone&&p.bal>0?waLink(c.phone,fillTpl(c.promise&&promiseLeft(c)<=0?"promise":"remind",c)):"";
+      return `<tr><td class="ct-n num">${i+1}</td><td class="ct-nm"><button class="linkish" type="button" data-open="${esc(c.id)}">${esc(c.name)}</button></td>
+      <td class="h-sm num ct-ph">${c.phone?esc(c.phone):'<span class="ro-note">—</span>'}</td>
+      <td class="h-sm">${x.lv?`<span class="prio p${x.lv}">${PRIO[x.lv]}</span>`:'<span class="prio p0">منتظم</span>'}</td>
+      <td class="h-sm num">${p.count?esc(shortDate(msISO(p.last))):"—"}</td>
+      <td class="num ${p.bal>0?"amt-d":p.bal<0?"amt-p":""}">${shown("top",fmt(p.bal))}</td>
+      <td class="h-sm num">${c.limit>0?fmt(c.limit):'<span class="ro-note">بدون</span>'}</td>
+      <td><span class="ct-st ${sc}">${st}</span></td>
+      <td class="ct-ops">${w?`<button type="button" class="ct-b q-pay" data-qpay="${esc(c.id)}" title="تسديد" aria-label="تسديد ${esc(c.name)}">${I.minus}</button><button type="button" class="ct-b q-debt" data-qdebt="${esc(c.id)}" title="دين" aria-label="دين على ${esc(c.name)}">${I.plus}</button>`:""}${l?`<a class="ct-b wa" href="${esc(l)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}" title="تذكير واتساب" aria-label="تذكير ${esc(c.name)}">${I.wa}</a>`:""}</td>
+      <td class="h-xs"><button class="btn sm" type="button" data-open="${esc(c.id)}">${I.book}كشف</button></td></tr>`}).join("")}</tbody></table>`;
+  foot.innerHTML=`<div class="ct-sum"><span>عدد الزبائن: <b class="num">${rows.length}</b>${rows.length!==all?` من <span class="num">${all}</span>`:""}</span><span>إجمالي الديون: <b class="num amt">${shown("total",fmt(tot))}</b> ${CUR}</span></div>
+    <div class="ct-exp"><button class="btn sm" type="button" data-act="htpdf" ${rows.length?"":"disabled"}>${I.pdf}طباعة PDF</button><button class="btn sm" type="button" data-act="htcsv" ${rows.length?"":"disabled"}>${I.save}تصدير Excel</button></div>`;
+}
+function custTableExport(kind){
+  const rows=custTableRows();if(!rows.length)return;let tot=0;for(const x of rows)if(x.p.bal>0)tot+=x.p.bal;
+  const cat=x=>x.lv?PRIO[x.lv]:"منتظم",last=x=>x.p.count?msISO(x.p.last):"",base="الزبائن-"+todayISO();
+  if(kind==="csv"){
+    const q=v=>{const s=String(v??"");return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+    const lines=[["قائمة الزبائن",shopName()],["عدد الزبائن",rows.length],["إجمالي الديون",tot],[],
+      ["ت","أسم الزبون","رقم الهاتف","الفئة","آخر حركة","الدين","سقف الدين","الحالة"],
+      ...rows.map((x,i)=>[i+1,x.c.name,x.c.phone||"",cat(x),last(x),x.p.bal,x.c.limit>0?x.c.limit:"",ctStatus(x)[1]])];
+    saveFile(base+".csv","\ufeff"+lines.map(r=>r.map(q).join(",")).join("\r\n"),"text/csv").then(ok=>ok&&toast("تم حفظ الملف")).catch(()=>toast("تعذّر حفظ الملف."));
+    return}
+  buildPdf({shop:shopName(),title:"قائمة الزبائن",
+    info:[["عدد الزبائن",{text:String(rows.length)}],["إجمالي الديون",{text:fmt(tot)+" "+CUR,color:PDFC.debt}]],
+    columns:[{label:"ت",w:.06,num:true},{label:"أسم الزبون",w:.27},{label:"الهاتف",w:.17,num:true},{label:"الفئة",w:.1},{label:"الدين",w:.15,num:true},{label:"سقف الدين",w:.12,num:true},{label:"الحالة",w:.13}],
+    rows:rows.map((x,i)=>({cells:[String(i+1),x.c.name,x.c.phone||"",cat(x),fmt(x.p.bal),x.c.limit>0?fmt(x.c.limit):"",ctStatus(x)[1]],colors:[null,null,null,null,x.p.bal>0?PDFC.debt:PDFC.paid,null,null],shade:i%2===1})),
+    totals:[["إجمالي الديون",fmt(tot)+" "+CUR,PDFC.debt]]},base+".pdf");
 }
 
 /* ---------- customers ---------- */
@@ -3257,6 +3359,7 @@ document.addEventListener("click",e=>{
   const pm=t.closest("[data-paymode]");if(pm){S.rep.pmode=pm.dataset.paymode;render();return}
   const rpt=t.closest("[data-reptab]");if(rpt){S.rep.tab=rpt.dataset.reptab;render();return}
   const rpp=t.closest("[data-repper]");if(rpp){S.rep.per=rpp.dataset.repper;if(S.rep.per==="custom"&&!S.rep.from){S.rep.to=todayISO();S.rep.from=addDays(todayISO(),-29)}render();return}
+  const htf=t.closest("[data-htf]");if(htf){S.ht.f=htf.dataset.htf;document.querySelectorAll("[data-htf]").forEach(b=>b.setAttribute("aria-pressed",b===htf));renderHomeTable();return}
   const wf=t.closest("[data-wf]");if(wf){S.rep.wf=wf.dataset.wf;S.rep.wlimit=40;render();return}
   const fw=t.closest("[data-follow]");if(fw){const fc=S.customers.get(fw.dataset.follow);if(fc&&canWrite())followForm(fc);return}
   const b=t.closest("[data-act]");if(!b)return;
@@ -3299,6 +3402,8 @@ document.addEventListener("click",e=>{
     case "setlimit":if(canWrite())customerForm(c);break;
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
+    case "htpdf":custTableExport("pdf");break;
+    case "htcsv":custTableExport("csv");break;
     case "remseq":if(canWrite())remSeq();break;
     case "remall":if(canWrite())remAll();break;
     case "daybackup":if(isAdmin())dailyBackup(b.dataset.prev?prevShopDay():shopDay());break;
@@ -3335,7 +3440,7 @@ document.addEventListener("click",e=>{
       toast("حُذف الحساب",{label:"تراجع",ms:8000,onClick:()=>{undone=true;clearTimeout(tm);put("customers",cc);for(const x of gone)put("txns",x);log("add","customer",{customerName:cc.name,detail:"تراجع عن الحذف"});openCustomer(cc.id);toast("رجع الحساب وكل حركاته")}})});break;
   }
 });
-document.addEventListener("input",e=>{if(e.target.dataset&&e.target.dataset.biz){S.bizDraft={...(S.bizDraft||{}),[e.target.dataset.biz]:e.target.value};bizRedraw()}if(e.target.id==="q"){S.q=e.target.value;renderList()}if(e.target.id==="hq"){S.hq=e.target.value;homeSearch(S.hq)}});
+document.addEventListener("input",e=>{if(e.target.dataset&&e.target.dataset.biz){S.bizDraft={...(S.bizDraft||{}),[e.target.dataset.biz]:e.target.value};bizRedraw()}if(e.target.id==="q"){S.q=e.target.value;renderList()}if(e.target.id==="hq"){S.hq=e.target.value;homeSearch(S.hq)}if(e.target.id==="htq"){S.ht.q=e.target.value;renderHomeTable()}});
 /* Laptop shortcuts: Ctrl+Z undoes the last delete (while its «تراجع» is showing) or the last debt/payment saved here;
    + / − open a debt / payment on the open account; / jumps to the search box; Ctrl+Enter (or \ beside Enter when not typing)
    starts the voice search on the search box on screen. Typing in a field keeps its normal keys. */
@@ -3378,6 +3483,7 @@ function homeSearch(q){
 }
 document.addEventListener("change",e=>{
   if(e.target.id==="sort"){S.sort=e.target.value;renderList()}
+  if(e.target.id==="htsort"){S.ht.sort=e.target.value;renderHomeTable()}
   if(e.target.id==="period"){S.period=e.target.value;renderDetail()}
   if(e.target.id==="payYm"&&e.target.value){S.rep.pym=e.target.value;render()}
   if(e.target.id==="payDay"&&e.target.value){S.rep.pday=e.target.value;render()}
