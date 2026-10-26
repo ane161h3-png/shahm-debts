@@ -138,6 +138,7 @@ header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .ic.add{background:var(--paid-soft);color:var(--paid)} .ic.edit{background:var(--warn-soft);color:var(--warn)} .ic.delete{background:var(--debt-soft);color:var(--debt)}
 .act .body{flex:1;min-width:0}
 .act .t{font-weight:600;overflow-wrap:anywhere}
+.act.tap{cursor:pointer}.act.tap:hover{outline:1px solid var(--accent);outline-offset:-1px}
 .act .s{font-size:12.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between}
 .top-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .top-list li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
@@ -235,6 +236,7 @@ td.x{width:64px;white-space:nowrap}
 .icon-btn{border:0;background:none;color:var(--muted);cursor:pointer;padding:4px;border-radius:6px;display:inline-grid;place-items:center}
 .icon-btn:hover{color:var(--accent);background:var(--accent-soft)}
 .icon-btn.del:hover{color:var(--debt);background:var(--debt-soft)}
+.icon-btn.wa-re{color:var(--paid)}.icon-btn.wa-re:hover{background:var(--paid-soft)}
 .icon-btn svg{width:16px;height:16px}
 @media (max-width:480px){th,td{padding:8px 6px}table{font-size:13.5px;min-width:0}td.x{width:30px}td.x .icon-btn{display:grid}td.desc{min-width:90px}}
 .placeholder{padding:48px 20px;text-align:center;color:var(--muted)}
@@ -959,6 +961,7 @@ async function del(coll,id){
 }
 async function log(kind,what,info){
   const a={id:uid(),at:Date.now(),kind,what,by:S.me?S.me.name:"",byRole:S.me?S.me.role:"",...info};
+  if(a.customerName&&!a.customerId){const m=[...S.customers.values()].filter(c=>c.name===a.customerName);if(m.length===1)a.customerId=m[0].id}
   try{db.collection(P("activity")).doc(a.id).set(a).catch(()=>{})}catch(e){}
 }
 async function saveSettings(patch){
@@ -1146,6 +1149,8 @@ function render(){
 function navBtn([k,l,ic]){return `<button type="button" data-go="${k}" aria-current="${S.view===k?"page":"false"}">${ic}<span>${l}</span></button>`}
 
 /* ---------- home ---------- */
+// The account an activity entry is about: its saved id, or (older entries) the one account with that exact name.
+const actCust=a=>{if(a.customerId){const c=S.customers.get(a.customerId);if(c)return c}if(!a.customerName)return null;let f=null;for(const c of S.customers.values())if(c.name===a.customerName){if(f)return null;f=c}return f};
 const ACT_TEXT=a=>{
   const amt=a.amount?` ${fmt(a.amount)} ${CUR}`:"";const c=a.customerName?esc(a.customerName):"";
   switch(a.what){
@@ -1209,8 +1214,8 @@ function homeView(){
       <div class="chips" role="group" aria-label="تصفية النشاط">
         ${[["all","كل النشاطات"],["add","إضافة"],["edit","تعديل"],["delete","حذف"]].map(([k,l])=>`<button type="button" data-actf="${k}" aria-pressed="${S.actFilter===k}">${l}</button>`).join("")}
       </div>
-      ${acts.length?`<ul class="act-list${acts.length>30?" long":""}">${acts.map(a=>`<li class="act"><span class="ic ${a.kind==="add"||a.kind==="edit"||a.kind==="delete"?a.kind:"add"}">${a.kind==="add"?I.plus:a.kind==="delete"?I.trash:a.kind==="remind"?I.bell:I.edit}</span>
-        <div class="body"><div class="t">${ACT_TEXT(a)}</div><div class="s"><span>بواسطة: ${esc(a.by||"غير معروف")}</span><span>${esc(timeAgo(a.at))}</span></div></div></li>`).join("")}</ul>`
+      ${acts.length?`<ul class="act-list${acts.length>30?" long":""}">${acts.map(a=>{const ac=actCust(a);return `<li class="act${ac?" tap":""}"${ac?` data-open="${esc(ac.id)}" title="فتح حساب ${esc(ac.name)}"`:""}><span class="ic ${a.kind==="add"||a.kind==="edit"||a.kind==="delete"?a.kind:"add"}">${a.kind==="add"?I.plus:a.kind==="delete"?I.trash:a.kind==="remind"?I.bell:I.edit}</span>
+        <div class="body"><div class="t">${ACT_TEXT(a)}</div><div class="s"><span>بواسطة: ${esc(a.by||"غير معروف")}</span><span>${esc(timeAgo(a.at))}</span></div></div></li>`}).join("")}</ul>`
       :`<div class="empty"><b>لا يوجد نشاط بعد</b>كل دين أو تسديد أو تعديل يظهر هنا مع اسم من سجّله.</div>`}
     </section>
     <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
@@ -1342,7 +1347,7 @@ function renderDetail(){
         <td class="amt-d">${t.type==="debt"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="amt-p">${t.type==="pay"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="run"><span class="num">${fmt(run)}</span></td>
-        ${w?`<td class="x"><button class="icon-btn" type="button" title="تعديل" aria-label="تعديل الحركة" data-act="edittx" data-id="${esc(t.id)}">${I.edit}</button><button class="icon-btn del" type="button" title="حذف" aria-label="حذف الحركة" data-act="deltx" data-id="${esc(t.id)}">${I.trash}</button></td>`:""}</tr>`).join("")}
+        ${w?`<td class="x">${!sup&&waNumber(c.phone)?`<button class="icon-btn wa-re" type="button" title="إرسال الرسالة مرة ثانية" aria-label="إرسال رسالة واتساب لهذه الحركة مرة ثانية" data-act="resendwa" data-id="${esc(t.id)}">${I.wa}</button>`:""}<button class="icon-btn" type="button" title="تعديل" aria-label="تعديل الحركة" data-act="edittx" data-id="${esc(t.id)}">${I.edit}</button><button class="icon-btn del" type="button" title="حذف" aria-label="حذف الحركة" data-act="deltx" data-id="${esc(t.id)}">${I.trash}</button></td>`:""}</tr>`).join("")}
       ${L.from?`<tr class="edge"><td colspan="3">رصيد بداية المدة · ${esc(shortDate(L.from))}</td><td class="run"><span class="num">${fmt(L.open)}</span></td>${w?"<td></td>":""}</tr>`:""}
       </tbody></table></div>`:`<div class="empty"><b>لا توجد حركات</b>${w?"سجّل أول دين بالضغط على «دين».":""}</div>`}
       <div class="mini-sums" style="margin-top:8px"><span>${sup?"مشتريات المدة":"ديون المدة"}: <b class="num">${fmt(L.dSum)}</b></span><span>دفعات المدة: <b class="num">${fmt(L.pSum)}</b></span><span>عدد الحركات: <b class="num">${L.list.length}</b></span></div>
@@ -3244,6 +3249,8 @@ document.addEventListener("click",e=>{
     case "wabizoff":try{localStorage.removeItem(WA_BIZ_KEY)}catch(x){}render();break;
     case "savetpl":if(isAdmin()){const tp={};for(const k of Object.keys(DEFAULT_TPL))tp[k]=document.getElementById("tpl-"+k).value;saveSettings({templates:tp}).then(ok=>ok&&toast("تم حفظ القوالب"))}break;
     case "edittx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())txnForm(null,x);break}
+    case "resendwa":{const x=S.txns.get(b.dataset.id);if(x&&c&&!isSup(c)&&waNumber(c.phone))
+      openExternal(waLink(c.phone,fillTpl(x.type==="debt"?"debt":"pay",c,{amount:x.amount,date:x.date,note:x.note,time:hm12(x.createdAt)})));break}
     case "deltx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())confirmBox("حذف الحركة",`حذف ${c&&isSup(c)?(x.type==="debt"?"فاتورة":"دفعة"):(x.type==="debt"?"دين":"تسديد")} بمبلغ ${fmt(x.amount)} ${CUR} بتاريخ ${x.date}؟`,"حذف",()=>{del("txns",x.id);log("delete",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount,...(c&&isSup(c)?{sup:true}:{})});
       // Photos are removed only after the undo window closes.
       let undone=false;const tm=setTimeout(()=>{if(!undone)dropPhotos(x.photos)},9000);
