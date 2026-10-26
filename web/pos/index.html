@@ -218,6 +218,30 @@ input:disabled{opacity:.55}
 .ib-btns{display:flex;gap:8px;flex-wrap:wrap}
 .ib-tot .btn:not(.primary){background:transparent;color:var(--paper);border-color:var(--muted)}
 .ib-go{font-size:18px;padding:12px 26px}
+.ib-wrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px;align-items:start}
+.ib-tabs .inv-tabs{padding:0 0 2px}
+.ib-tabs .inv-tabs button{padding:8px 16px}
+.ib-tabs .inv-tabs button b{font-size:15px}
+.ib-quick{display:none}
+.ib-side{position:sticky;top:8px;display:flex;flex-direction:column;max-height:calc(100dvh - 24px);overflow:hidden}
+.sd-tabs{display:flex;border-bottom:1px solid var(--line)}
+.sd-tabs button{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:10px 4px;border:0;background:none;cursor:pointer;color:var(--muted);font:600 13px var(--f-body);border-bottom:2px solid transparent}
+.sd-tabs button svg{width:16px;height:16px}
+.sd-tabs button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.sd-x{display:none;flex:none;width:44px;border:0;background:none;cursor:pointer;color:var(--muted);font-size:20px}
+.sd-body{padding:10px;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.sd-qp{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.sd-qp button{padding:14px 6px;border:1px solid var(--line);background:var(--paper-2);border-radius:var(--r-ctl);cursor:pointer;font:700 17px var(--f-display);color:var(--ink)}
+.sd-qp button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.sd-qp button:active:not(:disabled){background:var(--accent-soft)}
+.sd-other{width:100%}
+.sd-cats{flex-wrap:wrap;overflow:visible}
+.sd-items{display:flex;flex-direction:column;gap:4px}
+.sd-head{margin-top:6px;font:700 12.5px var(--f-body);color:var(--muted)}
+.sd-it{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);background:var(--paper-2);border-radius:var(--r-ctl);cursor:pointer;text-align:right;font:inherit}
+.sd-it:hover:not(:disabled){border-color:var(--accent)}
+.sd-it b{font-weight:600}.sd-it span{color:var(--muted);font-size:13px;white-space:nowrap}.sd-it small{font-size:11px}
+@media (max-width:900px){.ib-wrap{grid-template-columns:minmax(0,1fr)}.ib-quick{display:flex}.ib-side{display:none;position:fixed;inset:auto 0 0 0;top:auto;z-index:15;max-height:70dvh;border-radius:var(--r) var(--r) 0 0}body.side-open .ib-side{display:flex}.sd-x{display:block}}
 @media (max-width:700px){.ib-top{flex-wrap:wrap}.ib-cust{flex:1 1 100%}.ib-search{flex:1 1 60%}.ib-line .lt{min-width:70px}.ib-sum b{font-size:32px}.ib-btns{width:100%}.ib-btns .btn{flex:1}}
 .modal.bgen{max-width:860px}
 .bg-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
@@ -1041,7 +1065,7 @@ function render(){
   if((S.view==="products"||S.view==="count"||S.view==="recv")&&!canItems())S.view="sell";
   renderHeader();
   const v=$("#view");
-  if(S.view==="sell"){v.innerHTML=sellView();renderChips();renderTiles();renderCart()}
+  if(S.view==="sell"){v.innerHTML=sellView();renderTiles();renderCart()}
   else if(S.view==="sales")renderSales();
   else if(S.view==="home")renderHome();
   else if(S.view==="count")renderCount();
@@ -1062,7 +1086,7 @@ function refresh(what){
   if(what==="cart"){renderTiles();renderCart();return}
   if(what==="prices"){renderHeader();const n=$("#prNote");if(n)n.innerHTML=prNoteHtml();if(S.view==="sell")renderTiles();return}
   if(!what)renderHeader();
-  if(S.view==="sell"){if(what!=="cust"&&what!=="sales"){renderChips();renderTiles()}renderCart();if(what==="cust")refreshPicker&&refreshPicker()}
+  if(S.view==="sell"){if(what!=="cust"&&what!=="sales"){renderTiles()}renderCart();if(what==="cust")refreshPicker&&refreshPicker()}
   else if(S.view==="sales")renderSales();
   else if(S.view==="home"){if(what!=="cust"&&what!=="prices")renderHome()}
   else if(S.view==="products"&&what!=="cust"&&what!=="sales")renderProducts();
@@ -1077,39 +1101,8 @@ function refresh(what){
 let refreshPicker=null;
 
 /* ---------- sell view ---------- */
-const SELLMODE_KEY="shahm-pos-sellmode";
-// The sell screen shows either the invoice (a row per item, with a bar of actions) or the item tiles; the choice stays on this device.
-const invMode=()=>{try{return localStorage.getItem(SELLMODE_KEY)!=="tiles"}catch(e){return true}};
-function sellView(){
-  if(invMode())return invView();
-  return `<div class="sell">
-    <section class="pane catalog" aria-label="المواد">
-      <div class="cat-tools">
-        <div class="tool-row">
-          <label class="search">${I.search}<input id="q" type="search" placeholder="ابحث باسم المادة أو الباركود${keyOf("search")?keyHint(` (${esc(keyName(keyOf("search")))})`):""}" autocomplete="off" value="${esc(S.q)}" aria-label="بحث عن مادة"></label>
-          ${canScan()?`<button class="icon-btn" type="button" data-act="scan" aria-label="مسح باركود بالكاميرا" title="مسح باركود بالكاميرا">${I.scan}</button>`:""}
-          ${canSell()&&canKick()?`<button class="icon-btn" type="button" data-act="drawer" aria-label="فتح الدرج" title="فتح الدرج">${I.drawer}</button>`:""}
-          <button class="icon-btn" type="button" data-act="sellmode" aria-label="شاشة الفاتورة" title="شاشة الفاتورة">${I.list}</button>
-        </div>
-        <div class="chips" id="chips"></div>
-      </div>
-      ${canSell()?"":`<div class="banner warn ro-note">حسابك «مشاهد»، تكدر تشوف المواد والمبيعات بس ما تكدر تبيع.</div>`}
-      <div id="prNote">${prNoteHtml()}</div>
-      <div class="tiles" id="tiles"></div>
-    </section>
-    <aside class="pane cart" id="cart" aria-label="السلة"></aside>
-  </div>
-  <div class="cartbar" id="cartBar"></div>`;
-}
+function sellView(){return invView()}
 function productList(){return [...S.products.values()].filter(p=>p.active!==false)}
-function renderChips(){
-  const el=$("#chips");if(!el)return;
-  const used=new Set(productList().map(p=>p.category||""));
-  const list=cats().filter(c=>used.has(c));if(used.has(""))list.push("");
-  const nW=productList().filter(inWeigh).length;
-  if(S.cat!=="all"&&!(S.cat==="__w"&&nW)&&!list.includes(S.cat))S.cat="all";
-  el.innerHTML=[["all","الكل"],...(nW?[["__w","⚖ مواد الوزن ("+nW+")"]]:[]),...list.map(c=>[c,c||"بدون صنف"])].map(([k,l])=>`<button type="button" data-cat="${esc(k)}" aria-pressed="${S.cat===k}">${esc(l)}</button>`).join("");
-}
 function filteredProducts(q,cat){
   let list=productList();
   if(cat==="__w")list=list.filter(inWeigh);else if(cat&&cat!=="all")list=list.filter(p=>(p.category||"")===cat);
@@ -1117,79 +1110,28 @@ function filteredProducts(q,cat){
   if(!t)return list.sort((a,b)=>a.name.localeCompare(b.name,"ar"));
   return list.map(p=>({p,s:(p.barcode&&p.barcode===t)||packsOf(p).some(k=>k.barcode&&k.barcode===t)?20:matchScore(p.name,t,p.category)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s||a.p.name.localeCompare(b.p.name,"ar")).map(x=>x.p);
 }
-function renderTiles(){
-  if(invMode()){renderInvRes();return}
-  const el=$("#tiles");if(!el)return;
-  const inCart=new Map();for(const l of S.cart)if(l.pid)inCart.set(l.pid,round3((inCart.get(l.pid)||0)+l.qty*(l.n||1)));
-  const list=filteredProducts(S.q,S.cat);
-  const custom=canSell()?`<button class="tile custom" type="button" data-act="keypad">${I.keypad}<span>مادة بسعر${kk("keypad")}</span></button>`:"";
-  if(!S.ready.p){el.innerHTML=`<div class="spinner" style="grid-column:1/-1"></div>`;return}
-  if(!list.length){el.innerHTML=custom+`<div class="empty" style="grid-column:1/-1">${S.products.size?`<b>ماكو مادة بهذا الاسم</b>جرّب كلمة ثانية${canSell()?"، أو بيعها بـ «مادة بسعر»":""}.`:`<b>ماكو مواد بعد</b>${canItems()?`أضف المواد من تبويب <a href="#" data-go="products">المواد</a>.`:"المدير يضيف المواد وأسعارها."}`}</div>`;return}
-  // «مواد الوزن»: the items sold by the kilo, grouped under their category so they are quick to find.
-  const grouped=S.cat==="__w"&&!normDigits(S.q).trim();
-  if(grouped){const ord=cats();list.sort((a,b)=>{const ca=a.category||"",cb=b.category||"",ia=ord.indexOf(ca),ib=ord.indexOf(cb);
-    return ca===cb?a.name.localeCompare(b.name,"ar"):(ia<0?999:ia)-(ib<0?999:ib)||ca.localeCompare(cb,"ar")})}
-  let lastCat=null;
-  el.innerHTML=custom+list.slice(0,300).map(p=>{const al=alertsOf(p),left=tracked(p)?round3(stockOf(p)-(inCart.get(p.id)||0)):null;
-    const reg=priceFor(p,null,S.whole),of=S.whole?null:priceLine({},p,null,false),shown=of&&of.was?of.price:reg;
-    const head=grouped&&(p.category||"")!==lastCat?`<div class="tile-head">${esc((lastCat=p.category||"")||"بدون صنف")}</div>`:"";
-    return `${head}<button class="tile${hasPic(p)||!p.noStock?" has-pic":""}" type="button" data-add="${esc(p.id)}"${canSell()?"":" disabled"}>
-    ${inCart.has(p.id)?`<span class="q num">${qtyText(inCart.get(p.id))}</span>`:""}${picImg(p,"pic")||(p.noStock?"":artImg("pic","box"))}
-    <span class="nm">${esc(p.name)}</span><span class="ct">${esc(p.category||"")}</span>
-    ${left!==null||al.some(a=>a.startsWith("exp"))?`<span class="st${al.length||(left!==null&&left<=0)?" warn":""}">${left!==null?`باقي <span class="num">${qtyText(left)}</span>`:""}${al.includes("expired")?" · منتهية":al.includes("expiring")?" · قرب انتهاؤها":""}</span>`:""}
-    ${prRecent(p.id)?`<span class="of pn">سعر جديد</span>`:""}${of&&(of.was||of.deal)?`<span class="of">عرض${of.deal?" "+offerHtml(of.deal):""}</span>`:""}
-    <span class="pr"><span class="num">${fmt(shown)}</span>${isWeighed(p)?`<small class="kg">/كغم</small>`:""}${shown<reg?` <s class="was num">${fmt(reg)}</s>`:""}${S.whole&&p.wprice>0?` <small>جملة</small>`:""}</span></button>`}).join("");
-  hydratePics(el);
-}
-function renderCart(){
-  if(invMode()){renderInv();return}
-  const el=$("#cart"),bar=$("#cartBar");if(!el)return;
-  const t=totals();
-  el.innerHTML=`${canSell()&&(S.cart.length||S.slots.length>1)?invTabs():""}<div class="cart-head"><h2>الفاتورة ${S.cart.length?`<span class="chip zero num">${S.cart.length}</span>`:""}</h2>
-      <div style="display:flex;gap:4px;align-items:center"><span class="chips"><button type="button" data-act="whole" aria-pressed="${!!S.whole}" title="أسعار الجملة">جملة</button></span>${S.cart.length?`<button class="btn sm ghost danger-text" type="button" data-act="clear">${I.trash}تفريغ</button>`:""}<button class="btn sm ghost close-cart" type="button" data-act="hidecart" aria-label="إغلاق السلة">${I.close}</button></div></div>
-    ${S.cart.length?`<ul class="cart-lines">${S.cart.map(l=>`<li>${l.pid?picImg(S.products.get(l.pid),"cpic"):""}
-      <button class="info" type="button" data-line="${esc(l.key)}"><b>${esc(l.name)}</b><span><span class="num">${fmt(l.price)}</span>${l.w?" للكيلو":` × <span class="num">${qtyText(l.qty)}</span> ${esc(l.unit||"")}`}${l.was?` <s class="was num">${fmt(l.was)}</s>`:""}${l.deal||l.was?` <span class="of">عرض${l.deal?" "+offerHtml(l.deal):""}</span>`:""}</span></button>
-      ${l.w?`<button class="wpill" type="button" data-line="${esc(l.key)}" aria-label="تعديل الوزن">${kgHtml(l.qty)}</button>`
-        :`<div class="stepper"><button type="button" data-inc="${esc(l.key)}" aria-label="زيادة">${I.plus}</button><span class="num">${qtyText(l.qty)}</span><button type="button" data-dec="${esc(l.key)}" aria-label="نقصان">${l.qty>1?I.minus:I.trash}</button></div>`}
-      <span class="lt num">${fmt(lineTotal(l))}</span></li>`).join("")}</ul>`
-      :S.lastSale?soldHtml(S.lastSale)
-      :`<div class="empty cart-lines" style="display:grid;place-items:center"><div><b>الفاتورة فارغة</b>اضغط على مادة حتى تنضاف.</div></div>`}
-    <div class="cart-foot">
-      ${S.whole?`<div class="banner info" style="padding:6px 12px">الفاتورة بسعر الجملة</div>`:""}
-      <div class="tot-row"><span>المجموع</span><b class="num">${fmt(t.sub)}</b></div>
-      <div class="tot-row disc"><button type="button" data-act="discount"${S.cart.length&&canSell()?"":" disabled"}>${t.disc?"الخصم (تعديل)":"+ إضافة خصم"}</button>${t.disc?`<b class="num">-${fmt(t.disc)}</b>`:""}</div>
-      <div class="grand" aria-live="polite"><span>المطلوب${S.cart.length?`<small><span class="num">${qtyText(round3(S.cart.reduce((a,l)=>a+(l.w?1:l.qty),0)))}</span> قطعة</small>`:""}</span><b><span class="num">${fmt(t.total)}</span> <small>${CUR}</small></b></div>
-      <div class="pay-row"><button class="btn primary charge" type="button" data-act="quickcash"${S.cart.length&&canSell()?"":" disabled"}>${I.check}كاش <span class="num">${fmt(t.total)}</span>${kk("cash")}</button>
-        <button class="btn more" type="button" data-act="checkout"${S.cart.length&&canSell()?"":" disabled"}>دين / باقي${kk("pay")}</button></div>
-    </div>`;
-  const waiting=S.slots.length-1;
-  if(bar)bar.innerHTML=S.cart.length?`<button class="open" type="button" data-act="showcart"><span><span class="cnt num">${S.cart.length}</span>عرض الفاتورة${waiting?` · ${waiting} بالانتظار`:""}</span><b class="num">${fmt(t.total)}</b></button>`
-    :waiting?`<button class="open" type="button" data-act="showcart"><span><span class="cnt num">${waiting}</span>فواتير بالانتظار</span></button>`:"";
-  if(!S.cart.length&&!waiting)document.body.classList.remove("show-cart");
-  if(!S.cart.length&&!S.lastSale)document.body.classList.remove("splitv");
-  hydratePics(el);
-}
-
+function renderTiles(){renderInvRes();renderSide()}
+function renderCart(){renderInv()}
 
 /* ---------- the sell screen as an invoice ----------
    A bar of actions on top, the customer and a search box, a row for each item (price, stock, quantity, note, amount),
    the open invoices as tabs, and the total with the buttons to finish. */
 function invView(){
-  return `<div class="ib">
+  return `<div class="ib-wrap"><div class="ib">
+    <div class="ib-tabs" id="ibTabs"></div>
     <div class="ib-bar" id="ibBar" role="toolbar" aria-label="أدوات الفاتورة"></div>
     <div class="ib-top">
       <button class="ib-cust" type="button" id="ibCust" data-act="custpick" aria-label="اختيار الزبون"></button>
       <div class="ib-search"><label class="search">${I.search}<input id="q" type="search" placeholder="فحص الباركود أو ابحث بالاسم…${keyOf("search")?keyHint(` (${esc(keyName(keyOf("search")))})`):""}" autocomplete="off" value="${esc(S.q)}" aria-label="بحث عن مادة"></label><div class="ib-res" id="ibRes" hidden></div></div>
-      ${canSell()?`<button class="btn ib-quick" type="button" data-act="quickprices">${I.bolt}أسعار سريعة</button>`:""}
+      <button class="btn ib-quick" type="button" data-act="sidetoggle">${I.bolt}سريع</button>
       ${canScan()?`<button class="icon-btn" type="button" data-act="scan" aria-label="مسح باركود بالكاميرا" title="مسح باركود بالكاميرا">${I.scan}</button>`:""}
       ${canSell()&&canKick()?`<button class="icon-btn" type="button" data-act="drawer" aria-label="فتح الدرج" title="فتح الدرج">${I.drawer}</button>`:""}
-      <button class="icon-btn" type="button" data-act="sellmode" aria-label="شاشة البطاقات" title="شاشة البطاقات">${I.box}</button>
     </div>
     ${canSell()?"":`<div class="banner warn ro-note">حسابك «مشاهد»، تكدر تشوف المواد والمبيعات بس ما تكدر تبيع.</div>`}
     <div id="prNote">${prNoteHtml()}</div>
     <section class="pane ib-body" id="ibLines" aria-label="الفاتورة"></section>
     <div class="ib-foot" id="ibFoot"></div>
-  </div>`;
+  </div><aside class="pane ib-side" id="ibSide" aria-label="أسعار سريعة ومواد"></aside></div>`;
 }
 function renderInvRes(){
   const el=$("#ibRes");if(!el)return;const q=normDigits(S.q).trim();
@@ -1206,7 +1148,7 @@ function renderInv(){
   $("#ibBar").innerHTML=`<button type="button" data-go="sales">${I.history}<span>سجل الفواتير</span></button>`
     +B("redolast",I.redo,"إعادة آخر عملية",!sell)+B("undoline",I.ban,"إلغاء",!has||!sell)+B("discount",I.percent,"خصم %",!has||!sell)
     +B("ibprice",I.tag,"سعر مختلف",!has||!sell)+B("whole",I.box,"جملة",!sell,` aria-pressed="${!!S.whole}"`)
-    +B("ibprint",I.print,"طباعة",!has)+B("newinv",I.pause,"تعليق الفاتورة",!has||!sell)+B("clear",I.trash,"حذف الكل",!has||!sell);
+    +B("ibprint",I.print,"طباعة",!has)+B("newinv",I.pause,"فاتورة جديدة",!has||!sell)+B("clear",I.trash,"حذف الكل",!has||!sell);
   const inCart=new Map();for(const l of S.cart)if(l.pid)inCart.set(l.pid,round3((inCart.get(l.pid)||0)+l.qty*(l.n||1)));
   root.innerHTML=has?`<ul class="ib-lines">${S.cart.map(l=>{const p=l.pid&&S.products.get(l.pid),left=p&&tracked(p)?round3(stockOf(p)-(inCart.get(l.pid)||0)):null,k=esc(l.key);
     return `<li class="ib-line"><div class="nm"><b>${esc(l.name)}</b>
@@ -1220,7 +1162,8 @@ function renderInv(){
       ${sell?`<button class="ib-ico del" type="button" data-ldel="${k}" aria-label="حذف">${I.trash}</button>`:""}</li>`}).join("")}</ul>`
     :S.lastSale?soldHtml(S.lastSale)
     :`<div class="empty ib-empty"><div>${I.scan}<b>الفاتورة فارغة</b>امسح باركود المادة أو ابحث عنها باسمها.</div></div>`;
-  $("#ibFoot").innerHTML=`${sell?invTabs():""}<div class="ib-tot"><div class="ib-sum"><span>المجموع الكلي${has?` · <span class="num">${qtyText(round3(S.cart.reduce((a,l)=>a+(l.w?1:l.qty),0)))}</span> قطعة`:""}${t.disc?` · خصم <span class="num">${fmt(t.disc)}</span>`:""}${S.whole?" · جملة":""}</span><b><span class="num">${fmt(t.total)}</span> <small>${CUR}</small></b></div>
+  $("#ibTabs").innerHTML=sell?invTabs():"";
+  $("#ibFoot").innerHTML=`<div class="ib-tot"><div class="ib-sum"><span>المجموع الكلي${has?` · <span class="num">${qtyText(round3(S.cart.reduce((a,l)=>a+(l.w?1:l.qty),0)))}</span> قطعة`:""}${t.disc?` · خصم <span class="num">${fmt(t.disc)}</span>`:""}${S.whole?" · جملة":""}</span><b><span class="num">${fmt(t.total)}</span> <small>${CUR}</small></b></div>
     <div class="ib-btns"><button class="btn" type="button" data-act="kbd">${I.keypad}<span>لوحة المفاتيح</span></button>
       <button class="btn" type="button" data-act="quickcash"${has&&sell?"":" disabled"}>كاش${kk("cash")}</button>
       <button class="btn primary ib-go" type="button" data-act="checkout"${has&&sell?"":" disabled"}>${I.check}إتمام وحفظ${kk("pay")}</button></div></div>`;
@@ -1263,16 +1206,37 @@ function custPick(){
   });
 }
 // «أسعار سريعة»: a tap adds an item that isn't in the list, at that price.
-function quickPrices(){
-  if(!canSell())return;const amts=[250,500,750,1000,1500,2000,3000,5000,10000,25000];let n=0;
-  openModal(`<h3>أسعار سريعة</h3><p class="hint">اضغط المبلغ حتى ينضاف للفاتورة كمادة متفرقة. تكدر تضغط أكثر من مرة.</p>
-    <div class="quick qp">${amts.map(v=>`<button type="button" data-qp="${v}"><span class="num">${fmt(v)}</span></button>`).join("")}</div><p class="hint" id="qpN"></p>
-    <div class="foot"><button class="btn" type="button" id="qpO">${I.keypad}مبلغ ثاني…</button><button class="btn primary" type="button" data-close>تم</button></div>`,m=>{
-    m.querySelectorAll("[data-qp]").forEach(b=>b.onclick=()=>{const price=Number(b.dataset.qp);
-      const l=S.cart.find(x=>!x.pid&&x.price===price&&x.name==="مادة متفرقة"&&!x.note);if(l)l.qty=round3(l.qty+1);else S.cart.push({key:"c-"+uid(),pid:null,name:"مادة متفرقة",price,qty:1,cat:cats()[0]||""});
-      S.lastSale=null;saveCart();refresh("cart");sound("add");n++;m.querySelector("#qpN").textContent=`انضافت ${n} مرة`});
-    m.querySelector("#qpO").onclick=()=>{closeModal();keypadForm()};
-  });
+const QP=[250,500,750,1000,1500,2000,3000,5000,10000,25000];
+function quickAdd(price){
+  if(!canSell()||!(price>0))return;
+  const l=S.cart.find(x=>!x.pid&&x.price===price&&x.name==="مادة متفرقة"&&!x.note);if(l)l.qty=round3(l.qty+1);else S.cart.push({key:"c-"+uid(),pid:null,name:"مادة متفرقة",price,qty:1,cat:cats()[0]||""});
+  S.lastSale=null;saveCart();refresh("cart");sound("add");
+}
+// The side panel stays open beside the invoice: quick prices, the items sold by weight, and all items by category.
+function renderSide(){
+  const el=$("#ibSide");if(!el)return;
+  const sell=canSell(),tab=["quick","weigh","all"].includes(S.side)?S.side:"quick";
+  const tabs=[["quick","أسعار سريعة",I.bolt],["weigh","مواد الوزن",I.scale||I.box],["all","كل المواد",I.box]];
+  let body="";
+  if(tab==="quick")body=`<div class="sd-qp">${QP.map(v=>`<button type="button" data-qp="${v}"${sell?"":" disabled"}><span class="num">${fmt(v)}</span></button>`).join("")}</div>
+    ${sell?`<button class="btn sd-other" type="button" data-act="keypad">${I.keypad}مبلغ ثاني…</button>`:""}`;
+  else if(!S.ready.p)body=`<div class="spinner"></div>`;
+  else{
+    let list=productList();
+    if(tab==="weigh"){const ord=cats();list=list.filter(inWeigh).sort((a,b)=>{const ca=a.category||"",cb=b.category||"",ia=ord.indexOf(ca),ib=ord.indexOf(cb);return ca===cb?a.name.localeCompare(b.name,"ar"):(ia<0?999:ia)-(ib<0?999:ib)||ca.localeCompare(cb,"ar")})}
+    else{
+      const used=new Set(list.map(p=>p.category||"")),cl=cats().filter(c=>used.has(c));if(used.has(""))cl.push("");
+      if(S.cat!=="all"&&!cl.includes(S.cat))S.cat="all";
+      body=`<div class="chips sd-cats">${[["all","الكل"],...cl.map(c=>[c,c||"بدون صنف"])].map(([k,l])=>`<button type="button" data-cat="${esc(k)}" aria-pressed="${S.cat===k}">${esc(l)}</button>`).join("")}</div>`;
+      list=filteredProducts("",S.cat);
+    }
+    let last=null;
+    body+=list.length?`<div class="sd-items">${list.slice(0,300).map(p=>{
+      const head=tab==="weigh"&&(p.category||"")!==last?`<div class="sd-head">${esc((last=p.category||"")||"بدون صنف")}</div>`:"";
+      return `${head}<button type="button" class="sd-it" data-add="${esc(p.id)}"${sell?"":" disabled"}><b>${esc(p.name)}</b><span class="num">${fmt(priceFor(p,null,S.whole))}${isWeighed(p)?"<small>/كغم</small>":""}</span></button>`}).join("")}</div>`
+      :`<div class="empty"><b>${tab==="weigh"?"ماكو مواد وزن":"ماكو مواد"}</b></div>`;
+  }
+  el.innerHTML=`<div class="sd-tabs" role="tablist">${tabs.map(([k,l,ic])=>`<button type="button" role="tab" data-act="sidetab" data-st="${k}" aria-selected="${tab===k}">${ic}<span>${l}</span></button>`).join("")}<button type="button" class="sd-x" data-act="sidetoggle" aria-label="إغلاق">${I.x||"×"}</button></div><div class="sd-body">${body}</div>`;
 }
 // A discount on one item: an amount, or a percent of its price (the owner only; the invoice discount is the editor's way, with approval).
 function lineDiscForm(key,pct){
@@ -4881,7 +4845,7 @@ document.addEventListener("click",e=>{
   const g=t.closest("[data-go]");if(g){e.preventDefault();go(g.dataset.go);return}
   if(t.closest("#meBox")){accountMenu();return}
   const add=t.closest("[data-add]");if(add){const p=S.products.get(add.dataset.add);if(p)sellItem(p);
-    if(invMode()&&S.q){S.q="";const qi=$("#q");if(qi){qi.value="";qi.focus()}renderInvRes()}return}
+    if(S.q){S.q="";const qi=$("#q");if(qi){qi.value="";qi.focus()}renderInvRes()}return}
   const inc=t.closest("[data-inc]");if(inc){const l=S.cart.find(x=>x.key===inc.dataset.inc);if(l)setQty(l.key,l.qty+1);return}
   const dec=t.closest("[data-dec]");if(dec){const l=S.cart.find(x=>x.key===dec.dataset.dec);if(l)setQty(l.key,l.qty>1?l.qty-1:0);return}
   const ln=t.closest("[data-line]");if(ln){editLine(ln.dataset.line);return}
@@ -4891,7 +4855,8 @@ document.addEventListener("click",e=>{
   const lnn=t.closest("[data-lnote]");if(lnn){lineNoteForm(lnn.dataset.lnote);return}
   const ldl=t.closest("[data-ldel]");if(ldl){setQty(ldl.dataset.ldel,0);return}
   const iv=t.closest("[data-inv]");if(iv){switchInvoice(+iv.dataset.inv);return}
-  const c=t.closest("[data-cat]");if(c){S.cat=c.dataset.cat;renderChips();renderTiles();return}
+  const qp=t.closest("[data-qp]");if(qp){quickAdd(Number(qp.dataset.qp));return}
+  const c=t.closest("[data-cat]");if(c){S.cat=c.dataset.cat;renderSide();return}
   const pc=t.closest("[data-pcat]");if(pc){S.pcat=pc.dataset.pcat;renderProducts();return}
   const pr=t.closest("[data-prod]");if(pr){const p=S.products.get(pr.dataset.prod);if(p)(S.pcat==="todo"&&listTodo(p)?priceForm:productForm)(p);return}
   const sl=t.closest("[data-sale]");if(sl){saleDetail(sl.dataset.sale);return}
@@ -4917,13 +4882,13 @@ document.addEventListener("click",e=>{
   switch(a.dataset.act){
     case "scan":scanBarcode(sellCode);break;
     case "keypad":keypadForm();break;
-    case "sellmode":{try{localStorage.setItem(SELLMODE_KEY,invMode()?"tiles":"inv")}catch(e){}S.q="";render();break}
+    case "sidetab":S.side=a.dataset.st;renderSide();break;
+    case "sidetoggle":document.body.classList.toggle("side-open");break;
     case "redolast":redoLast();break;
     case "undoline":undoLine();break;
     case "ibprice":otherPrice();break;
     case "ibprint":printDraft();break;
     case "custpick":custPick();break;
-    case "quickprices":quickPrices();break;
     case "kbd":{const q=$("#q");if(q){q.focus();padShow(q)}break}
     case "clear":if(confirm("تفريغ الفاتورة؟"))clearCart();break;
     case "discount":discountForm();break;
@@ -5021,7 +4986,7 @@ document.addEventListener("keydown",e=>{
   const t=normDigits(v);const byCode=findCode(t);
   if(byCode){if(sellItem(byCode.p,byCode.pack))toast("انضافت: "+byCode.p.name+(byCode.pack?" ("+byCode.pack.name+")":""),1500)}
   else if(/^\d{6,}$/.test(t)){if(!sellCode(t))return}
-  else{const list=filteredProducts(v,S.cat);if(list.length===1)sellItem(list[0]);else return}
+  else{const list=filteredProducts(v,"all");if(list.length===1)sellItem(list[0]);else return}
   S.q="";e.target.value="";renderTiles();
 });
 
