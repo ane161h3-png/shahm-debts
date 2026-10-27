@@ -1744,7 +1744,7 @@ function checkout(resume){
       m.querySelector("#coGo").disabled=true;
       const sale=saveSale({cash,debt,customer:debt>0?(S.customers.get(st.cust.id)||st.cust):null,received:!usd&&st.mode==="cash"&&st.received>=t.total?st.received:0,
         ...(usd?{usd:st.usd,rate:r,usdIqd:Math.round(st.usd*r)}:{})});
-      if(sale)saleDone(sale);
+      if(sale){saleDone(sale);if(sale.debt>0)waAfterSale(sale)}
     };
   });
 }
@@ -1885,6 +1885,13 @@ function receiptText(sale){
   if(sale.status==="void")L.push("","(هذه الفاتورة ملغية)");
   L.push("",SLOGAN);
   return L.join("\n");
+}
+// After a debt sale WhatsApp opens with the invoice ready, as in the debt book: only for a customer with a WhatsApp number,
+// and not when the debt book's «فتح واتساب بعد الحفظ» box was unticked on this device (same key, same site).
+function waAfterSale(sale){
+  const c=sale.customerId&&S.customers.get(sale.customerId);if(!waNumber((c&&c.phone)||sale.customerPhone))return;
+  try{if(localStorage.getItem("shahm-wa-open")==="0")return}catch(e){}
+  shareWhatsApp(sale);
 }
 function shareWhatsApp(sale){
   const c=sale.customerId&&S.customers.get(sale.customerId);const n=waNumber((c&&c.phone)||sale.customerPhone);
