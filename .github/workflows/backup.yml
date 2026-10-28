@@ -12,9 +12,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "periodic = تقرير الـ5 ساعات، daily = النسخة اليومية وملف حركات اليوم، backup = ملف النسخة بس (قبل تحديث)"
+        description: "periodic = تقرير الـ5 ساعات، daily = حركات اليوم (والنسخة الكاملة يوم الجمعة)، full = النسخة الكاملة وملفات اليوم هسه، backup = ملف النسخة بس (قبل تحديث)"
         type: choice
-        options: [daily, periodic, backup]
+        options: [daily, periodic, full, backup]
         default: daily
       scheduled:
         description: "Set by the Cloudflare cron: report the last full 5-hour slot"
