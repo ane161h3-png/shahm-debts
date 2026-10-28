@@ -55,7 +55,11 @@ service cloud.firestore {
       allow write: if isOwner() && (id != 'owner' || (request.resource != null && request.resource.data.uid is string));
     }
     // Readable only once these rules are published; the app checks it before letting the owner change email.
-    match /meta/{id} { allow get: if signedIn() && id == 'rules-v2'; }
+    match /meta/{id} {
+      allow get: if signedIn() && (id == 'rules-v2' || id == 'trial');
+      // trial: how many days a newly registered shop opens by itself (0 = waits for this owner, as before).
+      allow write: if isOwner() && id == 'trial' && d().keys().hasOnly(['days', 'at']) && d().days is int && d().days >= 0 && d().days <= 90;
+    }
     // Cashier (web/pos/): the owner (and an editor given «يدير المواد») manages items and prices; editors sell;
     // only the owner cancels a sale. A sale lowers the stock of what it sold, so editors may change the stock field.
     match /products/{id}  {
@@ -152,6 +156,9 @@ service cloud.firestore {
     // that moment by itself; no until = no end. The data stays, and renewing (a later until) opens it again.
     function shopOn(s) { return exists(shopPath(s)) && get(shopPath(s)).data.status == 'active'
       && (get(shopPath(s)).data.get('until', null) == null || get(shopPath(s)).data.until > request.time.toMillis()); }
+    function trialDays() { return exists(/databases/$(database)/documents/meta/trial) ? get(/databases/$(database)/documents/meta/trial).data.days : 0; }
+    function trialOk(until) { return trialDays() > 0 && until is number && until > request.time.toMillis()
+      && until <= request.time.toMillis() + trialDays() * 86400000 + 3600000; }
     function sOwner(s) { return signedIn() && request.auth.uid == s; }
     function sProfPath(s) { return /databases/$(database)/documents/shops/$(s)/users/$(request.auth.uid); }
     function sProf(s) { return get(sProfPath(s)).data; }
@@ -169,9 +176,12 @@ service cloud.firestore {
     match /shops/{s} {
       allow get: if isOwner() || sOwner(s) || (signedIn() && exists(sProfPath(s)));
       allow list: if isOwner();
-      allow create: if sOwner(s) && d().keys().hasOnly(['id', 'owner', 'name', 'ownerName', 'phone', 'username', 'status', 'createdAt'])
+      // A new shop waits for this owner (pending), or opens by itself for the free trial this owner set in meta/trial,
+      // never longer than that: its end (until) is checked against the server clock.
+      allow create: if sOwner(s) && d().keys().hasOnly(['id', 'owner', 'name', 'ownerName', 'phone', 'username', 'status', 'createdAt', 'trial', 'until'])
         && d().id == s && d().owner == s && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30)
-        && str(d().username, 40) && d().status == 'pending' && d().createdAt is number;
+        && str(d().username, 40) && d().createdAt is number
+        && ((d().status == 'pending' && !('trial' in d()) && !('until' in d())) || (d().status == 'active' && d().trial == true && trialOk(d().until)));
       allow update: if isOwner() || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['name', 'ownerName', 'phone'])
         && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30));
       allow delete: if isOwner();
