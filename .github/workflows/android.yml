@@ -24,7 +24,7 @@ jobs:
           - app: debts
             apk: shahm-debts.apk
             tag: app-latest
-            title: ديون الشهم
+            title: دفتر ديوني
             assets: assets
           - app: pos
             apk: shahm-pos.apk
