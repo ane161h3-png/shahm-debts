@@ -1002,12 +1002,12 @@ function local(coll){return coll==="customers"?S.customers:coll==="txns"?S.txns:
 function writeFail(e){console.warn(e);toast(e&&e.code==="permission-denied"?"ما عندك صلاحية لهذا التعديل.":"تعذّر الحفظ. تحقق من الإنترنت وحاول مرة أخرى.")}
 const WRITES=new Map(); // id -> promise of the write reaching the server (sendAutoWa waits for it)
 async function put(coll,obj){
-  local(coll).set(obj.id,obj);render();
-  try{const w=db.collection(P(DBN(coll))).doc(obj.id).set(obj);WRITES.set(obj.id,w);const done=()=>{if(WRITES.get(obj.id)===w)WRITES.delete(obj.id)};w.then(done,e=>{done();writeFail(e)});return true}catch(e){writeFail(e);return false}
+  local(coll).set(obj.id,obj);const sync=coll==="customers"||coll==="txns";if(sync)UT.set(obj.id,Infinity);render();
+  try{const w=db.collection(P(DBN(coll))).doc(obj.id).set(sync?stamped(obj):obj);WRITES.set(obj.id,w);const done=()=>{if(WRITES.get(obj.id)===w)WRITES.delete(obj.id)};w.then(done,e=>{done();writeFail(e)});return true}catch(e){writeFail(e);return false}
 }
 async function del(coll,id){
-  local(coll).delete(id);render();
-  try{db.collection(P(DBN(coll))).doc(id).delete().catch(writeFail)}catch(e){writeFail(e)}
+  local(coll).delete(id);UT.delete(id);render();
+  try{db.collection(P(DBN(coll))).doc(id).delete().catch(writeFail);goneNote(coll,id)}catch(e){writeFail(e)}
 }
 async function log(kind,what,info){
   const a={id:uid(),at:Date.now(),kind,what,by:S.me?S.me.name:"",byRole:S.me?S.me.role:"",...info};
@@ -1142,6 +1142,7 @@ async function wipeLocal(){
     await db.terminate();
   }catch(e){console.warn("offline copy kept",e&&e.code);return false}
   try{await db.clearPersistence()}catch(e){console.warn("offline copy kept",e&&e.code)}
+  await kv.del("sync");await kv.del("act:"+(SHOP||"root"));
   return true;
 }
 const FLASH_KEY="shahm-flash";
@@ -1160,14 +1161,75 @@ try{flash=JSON.parse(sessionStorage.getItem(FLASH_KEY)||"null");sessionStorage.r
 
 /* ---------- live data ---------- */
 function stopData(){
-  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;
+  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;clearTimeout(syncT);UT.clear();
   S.customers=new Map();S.txns=new Map();S.accounts=new Map();S.shops=new Map();S.activity=[];S.settings={};S.ready={c:false,t:false,a:false,s:false};S.selected=null;
+}
+/* Reads: the free plan allows 50,000 a day, and reading every account and transaction each time the app opened used them
+   up. Now this device keeps its own copy (IndexedDB) and asks the server only for what changed since: every write of an
+   account or a transaction stamps _u (server time), and a delete leaves a note in gone/{coll}_{id}. Everything is read
+   from the server again once a day, on a new device or another shop, so the copy can't drift for long. Until the rules
+   that allow the gone notes are published (meta/rules-v3), it reads everything live as before. */
+const SYNC_FULL=864e5,SYNC_BACK=15*60e3,SYNC_V=1;
+const UT=new Map(); // id -> _u (ms) of the copy shown; Infinity while our own write hasn't reached the server
+const stampMs=v=>v&&typeof v.toMillis==="function"?v.toMillis():0;
+const stamped=o=>({...o,_u:firebase.firestore.FieldValue.serverTimestamp()});
+function unpack(d){const x=d.data(),u=d.metadata.hasPendingWrites?Infinity:stampMs(x._u);delete x._u;return [x,u]}
+function goneNote(coll,id){if(coll!=="customers"&&coll!=="txns")return;
+  try{db.collection(P("gone")).doc(coll+"_"+id).set({c:coll,id,_u:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("gone note",e&&e.code))}catch(e){}}
+let syncT=null;
+async function syncData(fail){
+  const run=syncData.run=(syncData.run||0)+1,key=SHOP||"root",live=()=>run===syncData.run&&dataOn;
+  const ready=()=>{S.ready.c=S.ready.t=true;render()};
+  const [v3,saved]=await Promise.all([db.doc("meta/rules-v3").get().then(()=>true,e=>e&&e.code==="permission-denied"?false:null),kv.get("sync")]);
+  if(!live())return;
+  const mine=saved&&saved.v===SYNC_V&&saved.key===key?saved:null;
+  if(v3===false||(v3===null&&!mine)){
+    unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.c=true;render()},fail));
+    unsubs.push(db.collection(P("txns")).onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.t=true;render()},fail));
+    return;
+  }
+  const M={customers:new Map(),txns:new Map()},st={mark:0,full:0};
+  const load=c=>{for(const k of ["customers","txns"])for(const [id,x,u] of c[k]){M[k].set(id,x);UT.set(id,u)}st.mark=c.mark;st.full=c.full};
+  if(mine&&mine.full<=Date.now()&&Date.now()-mine.full<SYNC_FULL)load(mine);
+  else{
+    try{
+      const got=await Promise.all(["customers","txns"].map(k=>db.collection(P(k)).get({source:"server"})));
+      if(!live())return;
+      got.forEach((s,i)=>{const m=M[i?"txns":"customers"];for(const d of s.docs){const [x,u]=unpack(d);m.set(d.id,x);UT.set(d.id,u);if(u!==Infinity&&u>st.mark)st.mark=u}});
+      st.full=Date.now();st.mark=Math.max(st.mark,1);
+    }catch(e){
+      if(!live())return;fail(e);
+      // Offline or over the daily limit: show this device's copy (it tries the full read again next time), else
+      // Firestore's own offline copy.
+      if(mine)load(mine),st.full=0;
+      else{try{const got=await Promise.all(["customers","txns"].map(k=>db.collection(P(k)).get({source:"cache"})));if(!live())return;
+        got.forEach((s,i)=>{for(const d of s.docs)M[i?"txns":"customers"].set(d.id,unpack(d)[0])})}catch(e2){}st.mark=1}
+    }
+  }
+  S.customers=M.customers;S.txns=M.txns;ready();
+  const pack=m=>[...m].map(([id,x])=>{const u=UT.get(id);return [id,x,u===Infinity?0:u||0]});
+  const save=()=>{clearTimeout(syncT);syncT=setTimeout(()=>{if(live())kv.set("sync",{v:SYNC_V,key,full:st.full,mark:st.mark,customers:pack(S.customers),txns:pack(S.txns)})},1500)};
+  save();
+  const since=firebase.firestore.Timestamp.fromMillis(Math.max(0,st.mark-SYNC_BACK)),seen=u=>{if(u!==Infinity&&u>st.mark)st.mark=u};
+  for(const k of ["customers","txns"])unsubs.push(db.collection(P(k)).where("_u",">",since).onSnapshot({includeMetadataChanges:true},s=>{
+    let ch=false;const m=k==="customers"?S.customers:S.txns;
+    for(const c of s.docChanges({includeMetadataChanges:true})){if(c.type==="removed")continue; // deletes come from gone
+      const [x,u]=unpack(c.doc);m.set(c.doc.id,x);UT.set(c.doc.id,u);seen(u);ch=true}
+    if(ch){render();save()}
+  },fail));
+  unsubs.push(db.collection(P("gone")).where("_u",">",since).onSnapshot({includeMetadataChanges:true},s=>{
+    let ch=false;
+    for(const c of s.docChanges({includeMetadataChanges:true})){if(c.type==="removed")continue;
+      const g=c.doc.data(),u=c.doc.metadata.hasPendingWrites?Infinity:stampMs(g._u),m=g.c==="customers"?S.customers:g.c==="txns"?S.txns:null;seen(u);
+      // Gone only if the copy here is older than the delete: an undo (written again after) stays.
+      const have=UT.get(g.id)||0;if(m&&m.has(g.id)&&have!==Infinity&&have<=u){m.delete(g.id);UT.delete(g.id);ch=true}}
+    if(ch)render();save();
+  },fail));
 }
 function startData(){
   if(dataOn)return;dataOn=true;
   const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied")toast("ما عندك صلاحية لقراءة البيانات. راجع المدير.");else if(e&&e.code==="resource-exhausted")toast(readErrMsg(e))};
-  unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.c=true;render()},fail));
-  unsubs.push(db.collection(P("txns")).onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.t=true;render()},fail));
+  syncData(fail);
   // Activity: the whole business day live (the home log shows every one of today's entries), plus the last 100 before it, read once.
   const day0=shopDayRange(shopDay()).start;let actDay=[],actOld=[];const actSet=()=>{S.activity=[...actDay,...actOld];render()};
   unsubs.push(db.collection(P("activity")).where("at",">=",day0).orderBy("at","desc").onSnapshot(s=>{actDay=s.docs.map(d=>d.data());actSet()},fail));
@@ -2675,7 +2737,15 @@ async function changePassword(){
 
 /* ---------- backup ---------- */
 async function backupJson(day=todayISO()){
-  let activity=S.activity;try{const all=await db.collection(P("activity")).get();activity=all.docs.map(d=>d.data())}catch(e){}
+  // The activity log only grows: take this device's copy of it and read from the server just what's newer.
+  let activity=S.activity;try{const ref=db.collection(P("activity")),m=new Map();
+    // had: how many entries this device's copy held after its last whole read; a copy much shorter than that is read again.
+    const flag="act:"+(SHOP||"root"),had=Number(await kv.get(flag))||0;
+    if(had)try{for(const d of (await ref.get({source:"cache"})).docs)m.set(d.id,d.data())}catch(e){}
+    let top=0;for(const a of m.values())if(a.at>top)top=a.at;
+    const part=had&&top&&m.size>=had*0.9;if(!part)m.clear();
+    for(const d of (await (part?ref.where("at",">",top-864e5):ref).get()).docs)m.set(d.id,d.data());
+    kv.set(flag,m.size);activity=[...m.values()]}catch(e){}
   const data=JSON.stringify({app:"shahm-debts",version:3,exportedAt:new Date().toISOString(),settings:S.settings,customers:[...S.customers.values()],txns:[...S.txns.values()],accounts:[],activity},null,1);
   return {name:"نسخة-ديون-"+shopName().replace(/\s+/g,"-")+"-"+day+".json",data};
 }
@@ -2683,7 +2753,7 @@ const backupDone=detail=>{saveSettings({lastBackupAt:Date.now()});log("add","imp
 // Small key/value store in this browser's IndexedDB: keeps the chosen backup folder (a folder handle can't go in localStorage).
 const kv=(()=>{let p;const open=()=>p||(p=new Promise((res,rej)=>{const r=indexedDB.open("shahm-local",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
   const run=(mode,fn)=>open().then(d=>new Promise((res,rej)=>{const t=d.transaction("kv",mode),q=fn(t.objectStore("kv"));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error)}));
-  return {get:k=>run("readonly",s=>s.get(k)).catch(()=>null),set:(k,v)=>run("readwrite",s=>s.put(v,k)).catch(()=>{})}})();
+  return {get:k=>run("readonly",s=>s.get(k)).catch(()=>null),set:(k,v)=>run("readwrite",s=>s.put(v,k)).catch(()=>{}),del:k=>run("readwrite",s=>s.delete(k)).catch(()=>{})}})();
 const FOLDER_OK=!NATIVE&&typeof window.showDirectoryPicker==="function";
 /* Daily backup in one tap: the backup file and the customers' debt PDF together. On a laptop (Chrome/Edge) the files go to the
    flash drive; elsewhere both files are saved/shared together. The folder is asked for first, while the tap still counts as a
@@ -2804,15 +2874,15 @@ function restorePreview(text){
         for(const id of S.txns.keys())if(!keepT.has(id))ops.push(["del","txns",id]);
         for(const id of S.customers.keys())if(!keepC.has(id))ops.push(["del","customers",id]);
       }
-      for(const c of cs)ops.push(["set","customers",c.id,c]);
-      for(const t of ts)ops.push(["set","txns",t.id,{...t,amount:Number(t.amount)}]);
+      for(const c of cs)ops.push(["set","customers",c.id,stamped(c)]);
+      for(const t of ts)ops.push(["set","txns",t.id,stamped({...t,amount:Number(t.amount)})]);
       for(const a of acts)ops.push(["set","activity",a.id,a]);
       for(const [k,,l] of pos)for(const x of l)ops.push(["set",k,String(x.id),x]);
       if(d.settings&&typeof d.settings==="object")ops.push(["set","settings","main",{...S.settings,...d.settings,lastBackupAt:S.settings.lastBackupAt||d.settings.lastBackupAt||null}]);
       try{
         for(let i=0;i<ops.length;i+=400){
           const b=db.batch();
-          for(const o of ops.slice(i,i+400)){const ref=db.collection(P(o[1])).doc(o[2]);if(o[0]==="del")b.delete(ref);else b.set(ref,o[3])}
+          for(const o of ops.slice(i,i+400)){const ref=db.collection(P(o[1])).doc(o[2]);if(o[0]==="del"){b.delete(ref);goneNote(o[1],o[2])}else b.set(ref,o[3])}
           await b.commit();btn.textContent=`جارِ الاستعادة… ${Math.min(100,Math.round((i+400)/ops.length*100))}%`;
         }
       }catch(e){console.warn(e);btn.disabled=false;btn.textContent="استعادة";m.querySelector("#rErr2").textContent="انقطعت الاستعادة. تحقق من الإنترنت واضغط استعادة مرة ثانية، ما يتكرر شي.";return}
@@ -3320,8 +3390,8 @@ function warnView(){
 /* Only the follow-up note is written (on the account, merged): balances and transactions are never touched here. */
 async function patchCustomer(id,patch){
   const c=S.customers.get(id);if(!c)return false;
-  S.customers.set(id,{...c,...patch});render();
-  try{db.collection(P("customers")).doc(id).set(patch,{merge:true}).catch(writeFail);return true}catch(e){writeFail(e);return false}
+  S.customers.set(id,{...c,...patch});UT.set(id,Infinity);render();
+  try{db.collection(P("customers")).doc(id).set(stamped(patch),{merge:true}).catch(writeFail);return true}catch(e){writeFail(e);return false}
 }
 function followForm(c){
   const f=c.follow||{},plus=n=>addDays(todayISO(),n);
