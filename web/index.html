@@ -118,6 +118,10 @@ header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .sum-mini .v{font-family:var(--f-display);font-size:20px;font-weight:700;line-height:1.3;overflow-wrap:anywhere}
 .sum-actions{display:flex;gap:8px;flex-wrap:wrap;padding:14px}
 .bell{position:relative}
+.sub-soon{color:var(--warn)!important;font-weight:600}.sub-end{color:var(--debt)!important;font-weight:600}
+.sub-to{margin:0;font-size:14px;color:var(--muted)}.sub-to b{color:var(--accent)}
+.sub-hist{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:13.5px}
+.sub-hist li{display:grid;grid-template-columns:1fr 1.3fr 1fr auto;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:9px;align-items:center}
 .bell-btn{position:relative;width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--paper);color:var(--ink);cursor:pointer;display:grid;place-items:center}
 .bell-btn svg{width:20px;height:20px}.bell-btn:hover,.bell-btn[aria-expanded="true"]{background:var(--accent-soft);color:var(--accent)}
 .bell-n{position:absolute;top:-4px;inset-inline-end:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:var(--debt);color:var(--paper);font-size:11.5px;font-weight:700;display:grid;place-items:center;line-height:1;border:2px solid var(--paper)}
@@ -998,12 +1002,12 @@ function local(coll){return coll==="customers"?S.customers:coll==="txns"?S.txns:
 function writeFail(e){console.warn(e);toast(e&&e.code==="permission-denied"?"ما عندك صلاحية لهذا التعديل.":"تعذّر الحفظ. تحقق من الإنترنت وحاول مرة أخرى.")}
 const WRITES=new Map(); // id -> promise of the write reaching the server (sendAutoWa waits for it)
 async function put(coll,obj){
-  local(coll).set(obj.id,obj);render();
-  try{const w=db.collection(P(DBN(coll))).doc(obj.id).set(obj);WRITES.set(obj.id,w);const done=()=>{if(WRITES.get(obj.id)===w)WRITES.delete(obj.id)};w.then(done,e=>{done();writeFail(e)});return true}catch(e){writeFail(e);return false}
+  local(coll).set(obj.id,obj);const sync=coll==="customers"||coll==="txns";if(sync)UT.set(obj.id,Infinity);render();
+  try{const w=db.collection(P(DBN(coll))).doc(obj.id).set(sync?stamped(obj):obj);WRITES.set(obj.id,w);const done=()=>{if(WRITES.get(obj.id)===w)WRITES.delete(obj.id)};w.then(done,e=>{done();writeFail(e)});return true}catch(e){writeFail(e);return false}
 }
 async function del(coll,id){
-  local(coll).delete(id);render();
-  try{db.collection(P(DBN(coll))).doc(id).delete().catch(writeFail)}catch(e){writeFail(e)}
+  local(coll).delete(id);UT.delete(id);render();
+  try{db.collection(P(DBN(coll))).doc(id).delete().catch(writeFail);goneNote(coll,id)}catch(e){writeFail(e)}
 }
 async function log(kind,what,info){
   const a={id:uid(),at:Date.now(),kind,what,by:S.me?S.me.name:"",byRole:S.me?S.me.role:"",...info};
@@ -1027,7 +1031,7 @@ function authMsg(e){const c=(e&&e.code)||"";
   if(c==="auth/email-already-in-use")return "اسم المستخدم مأخوذ، اختر اسماً آخر.";
   if(c==="auth/too-many-requests")return "محاولات كثيرة. انتظر قليلاً وحاول مرة ثانية.";
   if(c==="auth/network-request-failed")return "لا يوجد اتصال بالإنترنت.";
-  if(c==="auth/weak-password")return "كلمة المرور 6 أحرف على الأقل.";
+  if(c==="auth/weak-password")return "كلمة المرور ضعيفة: 8 أحرف على الأقل.";
   if(c==="auth/operation-not-allowed")return "تسجيل الدخول غير مفعّل في Firebase (Email/Password).";
   return "صار خطأ: "+(c||(e&&e.message)||"غير معروف");
 }
@@ -1082,9 +1086,10 @@ function showRegister(){
     <form id="rf" class="field" style="gap:12px" novalidate>
       ${MULTI?`<div class="field"><label for="rShop">اسم المحل</label><input id="rShop" maxlength="60" placeholder="مثال: ماركت النور"></div>`:""}
       <div class="field"><label for="rName">اسمك</label><input id="rName" maxlength="40" placeholder="مثال: علي"></div>
-      ${MULTI?`<div class="field"><label for="rPhone">رقم الهاتف</label><input id="rPhone" inputmode="tel" maxlength="20" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx"></div>`:""}
+      <div class="field"><label for="rMail">الإيميل</label><input id="rMail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right" placeholder="name@gmail.com"><span class="help">يوصلك عليه رابط تأكيد، وتسترجع بيه كلمة المرور إذا نسيتها.</span></div>
+      <div class="field"><label for="rPhone">رقم الهاتف</label><input id="rPhone" inputmode="tel" autocomplete="tel" maxlength="20" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx"></div>
       <div class="field"><label for="rUser">اسم المستخدم</label><input id="rUser" maxlength="30" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right" placeholder="ali"><span class="help">أحرف إنجليزية أو أرقام، بدون فراغات.</span></div>
-      <div class="field"><label for="rPw">كلمة المرور</label><div class="pw"><input id="rPw" type="password" autocomplete="new-password"><button type="button" data-showpw="rPw">إظهار</button></div><span class="help">6 أحرف على الأقل.</span></div>
+      <div class="field"><label for="rPw">كلمة المرور</label><div class="pw"><input id="rPw" type="password" autocomplete="new-password"><button type="button" data-showpw="rPw">إظهار</button></div><span class="help">8 أحرف على الأقل، وخليها صعبة التخمين.</span></div>
       <p class="err" id="rErr"></p>
       <button class="btn primary block" type="submit" id="rGo">${MULTI?"تسجيل المحل":"إنشاء الحساب"}</button>
     </form>
@@ -1096,10 +1101,17 @@ function showRegister(){
       e.preventDefault();const err=$("#rErr"),btn=$("#rGo");
       const r=validateAccount($("#rName").value,$("#rUser").value,$("#rPw").value,null);
       if(r.error){err.textContent=r.error;return}
-      const shop=MULTI?{shop:$("#rShop").value.trim(),phone:normDigits($("#rPhone").value).trim()}:null;
+      const mail=$("#rMail").value.trim().toLowerCase(),phone=normDigits($("#rPhone").value).trim();
+      if(!MAIL_RE.test(mail)||isFakeEmail(mail)){err.textContent="اكتب إيميلك الحقيقي.";return}
+      if(phone.replace(/\D/g,"").length<10){err.textContent="اكتب رقم هاتف صحيح.";return}
+      const shop=MULTI?{shop:$("#rShop").value.trim(),phone}:null;
       if(shop&&!shop.shop){err.textContent="اكتب اسم المحل.";return}
-      const label=btn.textContent;btn.disabled=true;btn.textContent="جارِ الإنشاء…";REG={name:r.name,username:r.username,shop};
-      try{await auth.createUserWithEmailAndPassword(emailOf(r.username),r.pw)}catch(x){REG=null;err.textContent=authMsg(x);btn.disabled=false;btn.textContent=label}
+      const label=btn.textContent;btn.disabled=true;btn.textContent="جارِ الإنشاء…";REG={name:r.name,username:r.username,shop,phone,mail};
+      // The username stays the login's unique name (username@domain); the real e-mail becomes the login once the person
+      // opens the link Firebase mails them, and from then on «نسيت كلمة المرور؟» works.
+      try{const cr=await auth.createUserWithEmailAndPassword(emailOf(r.username),r.pw);
+        try{auth.languageCode="ar";await cr.user.verifyBeforeUpdateEmail(mail);rememberLogin(r.username,mail);toast(`دزينا رابط تأكيد إلى ${mail}. افتحه (شوف Spam هم).`,{ms:12000})}catch(x){console.warn(x)}
+      }catch(x){REG=null;err.textContent=authMsg(x);btn.disabled=false;btn.textContent=label}
     });
   }});
 }
@@ -1109,12 +1121,14 @@ function showWaiting(msg,kind,retry){
     <button class="btn block" type="button" id="wOut">تسجيل الخروج</button>`,
     mount:g=>{g.querySelector("#wOut").onclick=()=>signOut();const r=g.querySelector("#wRetry");if(r)r.onclick=()=>location.reload()}});
 }
+// New passwords: 8 characters at least (older accounts keep signing in with theirs until they change it).
+const PW_MIN=8,MAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function validateAccount(name,username,pw,selfId){
   name=String(name||"").trim();username=normDigits(username).trim().toLowerCase();
   if(!name)return {error:"اكتب الاسم."};
   if(!/^[a-z0-9_.]{3,30}$/.test(username))return {error:"اسم المستخدم من 3 إلى 30 حرفاً إنجليزياً أو رقماً."};
   if([...S.accounts.values()].some(a=>a.username===username&&a.id!==selfId))return {error:"اسم المستخدم مأخوذ، اختر اسماً آخر."};
-  if(pw!==null&&String(pw).length<6)return {error:"كلمة المرور 6 أحرف على الأقل."};
+  if(pw!==null&&String(pw).length<PW_MIN)return {error:`كلمة المرور ${PW_MIN} أحرف على الأقل.`};
   return {name,username,pw};
 }
 function wirePw(root){root.querySelectorAll("[data-showpw]").forEach(b=>b.addEventListener("click",()=>{const i=document.getElementById(b.dataset.showpw);const s=i.type==="password";i.type=s?"text":"password";b.textContent=s?"إخفاء":"إظهار"}))}
@@ -1128,6 +1142,7 @@ async function wipeLocal(){
     await db.terminate();
   }catch(e){console.warn("offline copy kept",e&&e.code);return false}
   try{await db.clearPersistence()}catch(e){console.warn("offline copy kept",e&&e.code)}
+  await kv.del("sync");await kv.del("act:"+(SHOP||"root"));
   return true;
 }
 const FLASH_KEY="shahm-flash";
@@ -1146,14 +1161,75 @@ try{flash=JSON.parse(sessionStorage.getItem(FLASH_KEY)||"null");sessionStorage.r
 
 /* ---------- live data ---------- */
 function stopData(){
-  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;
+  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;clearTimeout(syncT);UT.clear();
   S.customers=new Map();S.txns=new Map();S.accounts=new Map();S.shops=new Map();S.activity=[];S.settings={};S.ready={c:false,t:false,a:false,s:false};S.selected=null;
+}
+/* Reads: the free plan allows 50,000 a day, and reading every account and transaction each time the app opened used them
+   up. Now this device keeps its own copy (IndexedDB) and asks the server only for what changed since: every write of an
+   account or a transaction stamps _u (server time), and a delete leaves a note in gone/{coll}_{id}. Everything is read
+   from the server again once a day, on a new device or another shop, so the copy can't drift for long. Until the rules
+   that allow the gone notes are published (meta/rules-v3), it reads everything live as before. */
+const SYNC_FULL=864e5,SYNC_BACK=15*60e3,SYNC_V=1;
+const UT=new Map(); // id -> _u (ms) of the copy shown; Infinity while our own write hasn't reached the server
+const stampMs=v=>v&&typeof v.toMillis==="function"?v.toMillis():0;
+const stamped=o=>({...o,_u:firebase.firestore.FieldValue.serverTimestamp()});
+function unpack(d){const x=d.data(),u=d.metadata.hasPendingWrites?Infinity:stampMs(x._u);delete x._u;return [x,u]}
+function goneNote(coll,id){if(coll!=="customers"&&coll!=="txns")return;
+  try{db.collection(P("gone")).doc(coll+"_"+id).set({c:coll,id,_u:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("gone note",e&&e.code))}catch(e){}}
+let syncT=null;
+async function syncData(fail){
+  const run=syncData.run=(syncData.run||0)+1,key=SHOP||"root",live=()=>run===syncData.run&&dataOn;
+  const ready=()=>{S.ready.c=S.ready.t=true;render()};
+  const [v3,saved]=await Promise.all([db.doc("meta/rules-v3").get().then(()=>true,e=>e&&e.code==="permission-denied"?false:null),kv.get("sync")]);
+  if(!live())return;
+  const mine=saved&&saved.v===SYNC_V&&saved.key===key?saved:null;
+  if(v3===false||(v3===null&&!mine)){
+    unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.c=true;render()},fail));
+    unsubs.push(db.collection(P("txns")).onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.t=true;render()},fail));
+    return;
+  }
+  const M={customers:new Map(),txns:new Map()},st={mark:0,full:0};
+  const load=c=>{for(const k of ["customers","txns"])for(const [id,x,u] of c[k]){M[k].set(id,x);UT.set(id,u)}st.mark=c.mark;st.full=c.full};
+  if(mine&&mine.full<=Date.now()&&Date.now()-mine.full<SYNC_FULL)load(mine);
+  else{
+    try{
+      const got=await Promise.all(["customers","txns"].map(k=>db.collection(P(k)).get({source:"server"})));
+      if(!live())return;
+      got.forEach((s,i)=>{const m=M[i?"txns":"customers"];for(const d of s.docs){const [x,u]=unpack(d);m.set(d.id,x);UT.set(d.id,u);if(u!==Infinity&&u>st.mark)st.mark=u}});
+      st.full=Date.now();st.mark=Math.max(st.mark,1);
+    }catch(e){
+      if(!live())return;fail(e);
+      // Offline or over the daily limit: show this device's copy (it tries the full read again next time), else
+      // Firestore's own offline copy.
+      if(mine)load(mine),st.full=0;
+      else{try{const got=await Promise.all(["customers","txns"].map(k=>db.collection(P(k)).get({source:"cache"})));if(!live())return;
+        got.forEach((s,i)=>{for(const d of s.docs)M[i?"txns":"customers"].set(d.id,unpack(d)[0])})}catch(e2){}st.mark=1}
+    }
+  }
+  S.customers=M.customers;S.txns=M.txns;ready();
+  const pack=m=>[...m].map(([id,x])=>{const u=UT.get(id);return [id,x,u===Infinity?0:u||0]});
+  const save=()=>{clearTimeout(syncT);syncT=setTimeout(()=>{if(live())kv.set("sync",{v:SYNC_V,key,full:st.full,mark:st.mark,customers:pack(S.customers),txns:pack(S.txns)})},1500)};
+  save();
+  const since=firebase.firestore.Timestamp.fromMillis(Math.max(0,st.mark-SYNC_BACK)),seen=u=>{if(u!==Infinity&&u>st.mark)st.mark=u};
+  for(const k of ["customers","txns"])unsubs.push(db.collection(P(k)).where("_u",">",since).onSnapshot({includeMetadataChanges:true},s=>{
+    let ch=false;const m=k==="customers"?S.customers:S.txns;
+    for(const c of s.docChanges({includeMetadataChanges:true})){if(c.type==="removed")continue; // deletes come from gone
+      const [x,u]=unpack(c.doc);m.set(c.doc.id,x);UT.set(c.doc.id,u);seen(u);ch=true}
+    if(ch){render();save()}
+  },fail));
+  unsubs.push(db.collection(P("gone")).where("_u",">",since).onSnapshot({includeMetadataChanges:true},s=>{
+    let ch=false;
+    for(const c of s.docChanges({includeMetadataChanges:true})){if(c.type==="removed")continue;
+      const g=c.doc.data(),u=c.doc.metadata.hasPendingWrites?Infinity:stampMs(g._u),m=g.c==="customers"?S.customers:g.c==="txns"?S.txns:null;seen(u);
+      // Gone only if the copy here is older than the delete: an undo (written again after) stays.
+      const have=UT.get(g.id)||0;if(m&&m.has(g.id)&&have!==Infinity&&have<=u){m.delete(g.id);UT.delete(g.id);ch=true}}
+    if(ch)render();save();
+  },fail));
 }
 function startData(){
   if(dataOn)return;dataOn=true;
   const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied")toast("ما عندك صلاحية لقراءة البيانات. راجع المدير.");else if(e&&e.code==="resource-exhausted")toast(readErrMsg(e))};
-  unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.c=true;render()},fail));
-  unsubs.push(db.collection(P("txns")).onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.t=true;render()},fail));
+  syncData(fail);
   // Activity: the whole business day live (the home log shows every one of today's entries), plus the last 100 before it, read once.
   const day0=shopDayRange(shopDay()).start;let actDay=[],actOld=[];const actSet=()=>{S.activity=[...actDay,...actOld];render()};
   unsubs.push(db.collection(P("activity")).where("at",">=",day0).orderBy("at","desc").onSnapshot(s=>{actDay=s.docs.map(d=>d.data());actSet()},fail));
@@ -1162,7 +1238,8 @@ function startData(){
     if(SHOP&&S.isOwner&&S.shop&&!s.exists&&!s.metadata.fromCache)saveSettings({shopName:S.shop.name,ownerName:S.shop.ownerName,phone:S.shop.phone||""});try{if(shopName())localStorage.setItem(GATE_NAME_KEY,shopName());localStorage.setItem(GATE_TENANT_KEY,SHOP?"1":"0")}catch(e){}if(S.me&&S.me.role==="owner")S.me.name=S.settings.ownerName||"المدير";S.ready.s=true;render()},fail));
   if(S.isOwner){
     unsubs.push(db.collection(P("users")).onSnapshot(s=>{S.accounts=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));S.ready.a=true;render()},fail));
-    if(S.superOwner)unsubs.push(db.collection("shops").onSnapshot(s=>{S.shops=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));render()},fail));
+    if(S.superOwner)unsubs.push(db.doc("meta/trial").onSnapshot(s=>{S.trialDays=s.exists?Number(s.data().days)||0:0;if(S.view==="settings")render()},()=>{}));
+    if(S.superOwner)unsubs.push(db.collection("shops").onSnapshot(s=>{S.shops=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));render();subTick()},fail));
     setTimeout(async()=>{try{const old=await db.collection(P("activity")).where("at","<",Date.now()-120*864e5).limit(100).get();for(const d of old.docs)d.ref.delete().catch(()=>{})}catch(e){}},8000);
   }
 }
@@ -1199,7 +1276,7 @@ function navBtn([k,l,ic]){return `<button type="button" data-go="${k}" aria-curr
 /* ---------- notifications: the home alerts live behind a bell in the header ---------- */
 function alertsHTML(){
   let supOwed=0;for(const c of S.customers.values())if(isSup(c)){const b=balanceOf(c.id);if(b>0)supOwed+=b}
-  return `${(()=>{const w=warnList().filter(x=>!x.snoozed&&x.level>=2);if(!w.length)return "";const h=w.filter(x=>x.level===3).length;
+  return mailAlert()+subAlerts()+`${(()=>{const w=warnList().filter(x=>!x.snoozed&&x.level>=2);if(!w.length)return "";const h=w.filter(x=>x.level===3).length;
           return `<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${I.alert} <b class="num">${w.length}</b> حساب يحتاج متابعة${h?`، منهم <b class="num">${h}</b> أولوية عالية`:""}.</span><button class="btn sm" type="button" data-act="gowarn">${I.bell}عرضهم</button></div>`})()}
         ${isAdmin()&&(!S.settings.lastBackupAt||Date.now()-S.settings.lastBackupAt>7*864e5)&&S.customers.size?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${S.settings.lastBackupAt?"مرّ أكثر من أسبوع على آخر نسخة احتياطية.":"لم تحفظ نسخة احتياطية بعد."}</span><button class="btn sm" type="button" data-act="gobackup">${I.save}احفظ نسخة</button></div>`:""}
         ${(()=>{const due=[...S.customers.values()].filter(c=>!isSup(c)&&c.promise&&promiseLeft(c)<=0&&balanceOf(c.id)>0);if(!due.length)return "";
@@ -1215,6 +1292,19 @@ function alertsHTML(){
             h+=`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span><b class="num">${due.length}</b> فاتورة موردين ${late?`(${late} متأخرة)`:"قرب موعد دفعها"} بمجموع ${shown("sup",`<b class="num">${fmt(tot)}</b> ${CUR}`)}</span><button class="btn sm" type="button" data-act="gosup">عرضها</button></div>`}
           return h})()}
         ${supOwed>0?`<div class="banner warn">علينا للموردين: ${shown("sup",`<b class="num">${fmt(supOwed)}</b> ${CUR}`)}</div>`:""}`;
+}
+// Accounts still on the made-up login (no real e-mail confirmed) can't reset a forgotten password.
+function mailAlert(){const u=auth&&auth.currentUser;if(!u||!isFakeEmail(u.email))return "";
+  return `<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>🔒 حسابك بدون إيميل مؤكد: إذا نسيت كلمة المرور ما ترجع. اربط إيميلك، وإذا وصلك رابط افتحه.</span><button class="btn sm" type="button" data-act="goaccount">ربط الإيميل</button></div>`}
+// Subscriptions: the shop's owner sees its own end date coming; the app's owner sees shops ending or ended.
+function subAlerts(){
+  if(SHOP&&isAdmin()&&S.shop&&S.shop.until){const n=subLeft(S.shop);if(n>7)return "";
+    if(S.shop.trial)return `<div class="banner ${n<=2?"bad":"warn"}">الفترة التجريبية تنتهي ${n<=0?"اليوم":n===1?"باجر":`بعد <b class="num">${n}</b> يوم`} (${dmyMs(S.shop.until)}). اشترك ويا صاحب البرنامج حتى يبقى الدفتر شغّال.</div>`;
+    return `<div class="banner ${n<=2?"bad":"warn"}">اشتراك المحل ينتهي ${n<=0?"اليوم":n===1?"باجر":`بعد <b class="num">${n}</b> يوم`} (${dmyMs(S.shop.until)}). جدّده ويا صاحب البرنامج حتى ما يتوقف الدفتر.</div>`}
+  if(!S.superOwner)return "";
+  const act=[...S.shops.values()].filter(x=>x.status==="active"&&x.until),ended=act.filter(shopExpired),soon=act.filter(x=>!shopExpired(x)&&subLeft(x)<=7);
+  if(!ended.length&&!soon.length)return "";
+  return `<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>🏪 ${ended.length?`<b class="num">${ended.length}</b> محل انتهى اشتراكه`:""}${ended.length&&soon.length?"، و":""}${soon.length?`<b class="num">${soon.length}</b> ينتهي خلال أسبوع`:""}.</span><button class="btn sm" type="button" data-act="goshops">عرضهم</button></div>`;
 }
 function renderBell(){
   const box=$("#bellBox");if(!box)return;const h=alertsHTML(),n=(h.match(/class="banner/g)||[]).length;
@@ -2062,7 +2152,7 @@ function setPage(k){
     <div class="tpl"><h3>${I.edit}تغيير كلمة المرور</h3>
       <form id="pwForm" class="field" style="gap:10px" novalidate>
         <div class="field"><label for="pCur">كلمة المرور الحالية</label><div class="pw"><input id="pCur" type="password" autocomplete="current-password"><button type="button" data-showpw="pCur">إظهار</button></div></div>
-        <div class="field"><label for="pNew">كلمة المرور الجديدة</label><div class="pw"><input id="pNew" type="password" autocomplete="new-password"><button type="button" data-showpw="pNew">إظهار</button></div><span class="help">6 أحرف على الأقل.</span></div>
+        <div class="field"><label for="pNew">كلمة المرور الجديدة</label><div class="pw"><input id="pNew" type="password" autocomplete="new-password"><button type="button" data-showpw="pNew">إظهار</button></div><span class="help">8 أحرف على الأقل.</span></div>
         <p class="err" id="pErr"></p>
         <div><button class="btn primary" type="submit">حفظ كلمة المرور</button></div>
       </form></div>
@@ -2576,7 +2666,7 @@ function accountForm(){
     <form id="af" class="field" style="gap:10px" novalidate>
       <div class="field"><label for="aName">الاسم</label><input id="aName" maxlength="40"></div>
       <div class="field"><label for="aUser">اسم المستخدم</label><input id="aUser" maxlength="30" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div>
-      <div class="field"><label for="aPw">كلمة المرور</label><div class="pw"><input id="aPw" type="password" autocomplete="new-password"><button type="button" data-showpw="aPw">إظهار</button></div><span class="help">6 أحرف على الأقل. أعطها له بنفسك، ويقدر يغيّرها من «حسابي».</span></div>
+      <div class="field"><label for="aPw">كلمة المرور</label><div class="pw"><input id="aPw" type="password" autocomplete="new-password"><button type="button" data-showpw="aPw">إظهار</button></div><span class="help">8 أحرف على الأقل. أعطها له بنفسك، ويقدر يغيّرها من «حسابي».</span></div>
       <div class="field"><label for="aRole">الصلاحية</label><select id="aRole"><option value="editor">محرر: يضيف ويعدّل الديون</option><option value="viewer">مشاهد: يشوف فقط</option></select></div>
       <p class="err" id="aErr"></p>
       <div class="foot"><button class="btn primary" type="submit" id="aGo">حفظ</button><button class="btn" type="button" data-close>إلغاء</button></div>
@@ -2662,7 +2752,7 @@ function deleteMyAccount(){
 async function changePassword(){
   const cur=$("#pCur").value,nw=$("#pNew").value,err=$("#pErr");
   if(!cur){err.textContent="اكتب كلمة المرور الحالية.";return}
-  if(nw.length<6){err.textContent="كلمة المرور الجديدة 6 أحرف على الأقل.";return}
+  if(nw.length<PW_MIN){err.textContent=`كلمة المرور الجديدة ${PW_MIN} أحرف على الأقل.`;return}
   try{
     const u=auth.currentUser;await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,cur));await u.updatePassword(nw);
     $("#pCur").value="";$("#pNew").value="";err.textContent="";toast("تم تغيير كلمة المرور");
@@ -2671,7 +2761,15 @@ async function changePassword(){
 
 /* ---------- backup ---------- */
 async function backupJson(day=todayISO()){
-  let activity=S.activity;try{const all=await db.collection(P("activity")).get();activity=all.docs.map(d=>d.data())}catch(e){}
+  // The activity log only grows: take this device's copy of it and read from the server just what's newer.
+  let activity=S.activity;try{const ref=db.collection(P("activity")),m=new Map();
+    // had: how many entries this device's copy held after its last whole read; a copy much shorter than that is read again.
+    const flag="act:"+(SHOP||"root"),had=Number(await kv.get(flag))||0;
+    if(had)try{for(const d of (await ref.get({source:"cache"})).docs)m.set(d.id,d.data())}catch(e){}
+    let top=0;for(const a of m.values())if(a.at>top)top=a.at;
+    const part=had&&top&&m.size>=had*0.9;if(!part)m.clear();
+    for(const d of (await (part?ref.where("at",">",top-864e5):ref).get()).docs)m.set(d.id,d.data());
+    kv.set(flag,m.size);activity=[...m.values()]}catch(e){}
   const data=JSON.stringify({app:"shahm-debts",version:3,exportedAt:new Date().toISOString(),settings:S.settings,customers:[...S.customers.values()],txns:[...S.txns.values()],accounts:[],activity},null,1);
   return {name:"نسخة-ديون-"+shopName().replace(/\s+/g,"-")+"-"+day+".json",data};
 }
@@ -2679,7 +2777,7 @@ const backupDone=detail=>{saveSettings({lastBackupAt:Date.now()});log("add","imp
 // Small key/value store in this browser's IndexedDB: keeps the chosen backup folder (a folder handle can't go in localStorage).
 const kv=(()=>{let p;const open=()=>p||(p=new Promise((res,rej)=>{const r=indexedDB.open("shahm-local",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
   const run=(mode,fn)=>open().then(d=>new Promise((res,rej)=>{const t=d.transaction("kv",mode),q=fn(t.objectStore("kv"));t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error)}));
-  return {get:k=>run("readonly",s=>s.get(k)).catch(()=>null),set:(k,v)=>run("readwrite",s=>s.put(v,k)).catch(()=>{})}})();
+  return {get:k=>run("readonly",s=>s.get(k)).catch(()=>null),set:(k,v)=>run("readwrite",s=>s.put(v,k)).catch(()=>{}),del:k=>run("readwrite",s=>s.delete(k)).catch(()=>{})}})();
 const FOLDER_OK=!NATIVE&&typeof window.showDirectoryPicker==="function";
 /* Daily backup in one tap: the backup file and the customers' debt PDF together. On a laptop (Chrome/Edge) the files go to the
    flash drive; elsewhere both files are saved/shared together. The folder is asked for first, while the tap still counts as a
@@ -2800,15 +2898,15 @@ function restorePreview(text){
         for(const id of S.txns.keys())if(!keepT.has(id))ops.push(["del","txns",id]);
         for(const id of S.customers.keys())if(!keepC.has(id))ops.push(["del","customers",id]);
       }
-      for(const c of cs)ops.push(["set","customers",c.id,c]);
-      for(const t of ts)ops.push(["set","txns",t.id,{...t,amount:Number(t.amount)}]);
+      for(const c of cs)ops.push(["set","customers",c.id,stamped(c)]);
+      for(const t of ts)ops.push(["set","txns",t.id,stamped({...t,amount:Number(t.amount)})]);
       for(const a of acts)ops.push(["set","activity",a.id,a]);
       for(const [k,,l] of pos)for(const x of l)ops.push(["set",k,String(x.id),x]);
       if(d.settings&&typeof d.settings==="object")ops.push(["set","settings","main",{...S.settings,...d.settings,lastBackupAt:S.settings.lastBackupAt||d.settings.lastBackupAt||null}]);
       try{
         for(let i=0;i<ops.length;i+=400){
           const b=db.batch();
-          for(const o of ops.slice(i,i+400)){const ref=db.collection(P(o[1])).doc(o[2]);if(o[0]==="del")b.delete(ref);else b.set(ref,o[3])}
+          for(const o of ops.slice(i,i+400)){const ref=db.collection(P(o[1])).doc(o[2]);if(o[0]==="del"){b.delete(ref);goneNote(o[1],o[2])}else b.set(ref,o[3])}
           await b.commit();btn.textContent=`جارِ الاستعادة… ${Math.min(100,Math.round((i+400)/ops.length*100))}%`;
         }
       }catch(e){console.warn(e);btn.disabled=false;btn.textContent="استعادة";m.querySelector("#rErr2").textContent="انقطعت الاستعادة. تحقق من الإنترنت واضغط استعادة مرة ثانية، ما يتكرر شي.";return}
@@ -3316,8 +3414,8 @@ function warnView(){
 /* Only the follow-up note is written (on the account, merged): balances and transactions are never touched here. */
 async function patchCustomer(id,patch){
   const c=S.customers.get(id);if(!c)return false;
-  S.customers.set(id,{...c,...patch});render();
-  try{db.collection(P("customers")).doc(id).set(patch,{merge:true}).catch(writeFail);return true}catch(e){writeFail(e);return false}
+  S.customers.set(id,{...c,...patch});UT.set(id,Infinity);render();
+  try{db.collection(P("customers")).doc(id).set(stamped(patch),{merge:true}).catch(writeFail);return true}catch(e){writeFail(e);return false}
 }
 function followForm(c){
   const f=c.follow||{},plus=n=>addDays(todayISO(),n);
@@ -3401,6 +3499,7 @@ document.addEventListener("click",e=>{
   const tr=t.closest("[data-tplreset]");if(tr){document.getElementById("tpl-"+tr.dataset.tplreset).value=DEFAULT_TPL[tr.dataset.tplreset];return}
   const ua=t.closest("[data-uact]");if(ua&&isAdmin()){userAction(ua.dataset.uact,ua.dataset.id);return}
   const sa=t.closest("[data-shopact]");if(sa){shopAction(sa.dataset.shopact,sa.dataset.id);return}
+  const td=t.closest("[data-trialdays]");if(td&&S.superOwner){const n=Number(td.dataset.trialdays);db.doc("meta/trial").set({days:n,at:Date.now()}).then(()=>toast(n?`المحلات الجديدة تنفتح ${n} يوم تجربة`:"المحلات الجديدة تنتظر تفعيلك"),writeFail);return}
   const pm=t.closest("[data-paymode]");if(pm){S.rep.pmode=pm.dataset.paymode;render();return}
   const rpt=t.closest("[data-reptab]");if(rpt){S.rep.tab=rpt.dataset.reptab;render();return}
   const rpp=t.closest("[data-repper]");if(rpp){S.rep.per=rpp.dataset.repper;if(S.rep.per==="custom"&&!S.rep.from){S.rep.to=todayISO();S.rep.from=addDays(todayISO(),-29)}render();return}
@@ -3447,6 +3546,8 @@ document.addEventListener("click",e=>{
     case "setlimit":if(canWrite())customerForm(c);break;
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
+    case "goshops":S.view="settings";S.setPage="shops";render();break;
+    case "goaccount":S.view="settings";S.setPage="account";render();break;
     case "htpdf":custTableExport("pdf");break;
     case "htcsv":custTableExport("csv");break;
     case "remseq":if(canWrite())remSeq();break;
@@ -3552,26 +3653,80 @@ document.addEventListener("click",e=>{if(e.target.id==="exportBtn"&&isAdmin())ex
 document.addEventListener("change",e=>{const i=e.target.closest&&e.target.closest("[data-listadd]");if(i){const f=[...i.files];i.value="";addListPhotos(i.dataset.listadd,f)}});
 /* ---------- shops (root owner) ---------- */
 const shopsPending=()=>S.superOwner?[...S.shops.values()].filter(x=>x.status==="pending").length:0;
-const SHOP_ST={pending:["بانتظار التفعيل","warn"],active:["شغّال","paid"],disabled:["موقوف","debt"]};
+const SHOP_ST={pending:["بانتظار التفعيل","warn"],trial:["فترة تجريبية","warn"],active:["شغّال","paid"],disabled:["موقوف","debt"],expired:["انتهى الاشتراك","debt"]};
+/* Subscriptions: an active shop opens until shops/{id}.until (ms); none = no end. The rules close it at that moment too,
+   so a phone with a wrong clock can't keep it open. Every renewal is kept in shops/{id}.subs as a receipt. */
+/* Free trial: when the owner sets meta/trial.days, a new shop opens by itself for that many days (trial:true, until);
+   the rules check the length against meta/trial, so a shop can't give itself more. Paying ends the trial from today. */
+const TRIAL_DAYS=[0,7,15,30];
+const SUB_PLANS=[["trial","تجربة",0],["1","شهر",1],["3","3 أشهر",3],["6","6 أشهر",6],["12","سنة",12],["date","تاريخ معيّن",0],["none","بدون مدة",0]];
+const subLeft=x=>x&&x.until?Math.ceil((x.until-Date.now())/864e5):null;
+const shopExpired=x=>!!(x&&x.status==="active"&&x.until&&x.until<=Date.now());
+const shopState=x=>shopExpired(x)?"expired":x.status==="active"&&x.trial?"trial":(x.status||"pending");
+const dmyMs=ms=>{const d=new Date(ms);return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`};
+function addMonths(ms,n){const d=new Date(ms),day=d.getDate();d.setMonth(d.getMonth()+n);if(d.getDate()<day)d.setDate(0);return d.getTime()}
+function subLine(x){
+  if(x.status!=="active"&&!x.until)return "";
+  if(!x.until)return `<span class="ro-note">الاشتراك: بدون مدة</span>`;
+  const n=subLeft(x);return `<span class="ro-note ${n<=0?"sub-end":n<=7?"sub-soon":""}">${x.trial?"التجربة":"الاشتراك"} إلى ${dmyMs(x.until)} · ${n<=0?"انتهى":n===1?"باقي يوم":`باقي ${n} يوم`}</span>`;
+}
+// Redraw the shops list and the bell when the next subscription ends, so an ended shop moves without a reload.
+function subTick(){clearTimeout(subTick.t);const next=[...S.shops.values()].map(x=>x.status==="active"&&x.until||0).filter(u=>u>Date.now()).sort((a,b)=>a-b)[0];
+  if(next&&next-Date.now()<20*864e5)subTick.t=setTimeout(()=>{if(S.superOwner){render();subTick()}},next-Date.now()+1000)}
+function subForm(id){
+  const x=S.shops.get(id);if(!x||!S.superOwner)return;
+  const prices=(S.settings.subPrices||{}),subs=(x.subs||[]).slice().reverse(),paid=subs.reduce((a,v)=>a+(Number(v.amount)||0),0);
+  const base=Math.max(Date.now(),x.until&&x.status==="active"&&!x.trial?x.until:0),tDays=S.trialDays||15;
+  openModal(`<h3>اشتراك ${esc(x.name)}</h3>
+    <p class="hint">${x.trial&&x.status==="active"?`بالفترة التجريبية لحد ${dmyMs(x.until)}${shopExpired(x)?" (انتهت)":""}. الاشتراك المدفوع يبدأ من اليوم.`:x.until&&x.status==="active"?`ينتهي حالياً ${dmyMs(x.until)}${shopExpired(x)?" (انتهى)":""}. التمديد يبدأ ${shopExpired(x)||x.status!=="active"?"من اليوم":"من نهاية الاشتراك الحالي"}.`:x.status==="active"?"شغّال بدون مدة. اختار مدة حتى ينقفل وحده بنهايتها.":"اختار المدة اللي دفع عليها، وينفتح دفتره هسه."}</p>
+    <form id="subF" class="field" style="gap:12px" novalidate>
+      <div class="chips" role="group" aria-label="المدة">${SUB_PLANS.map(([k,l])=>`<button type="button" data-subplan="${k}" aria-pressed="${k==="1"}">${k==="trial"?`تجربة ${tDays} يوم`:l}</button>`).join("")}</div>
+      <div class="field" id="subDateF" hidden><label for="subDate">ينتهي بتاريخ</label><input id="subDate" type="date" min="${todayISO()}"></div>
+      <div class="field" id="subAmtF"><label for="subAmt">المبلغ المدفوع (اختياري)</label><input id="subAmt" inputmode="numeric" placeholder="مثال: 25,000" style="direction:ltr;text-align:right" value="${prices["1"]?fmt(prices["1"]):""}"><span class="help">ينحفظ كوصل، ويتذكّر سعر كل مدة للمرة الجاية.</span></div>
+      <p class="sub-to" id="subTo"></p>
+      <p class="err" id="subErr"></p>
+      <div class="foot"><button class="btn primary" type="submit">${x.status==="active"&&!shopExpired(x)?"تمديد الاشتراك":"تفعيل"}</button><button class="btn" type="button" data-close>إلغاء</button></div>
+    </form>
+    ${subs.length?`<h3 style="margin-top:14px;font-size:15px">الاشتراكات السابقة${paid?` · المجموع <span class="num">${fmt(paid)}</span>`:""}</h3><ul class="sub-hist">${subs.slice(0,12).map(v=>`<li><span>${esc(v.label||"")}</span><span class="num">${v.to?"إلى "+dmyMs(v.to):"بدون مدة"}</span><span class="num">${v.amount?fmt(v.amount):"—"}</span><span class="ro-note">${dmyMs(v.at)}</span></li>`).join("")}</ul>`:""}`,m=>{
+    let plan="1";const to=()=>{const P=SUB_PLANS.find(p=>p[0]===plan);if(plan==="none")return null;if(plan==="trial")return Math.max(Date.now(),x.until||0)+tDays*864e5;if(plan==="date"){const v=m.querySelector("#subDate").value;if(!v)return undefined;const [y,mo,d]=v.split("-").map(Number);return new Date(y,mo-1,d,23,59,59).getTime()}return addMonths(base,P[2])};
+    const show=()=>{const t=to();m.querySelector("#subTo").innerHTML=t===null?"ينفتح بدون تاريخ انتهاء.":t?`ينفتح لحد <b class="num">${dmyMs(t)}</b> (${Math.ceil((t-Date.now())/864e5)} يوم).`:""};
+    m.querySelectorAll("[data-subplan]").forEach(b=>b.addEventListener("click",()=>{plan=b.dataset.subplan;m.querySelectorAll("[data-subplan]").forEach(o=>o.setAttribute("aria-pressed",o===b));
+      m.querySelector("#subDateF").hidden=plan!=="date";m.querySelector("#subAmtF").hidden=plan==="none"||plan==="trial";const pr=prices[plan];m.querySelector("#subAmt").value=pr?fmt(pr):"";show()}));
+    m.querySelector("#subDate").addEventListener("input",show);show();
+    m.querySelector("#subF").addEventListener("submit",e=>{e.preventDefault();
+      const t=to(),err=m.querySelector("#subErr");if(t===undefined){err.textContent="اختار تاريخ الانتهاء.";return}
+      if(t&&t<=Date.now()){err.textContent="التاريخ لازم يكون بعد اليوم.";return}
+      const av=m.querySelector("#subAmt").value.trim(),amount=plan==="none"||plan==="trial"||!av?0:parseAmt(av);if(av&&plan!=="none"&&plan!=="trial"&&!(amount>0)){err.textContent="المبلغ لازم يكون رقم.";return}
+      const label=plan==="trial"?`تجربة ${tDays} يوم`:SUB_PLANS.find(p=>p[0]===plan)[1],entry={at:Date.now(),plan,label,from:t?base:Date.now(),to:t,amount:Math.round(amount||0),by:S.me.name};
+      db.doc("shops/"+id).update({status:"active",activatedAt:x.activatedAt||Date.now(),until:t,trial:plan==="trial",subs:firebase.firestore.FieldValue.arrayUnion(entry)}).catch(writeFail);
+      if(amount>0&&plan!=="date"&&plan!=="trial"&&prices[plan]!==Math.round(amount))saveSettings({subPrices:{...prices,[plan]:Math.round(amount)}});
+      log("edit","account",{detail:`اشتراك محل ${x.name}: ${label}${t?" إلى "+dmyMs(t):""}${amount?" بمبلغ "+fmt(amount):""}`});
+      closeModal();toast(t?`انفعّل ${x.name} لحد ${dmyMs(t)}`:`انفعّل ${x.name} بدون مدة`)});
+  });
+}
 function shopsPage(){
   const all=[...S.shops.values()].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  const row=x=>{const [lbl,cls]=SHOP_ST[x.status]||SHOP_ST.pending;
+  const row=x=>{const [lbl,cls]=SHOP_ST[shopState(x)]||SHOP_ST.pending;
     return `<div class="user-row"><span class="avatar">${esc(markLetter(x.name))}</span><div class="meta"><b>${esc(x.name)}</b>
       <span>${esc(x.ownerName||"")} · <span class="num">@${esc(x.username||"")}</span>${x.phone?` · <span class="num">${esc(x.phone)}</span>`:""}</span>
-      <span class="ro-note">سجّل ${esc(timeAgo(x.createdAt||0))}${x.activatedAt?` · انفعّل ${esc(shortDate(new Date(x.activatedAt).toISOString().slice(0,10)))}`:""}</span></div>
+      <span class="ro-note">سجّل ${esc(timeAgo(x.createdAt||0))}${x.activatedAt?` · انفعّل ${esc(shortDate(new Date(x.activatedAt).toISOString().slice(0,10)))}`:""}${subLine(x)?" · ":""}</span>${subLine(x)}</div>
       <div class="ops"><span class="chip ${cls}">${lbl}</span>
-        ${x.status==="active"?`<button class="btn sm" type="button" data-shopact="disable" data-id="${esc(x.id)}">إيقاف</button>`
-          :`<button class="btn paid sm" type="button" data-shopact="activate" data-id="${esc(x.id)}">تفعيل</button>`}
+        <button class="btn ${x.status==="active"&&!shopExpired(x)&&!x.trial?"":"paid "}sm" type="button" data-shopact="sub" data-id="${esc(x.id)}">${x.status==="active"&&!shopExpired(x)&&!x.trial?"تمديد":"تفعيل"}</button>
+        ${x.status==="active"?`<button class="btn sm" type="button" data-shopact="disable" data-id="${esc(x.id)}">إيقاف</button>`:""}
         ${x.status==="pending"?`<button class="btn ghost sm danger-text" type="button" data-shopact="reject" data-id="${esc(x.id)}">رفض</button>`:""}</div></div>`};
-  const by=st=>all.filter(x=>(x.status||"pending")===st);
+  const by=st=>all.filter(x=>shopState(x)===st);
   const sec=(t,l)=>l.length?`<h3 style="margin:8px 0 0;font-size:15px">${t} (${l.length})</h3>${l.map(row).join("")}`:"";
   return `<h2>المحلات</h2><p class="lead">المشتري ينزّل نفس التطبيق (أو يفتح الموقع)، يضغط «سجّل محلك»، ويظهر هنا. فعّله بعد ما يدفع، ويصير إله دفتر منفصل: ما يشوف بياناتك ولا تشوف بياناته من هنا. الموقوف ما يكدر يفتح دفتره، وبياناته تبقى لحد ما ترجع تفعّله.</p>
-    ${all.length?sec("بانتظار التفعيل",by("pending"))+sec("المحلات الشغّالة",by("active"))+sec("الموقوفة",by("disabled")):`<p class="ro-note">بعد ما سجّل أي محل.</p>`}`;
+    <p class="ro-note">«تفعيل» و«تمديد»: تختار المدة (تجربة، شهر، 3 أشهر، 6 أشهر، سنة أو تاريخ)، والمحل ينقفل وحده بنهايتها لحد ما تجدّد له. بياناته تبقى محفوظة.</p>
+    <div class="card" style="margin:10px 0;padding:12px 14px"><b style="font-size:15px">الفترة التجريبية</b>
+      <p class="ro-note" style="margin:4px 0 8px">المحل الجديد ينفتح وحده بعد ما يسجّل، لهذي المدة، وبنهايتها ينقفل لحد ما يدفع. «بدون» = ينتظر تفعيلك مثل قبل.</p>
+      <div class="chips" role="group" aria-label="الفترة التجريبية">${TRIAL_DAYS.map(n=>`<button type="button" data-trialdays="${n}" aria-pressed="${(S.trialDays||0)===n}">${n?n+" يوم":"بدون"}</button>`).join("")}</div></div>
+    ${all.length?sec("بانتظار التفعيل",by("pending"))+sec("انتهى اشتراكهم",by("expired"))+sec("فترة تجريبية",by("trial").sort((a,b)=>a.until-b.until))+sec("المحلات الشغّالة",by("active").sort((a,b)=>(a.until||9e15)-(b.until||9e15)))+sec("الموقوفة",by("disabled")):`<p class="ro-note">بعد ما سجّل أي محل.</p>`}`;
 }
 function shopAction(act,id){
   const x=S.shops.get(id);if(!x||!S.superOwner)return;
   const set=patch=>db.doc("shops/"+id).update(patch).catch(writeFail);
-  if(act==="activate"){set({status:"active",activatedAt:x.activatedAt||Date.now()});toast("انفعّل محل "+x.name)}
+  if(act==="activate"||act==="sub"){subForm(id);return}
   else if(act==="disable")confirmBox("إيقاف المحل",`محل ${x.name} وعماله ما يكدرون يفتحون الدفتر لحد ما ترجع تفعّله. بياناتهم ما تنحذف.`,"إيقاف",()=>{set({status:"disabled"});toast("انوقف المحل")});
   else if(act==="reject")confirmBox("رفض المحل",`ينحذف طلب ${x.name}. إذا صاحبه دخل بعدين يكدر يسجّل محله من جديد.`,"رفض",()=>{db.doc("shops/"+id).delete().catch(writeFail);toast("انرفض الطلب")});
 }
@@ -3662,6 +3817,10 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
       S.shop={...s.data(),id:s.id};
       if(S.shop.status==="pending"){close();showWaiting(own?`تم تسجيل «${S.shop.name}» ✅ بانتظار التفعيل من صاحب البرنامج. أول ما يتفعّل يفتح دفترك تلقائياً.`:"المحل بعده ما متفعّل. راجع صاحب المحل.","warn");return}
       if(S.shop.status!=="active"){close();showWaiting(own?"اشتراك محلك موقوف. تواصل ويا صاحب البرنامج حتى يرجع يشتغل، وبياناتك محفوظة.":"المحل موقوف. راجع صاحب المحل.","bad");return}
+      clearTimeout(enterShop.endT);
+      if(shopExpired(S.shop)){close();showWaiting(own?(S.shop.trial?`انتهت الفترة التجريبية لمحلك بتاريخ ${dmyMs(S.shop.until)}. اشترك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وكل اللي سجلته محفوظ.`:`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}. جدّد الاشتراك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وبياناتك كلها محفوظة.`):"انتهى اشتراك المحل. راجع صاحب المحل.","bad");return}
+      // Close the notebook the moment the subscription ends while it is open (setTimeout can't wait more than ~24 days).
+      if(S.shop.until){const ms=S.shop.until-Date.now();if(ms<20*864e5)enterShop.endT=setTimeout(()=>{if(SHOP===S.shop.id&&shopExpired(S.shop)){close();showWaiting(own?(S.shop.trial?`انتهت الفترة التجريبية لمحلك بتاريخ ${dmyMs(S.shop.until)}. اشترك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وكل اللي سجلته محفوظ.`:`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}. جدّد الاشتراك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وبياناتك كلها محفوظة.`):"انتهى اشتراك المحل. راجع صاحب المحل.","bad")}},ms+1000)}
       if(own){
         const first=!S.me;S.isOwner=true;
         S.me={id:u.uid,name:S.settings.ownerName||S.shop.ownerName||"المدير",role:"owner",username:S.shop.username||uname};
@@ -3702,11 +3861,13 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
   async function registerShop(u,info){
     spin("جارِ تسجيل المحل…");
     const at=Date.now();
+    const days=await db.doc("meta/trial").get().then(s=>s.exists?Number(s.data().days)||0:0,()=>0);
+    const shop={id:u.uid,owner:u.uid,name:info.shop.slice(0,60),ownerName:info.name.slice(0,40),phone:(info.phone||"").slice(0,20),username:info.username||"",status:"pending",createdAt:at};
+    const save=doc=>{const b=db.batch();b.set(db.doc("shops/"+u.uid),doc);b.set(db.doc("memberOf/"+u.uid),{shop:u.uid,at});return b.commit()};
     try{
-      const b=db.batch();
-      b.set(db.doc("shops/"+u.uid),{id:u.uid,owner:u.uid,name:info.shop.slice(0,60),ownerName:info.name.slice(0,40),phone:(info.phone||"").slice(0,20),username:info.username||"",status:"pending",createdAt:at});
-      b.set(db.doc("memberOf/"+u.uid),{shop:u.uid,at});
-      await b.commit();
+      // A trial the rules refuse (not published yet, or the days just changed) falls back to waiting for activation.
+      if(days>0)await save({...shop,status:"active",trial:true,until:at+days*864e5}).catch(()=>save(shop));
+      else await save(shop);
     }catch(e){console.warn(e);if(auth.currentUser===u)showShopSetup(u,info,e&&e.code==="permission-denied"?"تسجيل المحلات بعده ما مفتوح. تواصل ويا صاحب البرنامج.":"تعذّر التسجيل. تحقق من الإنترنت وحاول مرة ثانية.");return}
     if(auth.currentUser!==u)return;
     try{localStorage.setItem(SHOP_KEY,JSON.stringify({uid:u.uid,shop:u.uid}))}catch(e){}
@@ -3720,8 +3881,8 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
         if(s.metadata.fromCache)return; // wait for the server before deciding the profile is missing
         const un=uname||(u.email||"").split("@")[0].toLowerCase().replace(/[^a-z0-9_.]/g,"").slice(0,30)||"user"; // a deleted account that had linked its e-mail asks again
         if(MULTI&&!SHOP){const r=REG;REG=null;showShopSetup(u,{username:un,name:r&&r.name,shop:r&&r.shop&&r.shop.shop,phone:r&&r.shop&&r.shop.phone});return}
-        const name=(REG&&REG.username===un&&REG.name)||un;REG=null;
-        db.collection(P("users")).doc(u.uid).set({id:u.uid,name,username:un,role:"viewer",status:"pending",createdAt:Date.now()})
+        const mine=REG&&REG.username===un,name=(mine&&REG.name)||un,phone=mine&&REG.phone||"";REG=null;
+        db.collection(P("users")).doc(u.uid).set({id:u.uid,name,username:un,role:"viewer",status:"pending",createdAt:Date.now(),...(phone?{phone}:{})})
           .catch(()=>showWaiting("تعذّر إرسال طلبك. تحقق من الإنترنت وسجّل دخول مرة ثانية.","bad"));
         return;
       }

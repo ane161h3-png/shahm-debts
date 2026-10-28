@@ -54,8 +54,18 @@ service cloud.firestore {
       allow read: if active();
       allow write: if isOwner() && (id != 'owner' || (request.resource != null && request.resource.data.uid is string));
     }
-    // Readable only once these rules are published; the app checks it before letting the owner change email.
-    match /meta/{id} { allow get: if signedIn() && id == 'rules-v2'; }
+    // Readable only once these rules are published: rules-v2 lets the owner change e-mail, rules-v3 lets the app read only
+    // what changed (it needs the gone notes below).
+    match /meta/{id} {
+      allow get: if signedIn() && id in ['rules-v2', 'rules-v3', 'trial'];
+      // trial: how many days a newly registered shop opens by itself (0 = waits for this owner, as before).
+      allow write: if isOwner() && id == 'trial' && d().keys().hasOnly(['days', 'at']) && d().days is int && d().days >= 0 && d().days <= 90;
+    }
+    // A deleted account or transaction leaves a note here, so the devices that keep their own copy drop it too (rules-v3).
+    match /gone/{id} {
+      allow read: if active();
+      allow create, update: if writer() && goneOk(id);
+    }
     // Cashier (web/pos/): the owner (and an editor given «يدير المواد») manages items and prices; editors sell;
     // only the owner cancels a sale. A sale lowers the stock of what it sold, so editors may change the stock field.
     match /products/{id}  {
@@ -135,19 +145,28 @@ service cloud.firestore {
     }
     // Signing up: a pending viewer with only the fields the sign-up form writes.
     function signUpOk(uid) {
-      return d().keys().hasOnly(['id', 'name', 'username', 'role', 'status', 'createdAt'])
-        && d().id == uid && nameOk(d().name) && str(d().username, 40)
+      return d().keys().hasOnly(['id', 'name', 'username', 'role', 'status', 'createdAt', 'phone'])
+        && d().id == uid && nameOk(d().name) && str(d().username, 40) && str(d().get('phone', ''), 30)
         && d().status == 'pending' && d().role == 'viewer';
     }
 
     // ---------- Other shops (one app, many shops) ----------
     // Each shop that signs up in the app gets its own notebook under shops/{s}, where s is its owner's uid. It opens only
-    // once this app's owner (isOwner) sets its status to 'active'; 'disabled' closes it again without deleting anything.
+    // once this app's owner (isOwner) sets its status to 'active'; 'disabled' or a passed end date (until) closes it again
+    // without deleting anything.
     // Nobody in another shop can read or write this shop's data at the root, and this owner has no access to theirs.
     // memberOf/{uid} only says which shop an account opens: each account writes its own, and it grants nothing by itself.
     function memberPath(uid) { return /databases/$(database)/documents/memberOf/$(uid); }
     function shopPath(s) { return /databases/$(database)/documents/shops/$(s); }
-    function shopOn(s) { return exists(shopPath(s)) && get(shopPath(s)).data.status == 'active'; }
+    // An active shop with an end date (until, in ms, set by this owner when it pays for a month, 6 months...) closes at
+    // that moment by itself; no until = no end. The data stays, and renewing (a later until) opens it again.
+    function shopOn(s) { return exists(shopPath(s)) && get(shopPath(s)).data.status == 'active'
+      && (get(shopPath(s)).data.get('until', null) == null || get(shopPath(s)).data.until > request.time.toMillis()); }
+    function goneOk(id) { return d().keys().hasOnly(['c', 'id', '_u']) && d().c in ['customers', 'txns'] && d().id is string
+      && id == d().c + '_' + d().id && d()._u == request.time; }
+    function trialDays() { return exists(/databases/$(database)/documents/meta/trial) ? get(/databases/$(database)/documents/meta/trial).data.days : 0; }
+    function trialOk(until) { return trialDays() > 0 && until is number && until > request.time.toMillis()
+      && until <= request.time.toMillis() + trialDays() * 86400000 + 3600000; }
     function sOwner(s) { return signedIn() && request.auth.uid == s; }
     function sProfPath(s) { return /databases/$(database)/documents/shops/$(s)/users/$(request.auth.uid); }
     function sProf(s) { return get(sProfPath(s)).data; }
@@ -165,9 +184,12 @@ service cloud.firestore {
     match /shops/{s} {
       allow get: if isOwner() || sOwner(s) || (signedIn() && exists(sProfPath(s)));
       allow list: if isOwner();
-      allow create: if sOwner(s) && d().keys().hasOnly(['id', 'owner', 'name', 'ownerName', 'phone', 'username', 'status', 'createdAt'])
+      // A new shop waits for this owner (pending), or opens by itself for the free trial this owner set in meta/trial,
+      // never longer than that: its end (until) is checked against the server clock.
+      allow create: if sOwner(s) && d().keys().hasOnly(['id', 'owner', 'name', 'ownerName', 'phone', 'username', 'status', 'createdAt', 'trial', 'until'])
         && d().id == s && d().owner == s && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30)
-        && str(d().username, 40) && d().status == 'pending' && d().createdAt is number;
+        && str(d().username, 40) && d().createdAt is number
+        && ((d().status == 'pending' && !('trial' in d()) && !('until' in d())) || (d().status == 'active' && d().trial == true && trialOk(d().until)));
       allow update: if isOwner() || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['name', 'ownerName', 'phone'])
         && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30));
       allow delete: if isOwner();
@@ -192,6 +214,10 @@ service cloud.firestore {
         allow read: if sReader(s);
         allow create: if sBoss(s) || (sReader(s) && d().id == id && sSigned(s, d()) && (sWriter(s) || d().kind == 'remind'));
         allow update, delete: if sBoss(s);
+      }
+      match /gone/{id} {
+        allow read: if sReader(s);
+        allow create, update: if sWriter(s) && goneOk(id);
       }
       match /settings/{id} {
         allow read: if sReader(s);
