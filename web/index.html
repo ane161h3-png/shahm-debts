@@ -1226,13 +1226,49 @@ async function syncData(fail){
     if(ch)render();save();
   },fail));
 }
+/* Notifications (Settings > الإشعارات, per device): the owner hears about what someone else records while the app is open
+   or in the background: a toast with «فتح», a short sound and vibration, and a phone/computer notification if allowed.
+   They come from the day's activity log, which is already read live, so they cost no extra reads. */
+const NOTIF_KEY="shahm-notif",NOTIF_ITEMS=[["debt","دين جديد"],["pay","تسديد"],["edit","تعديل أو حذف حركة"],["cust","زبون جديد"]];
+function notifPrefs(){let o={};try{o=JSON.parse(localStorage.getItem(NOTIF_KEY)||"{}")||{}}catch(e){}return {debt:true,pay:true,edit:true,cust:false,sound:true,...o}}
+function setNotif(k,v){const o={...notifPrefs(),[k]:v};try{localStorage.setItem(NOTIF_KEY,JSON.stringify(o))}catch(e){}}
+let audioCtx=null;
+function chime(){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();const t=audioCtx.currentTime;
+  for(const [f,d] of [[880,0],[1320,.12]]){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=f;o.connect(g);g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(.0001,t+d);g.gain.exponentialRampToValueAtTime(.18,t+d+.02);g.gain.exponentialRampToValueAtTime(.0001,t+d+.25);o.start(t+d);o.stop(t+d+.3)}}catch(e){}
+  try{navigator.vibrate&&navigator.vibrate(60)}catch(e){}}
+function notifText(a){
+  const amt=a.amount?` ${fmt(a.amount)} ${CUR}`:"",c=a.customerName||"";
+  if(a.what==="debt"||a.what==="pay"){
+    const w=a.sup?(a.what==="debt"?"فاتورة مورد":"دفعة لمورد"):(a.what==="debt"?"دين":"تسديد");
+    const who=c?`${a.sup?"المورد":a.what==="pay"?"من":"على"} ${c}`:"";
+    if(a.kind==="add")return [a.what,`${a.sup?"🚚":a.what==="debt"?"🔴":"🟢"} ${a.by} سجّل ${w}${amt}`,who];
+    return ["edit",`✏️ ${a.by} ${a.kind==="delete"?"حذف":"عدّل"} ${w}${amt}`,c];
+  }
+  if(a.what==="customer"&&a.kind==="add")return ["cust",`👤 ${a.by} أضاف زبون جديد`,c];
+  return null;
+}
+function notifyAct(a){
+  if(!S.me||!isAdmin()||!a||a.by===S.me.name)return;
+  const n=notifText(a),pr=notifPrefs();if(!n||!pr[n[0]])return;
+  const [,title,body]=n,ac=actCust(a);
+  toast(`${title}${body?" "+body:""}`,ac?{label:"فتح",onClick:()=>openCustomer(ac.id)}:null);
+  if(pr.sound)chime();
+  if(document.visibilityState!=="visible"&&"Notification" in window&&Notification.permission==="granted"){
+    const opt={body,tag:a.id,lang:"ar",dir:"rtl",icon:"icons/icon-192.png"};
+    const sw=navigator.serviceWorker;(sw?sw.getRegistration().then(r=>r?r.showNotification(title,opt):new Notification(title,opt)):Promise.resolve(new Notification(title,opt))).catch(()=>{});
+  }
+}
 function startData(){
   if(dataOn)return;dataOn=true;
   const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied")toast("ما عندك صلاحية لقراءة البيانات. راجع المدير.");else if(e&&e.code==="resource-exhausted")toast(readErrMsg(e))};
   syncData(fail);
   // Activity: the whole business day live (the home log shows every one of today's entries), plus the last 100 before it, read once.
   const day0=shopDayRange(shopDay()).start;let actDay=[],actOld=[];const actSet=()=>{S.activity=[...actDay,...actOld];render()};
-  unsubs.push(db.collection(P("activity")).where("at",">=",day0).orderBy("at","desc").onSnapshot(s=>{actDay=s.docs.map(d=>d.data());actSet()},fail));
+  let actFirst=true;
+  unsubs.push(db.collection(P("activity")).where("at",">=",day0).orderBy("at","desc").onSnapshot(s=>{actDay=s.docs.map(d=>d.data());
+    if(!actFirst)for(const c of s.docChanges())if(c.type==="added"&&!c.doc.metadata.hasPendingWrites)notifyAct(c.doc.data());
+    actFirst=false;actSet()},fail));
   db.collection(P("activity")).where("at","<",day0).orderBy("at","desc").limit(100).get().then(s=>{actOld=s.docs.map(d=>d.data());actSet()},fail);
   unsubs.push(db.doc(P("settings/main")).onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};
     if(SHOP&&S.isOwner&&S.shop&&!s.exists&&!s.metadata.fromCache)saveSettings({shopName:S.shop.name,ownerName:S.shop.ownerName,phone:S.shop.phone||""});try{if(shopName())localStorage.setItem(GATE_NAME_KEY,shopName());localStorage.setItem(GATE_TENANT_KEY,SHOP?"1":"0")}catch(e){}if(S.me&&S.me.role==="owner")S.me.name=S.settings.ownerName||"المدير";S.ready.s=true;render()},fail));
@@ -2049,7 +2085,7 @@ async function bizExport(share){
 }
 
 /* ---------- settings ---------- */
-const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
+const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["notify","الإشعارات",I.bell,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 function settingsView(){
   const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner));
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
@@ -2173,6 +2209,15 @@ function setPage(k){
     return `<h2>إخفاء أرقام الواجهة الرئيسية</h2><p class="lead">الرقم المخفي يظهر نقاط ••••. تكدر تشوفه مؤقتاً بزر «إظهار» بأعلى الواجهة. الإعداد خاص بهذا الجهاز فقط، والأرقام داخل صفحة كل زبون تبقى ظاهرة.</p>
     ${HIDE_ITEMS.map(([k2,l])=>`<div class="toggle-row"><span>${l}</span><div class="seg" role="group" aria-label="${l}">${[["0","يظهر"],["1","مخفي"]].map(([v,t2])=>`<button type="button" data-hide="${k2}" data-v="${v}" aria-pressed="${h.includes(k2)===(v==="1")}">${t2}</button>`).join("")}</div></div>`).join("")}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" type="button" data-hideall="1">${I.eyeOff}إخفاء الكل</button><button class="btn" type="button" data-hideall="0">${I.eye}إظهار الكل</button></div>`}
+  if(k==="notify"){const pr=notifPrefs(),has="Notification" in window,perm=has?Notification.permission:"denied";
+    const seg=(k2,l)=>`<div class="toggle-row"><span>${l}</span><div class="seg" role="group" aria-label="${l}">${[["1","يوصل"],["0","لا"]].map(([v,t2])=>`<button type="button" data-notif="${k2}" data-v="${v}" aria-pressed="${!!pr[k2]===(v==="1")}">${t2}</button>`).join("")}</div></div>`;
+    return `<h2>الإشعارات</h2><p class="lead">من يسجّل عامل أو حساب ثاني دين أو تسديد، يوصلك إشعار باسمه واسم الزبون والمبلغ، وتكدر تفتح حساب الزبون منه. الإعداد خاص بهذا الجهاز.</p>
+      ${NOTIF_ITEMS.map(([k2,l])=>seg(k2,l)).join("")}${seg("sound","صوت واهتزاز")}
+      <div class="tpl" style="margin-top:12px"><h3>${I.bell}إشعارات الجهاز</h3>
+        <span class="ro-note">${!has?"هذا المتصفح أو التطبيق ما يدعم إشعارات الجهاز. الإشعار يطلع داخل البرنامج.":perm==="granted"?"مفعّلة: يطلعلك إشعار حتى لو البرنامج بالخلفية.":perm==="denied"?"الإشعارات ممنوعة لهذا الموقع. فعّلها من إعدادات المتصفح (رمز القفل جنب العنوان).":"حتى يطلعلك الإشعار والبرنامج بالخلفية، اسمح بالإشعارات."}</span>
+        ${has&&perm==="default"?`<div><button class="btn primary sm" type="button" data-act="notifperm">${I.bell}السماح بالإشعارات</button></div>`:""}
+        <span class="ro-note">إذا البرنامج مسكّر بالكامل، توصلك الحركات بتقارير تيليكرام.</span></div>
+      <div style="margin-top:12px"><button class="btn" type="button" data-act="notiftest">${I.bell}جرّب الإشعار</button></div>`}
   if(k==="look"){let th="system";try{th=localStorage.getItem(THEME_KEY)||"system"}catch(e){}
     return `<h2>المظهر</h2><div class="toggle-row"><span>الوضع</span><div class="seg" role="group" aria-label="الوضع">${[["system","تلقائي"],["light","فاتح"],["dark","ليلي"]].map(([k2,l])=>`<button type="button" data-theme-set="${k2}" aria-pressed="${th===k2}">${l}</button>`).join("")}</div></div>`}
   return "";
@@ -3492,6 +3537,7 @@ document.addEventListener("click",e=>{
     if(n&&d!==lockDays())confirmBox("تشغيل قفل الحسابات",`${n} زبون راح ينقفل حسابه هسه لأنه ما سدد كامل خلال ${d} يوم. تكدر تفتح أي واحد منهم من صفحته.`,"تشغيل",go);else go();return}
   const vsb=t.closest("[data-vsearch]");if(vsb){voiceSearch(vsb);return}
   const sp=t.closest("[data-set]");if(sp){S.setPage=sp.dataset.set||null;render();window.scrollTo(0,0);return}
+  const nf=t.closest("[data-notif]");if(nf){setNotif(nf.dataset.notif,nf.dataset.v==="1");if(nf.dataset.notif==="sound"&&nf.dataset.v==="1")chime();render();return}
   const hd=t.closest("[data-hide]");if(hd){const k=hd.dataset.hide,h=hiddenNums().filter(x=>x!==k);if(hd.dataset.v==="1")h.push(k);setHidden(h);render();return}
   const ha=t.closest("[data-hideall]");if(ha){setHidden(ha.dataset.hideall==="1"?HIDE_ITEMS.map(x=>x[0]):[]);S.reveal=false;render();return}
   const th=t.closest("[data-theme-set]");if(th){const v=th.dataset.themeSet;try{localStorage.setItem(THEME_KEY,v)}catch(x){}applyTheme(v);render();return}
@@ -3546,6 +3592,9 @@ document.addEventListener("click",e=>{
     case "setlimit":if(canWrite())customerForm(c);break;
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
+    case "notifperm":if("Notification" in window)Notification.requestPermission().then(()=>render(),()=>{});break;
+    case "notiftest":{const pr=notifPrefs();toast("🔴 علي سجّل دين 25,000 د.ع على فلاح");if(pr.sound)chime();
+      if("Notification" in window&&Notification.permission==="granted"){const opt={body:"هذا إشعار تجربة",lang:"ar",dir:"rtl",icon:"icons/icon-192.png"};const sw=navigator.serviceWorker;(sw?sw.getRegistration().then(r=>r?r.showNotification("دفتر الديون",opt):new Notification("دفتر الديون",opt)):Promise.resolve(new Notification("دفتر الديون",opt))).catch(()=>{})}break}
     case "goshops":S.view="settings";S.setPage="shops";render();break;
     case "goaccount":S.view="settings";S.setPage="account";render();break;
     case "htpdf":custTableExport("pdf");break;
