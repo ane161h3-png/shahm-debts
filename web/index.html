@@ -1238,6 +1238,7 @@ function startData(){
     if(SHOP&&S.isOwner&&S.shop&&!s.exists&&!s.metadata.fromCache)saveSettings({shopName:S.shop.name,ownerName:S.shop.ownerName,phone:S.shop.phone||""});try{if(shopName())localStorage.setItem(GATE_NAME_KEY,shopName());localStorage.setItem(GATE_TENANT_KEY,SHOP?"1":"0")}catch(e){}if(S.me&&S.me.role==="owner")S.me.name=S.settings.ownerName||"المدير";S.ready.s=true;render()},fail));
   if(S.isOwner){
     unsubs.push(db.collection(P("users")).onSnapshot(s=>{S.accounts=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));S.ready.a=true;render()},fail));
+    if(S.superOwner)unsubs.push(db.doc("meta/trial").onSnapshot(s=>{S.trialDays=s.exists?Number(s.data().days)||0:0;if(S.view==="settings")render()},()=>{}));
     if(S.superOwner)unsubs.push(db.collection("shops").onSnapshot(s=>{S.shops=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));render();subTick()},fail));
     setTimeout(async()=>{try{const old=await db.collection(P("activity")).where("at","<",Date.now()-120*864e5).limit(100).get();for(const d of old.docs)d.ref.delete().catch(()=>{})}catch(e){}},8000);
   }
@@ -1298,6 +1299,7 @@ function mailAlert(){const u=auth&&auth.currentUser;if(!u||!isFakeEmail(u.email)
 // Subscriptions: the shop's owner sees its own end date coming; the app's owner sees shops ending or ended.
 function subAlerts(){
   if(SHOP&&isAdmin()&&S.shop&&S.shop.until){const n=subLeft(S.shop);if(n>7)return "";
+    if(S.shop.trial)return `<div class="banner ${n<=2?"bad":"warn"}">الفترة التجريبية تنتهي ${n<=0?"اليوم":n===1?"باجر":`بعد <b class="num">${n}</b> يوم`} (${dmyMs(S.shop.until)}). اشترك ويا صاحب البرنامج حتى يبقى الدفتر شغّال.</div>`;
     return `<div class="banner ${n<=2?"bad":"warn"}">اشتراك المحل ينتهي ${n<=0?"اليوم":n===1?"باجر":`بعد <b class="num">${n}</b> يوم`} (${dmyMs(S.shop.until)}). جدّده ويا صاحب البرنامج حتى ما يتوقف الدفتر.</div>`}
   if(!S.superOwner)return "";
   const act=[...S.shops.values()].filter(x=>x.status==="active"&&x.until),ended=act.filter(shopExpired),soon=act.filter(x=>!shopExpired(x)&&subLeft(x)<=7);
@@ -3473,6 +3475,7 @@ document.addEventListener("click",e=>{
   const tr=t.closest("[data-tplreset]");if(tr){document.getElementById("tpl-"+tr.dataset.tplreset).value=DEFAULT_TPL[tr.dataset.tplreset];return}
   const ua=t.closest("[data-uact]");if(ua&&isAdmin()){userAction(ua.dataset.uact,ua.dataset.id);return}
   const sa=t.closest("[data-shopact]");if(sa){shopAction(sa.dataset.shopact,sa.dataset.id);return}
+  const td=t.closest("[data-trialdays]");if(td&&S.superOwner){const n=Number(td.dataset.trialdays);db.doc("meta/trial").set({days:n,at:Date.now()}).then(()=>toast(n?`المحلات الجديدة تنفتح ${n} يوم تجربة`:"المحلات الجديدة تنتظر تفعيلك"),writeFail);return}
   const pm=t.closest("[data-paymode]");if(pm){S.rep.pmode=pm.dataset.paymode;render();return}
   const rpt=t.closest("[data-reptab]");if(rpt){S.rep.tab=rpt.dataset.reptab;render();return}
   const rpp=t.closest("[data-repper]");if(rpp){S.rep.per=rpp.dataset.repper;if(S.rep.per==="custom"&&!S.rep.from){S.rep.to=todayISO();S.rep.from=addDays(todayISO(),-29)}render();return}
@@ -3625,19 +3628,22 @@ document.addEventListener("click",e=>{if(e.target.id==="exportBtn"&&isAdmin())ex
 document.addEventListener("change",e=>{const i=e.target.closest&&e.target.closest("[data-listadd]");if(i){const f=[...i.files];i.value="";addListPhotos(i.dataset.listadd,f)}});
 /* ---------- shops (root owner) ---------- */
 const shopsPending=()=>S.superOwner?[...S.shops.values()].filter(x=>x.status==="pending").length:0;
-const SHOP_ST={pending:["بانتظار التفعيل","warn"],active:["شغّال","paid"],disabled:["موقوف","debt"],expired:["انتهى الاشتراك","debt"]};
+const SHOP_ST={pending:["بانتظار التفعيل","warn"],trial:["فترة تجريبية","warn"],active:["شغّال","paid"],disabled:["موقوف","debt"],expired:["انتهى الاشتراك","debt"]};
 /* Subscriptions: an active shop opens until shops/{id}.until (ms); none = no end. The rules close it at that moment too,
    so a phone with a wrong clock can't keep it open. Every renewal is kept in shops/{id}.subs as a receipt. */
-const SUB_PLANS=[["1","شهر",1],["3","3 أشهر",3],["6","6 أشهر",6],["12","سنة",12],["date","تاريخ معيّن",0],["none","بدون مدة",0]];
+/* Free trial: when the owner sets meta/trial.days, a new shop opens by itself for that many days (trial:true, until);
+   the rules check the length against meta/trial, so a shop can't give itself more. Paying ends the trial from today. */
+const TRIAL_DAYS=[0,7,15,30];
+const SUB_PLANS=[["trial","تجربة",0],["1","شهر",1],["3","3 أشهر",3],["6","6 أشهر",6],["12","سنة",12],["date","تاريخ معيّن",0],["none","بدون مدة",0]];
 const subLeft=x=>x&&x.until?Math.ceil((x.until-Date.now())/864e5):null;
 const shopExpired=x=>!!(x&&x.status==="active"&&x.until&&x.until<=Date.now());
-const shopState=x=>shopExpired(x)?"expired":(x.status||"pending");
+const shopState=x=>shopExpired(x)?"expired":x.status==="active"&&x.trial?"trial":(x.status||"pending");
 const dmyMs=ms=>{const d=new Date(ms);return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`};
 function addMonths(ms,n){const d=new Date(ms),day=d.getDate();d.setMonth(d.getMonth()+n);if(d.getDate()<day)d.setDate(0);return d.getTime()}
 function subLine(x){
   if(x.status!=="active"&&!x.until)return "";
   if(!x.until)return `<span class="ro-note">الاشتراك: بدون مدة</span>`;
-  const n=subLeft(x);return `<span class="ro-note ${n<=0?"sub-end":n<=7?"sub-soon":""}">الاشتراك إلى ${dmyMs(x.until)} · ${n<=0?"انتهى":n===1?"باقي يوم":`باقي ${n} يوم`}</span>`;
+  const n=subLeft(x);return `<span class="ro-note ${n<=0?"sub-end":n<=7?"sub-soon":""}">${x.trial?"التجربة":"الاشتراك"} إلى ${dmyMs(x.until)} · ${n<=0?"انتهى":n===1?"باقي يوم":`باقي ${n} يوم`}</span>`;
 }
 // Redraw the shops list and the bell when the next subscription ends, so an ended shop moves without a reload.
 function subTick(){clearTimeout(subTick.t);const next=[...S.shops.values()].map(x=>x.status==="active"&&x.until||0).filter(u=>u>Date.now()).sort((a,b)=>a-b)[0];
@@ -3645,11 +3651,11 @@ function subTick(){clearTimeout(subTick.t);const next=[...S.shops.values()].map(
 function subForm(id){
   const x=S.shops.get(id);if(!x||!S.superOwner)return;
   const prices=(S.settings.subPrices||{}),subs=(x.subs||[]).slice().reverse(),paid=subs.reduce((a,v)=>a+(Number(v.amount)||0),0);
-  const base=Math.max(Date.now(),x.until&&x.status==="active"?x.until:0);
+  const base=Math.max(Date.now(),x.until&&x.status==="active"&&!x.trial?x.until:0),tDays=S.trialDays||15;
   openModal(`<h3>اشتراك ${esc(x.name)}</h3>
-    <p class="hint">${x.until&&x.status==="active"?`ينتهي حالياً ${dmyMs(x.until)}${shopExpired(x)?" (انتهى)":""}. التمديد يبدأ ${shopExpired(x)||x.status!=="active"?"من اليوم":"من نهاية الاشتراك الحالي"}.`:x.status==="active"?"شغّال بدون مدة. اختار مدة حتى ينقفل وحده بنهايتها.":"اختار المدة اللي دفع عليها، وينفتح دفتره هسه."}</p>
+    <p class="hint">${x.trial&&x.status==="active"?`بالفترة التجريبية لحد ${dmyMs(x.until)}${shopExpired(x)?" (انتهت)":""}. الاشتراك المدفوع يبدأ من اليوم.`:x.until&&x.status==="active"?`ينتهي حالياً ${dmyMs(x.until)}${shopExpired(x)?" (انتهى)":""}. التمديد يبدأ ${shopExpired(x)||x.status!=="active"?"من اليوم":"من نهاية الاشتراك الحالي"}.`:x.status==="active"?"شغّال بدون مدة. اختار مدة حتى ينقفل وحده بنهايتها.":"اختار المدة اللي دفع عليها، وينفتح دفتره هسه."}</p>
     <form id="subF" class="field" style="gap:12px" novalidate>
-      <div class="chips" role="group" aria-label="المدة">${SUB_PLANS.map(([k,l])=>`<button type="button" data-subplan="${k}" aria-pressed="${k==="1"}">${l}</button>`).join("")}</div>
+      <div class="chips" role="group" aria-label="المدة">${SUB_PLANS.map(([k,l])=>`<button type="button" data-subplan="${k}" aria-pressed="${k==="1"}">${k==="trial"?`تجربة ${tDays} يوم`:l}</button>`).join("")}</div>
       <div class="field" id="subDateF" hidden><label for="subDate">ينتهي بتاريخ</label><input id="subDate" type="date" min="${todayISO()}"></div>
       <div class="field" id="subAmtF"><label for="subAmt">المبلغ المدفوع (اختياري)</label><input id="subAmt" inputmode="numeric" placeholder="مثال: 25,000" style="direction:ltr;text-align:right" value="${prices["1"]?fmt(prices["1"]):""}"><span class="help">ينحفظ كوصل، ويتذكّر سعر كل مدة للمرة الجاية.</span></div>
       <p class="sub-to" id="subTo"></p>
@@ -3657,18 +3663,18 @@ function subForm(id){
       <div class="foot"><button class="btn primary" type="submit">${x.status==="active"&&!shopExpired(x)?"تمديد الاشتراك":"تفعيل"}</button><button class="btn" type="button" data-close>إلغاء</button></div>
     </form>
     ${subs.length?`<h3 style="margin-top:14px;font-size:15px">الاشتراكات السابقة${paid?` · المجموع <span class="num">${fmt(paid)}</span>`:""}</h3><ul class="sub-hist">${subs.slice(0,12).map(v=>`<li><span>${esc(v.label||"")}</span><span class="num">${v.to?"إلى "+dmyMs(v.to):"بدون مدة"}</span><span class="num">${v.amount?fmt(v.amount):"—"}</span><span class="ro-note">${dmyMs(v.at)}</span></li>`).join("")}</ul>`:""}`,m=>{
-    let plan="1";const to=()=>{const P=SUB_PLANS.find(p=>p[0]===plan);if(plan==="none")return null;if(plan==="date"){const v=m.querySelector("#subDate").value;if(!v)return undefined;const [y,mo,d]=v.split("-").map(Number);return new Date(y,mo-1,d,23,59,59).getTime()}return addMonths(base,P[2])};
+    let plan="1";const to=()=>{const P=SUB_PLANS.find(p=>p[0]===plan);if(plan==="none")return null;if(plan==="trial")return Math.max(Date.now(),x.until||0)+tDays*864e5;if(plan==="date"){const v=m.querySelector("#subDate").value;if(!v)return undefined;const [y,mo,d]=v.split("-").map(Number);return new Date(y,mo-1,d,23,59,59).getTime()}return addMonths(base,P[2])};
     const show=()=>{const t=to();m.querySelector("#subTo").innerHTML=t===null?"ينفتح بدون تاريخ انتهاء.":t?`ينفتح لحد <b class="num">${dmyMs(t)}</b> (${Math.ceil((t-Date.now())/864e5)} يوم).`:""};
     m.querySelectorAll("[data-subplan]").forEach(b=>b.addEventListener("click",()=>{plan=b.dataset.subplan;m.querySelectorAll("[data-subplan]").forEach(o=>o.setAttribute("aria-pressed",o===b));
-      m.querySelector("#subDateF").hidden=plan!=="date";m.querySelector("#subAmtF").hidden=plan==="none";const pr=prices[plan];m.querySelector("#subAmt").value=pr?fmt(pr):"";show()}));
+      m.querySelector("#subDateF").hidden=plan!=="date";m.querySelector("#subAmtF").hidden=plan==="none"||plan==="trial";const pr=prices[plan];m.querySelector("#subAmt").value=pr?fmt(pr):"";show()}));
     m.querySelector("#subDate").addEventListener("input",show);show();
     m.querySelector("#subF").addEventListener("submit",e=>{e.preventDefault();
       const t=to(),err=m.querySelector("#subErr");if(t===undefined){err.textContent="اختار تاريخ الانتهاء.";return}
       if(t&&t<=Date.now()){err.textContent="التاريخ لازم يكون بعد اليوم.";return}
-      const av=m.querySelector("#subAmt").value.trim(),amount=plan==="none"||!av?0:parseAmt(av);if(av&&plan!=="none"&&!(amount>0)){err.textContent="المبلغ لازم يكون رقم.";return}
-      const label=SUB_PLANS.find(p=>p[0]===plan)[1],entry={at:Date.now(),plan,label,from:t?base:Date.now(),to:t,amount:Math.round(amount||0),by:S.me.name};
-      db.doc("shops/"+id).update({status:"active",activatedAt:x.activatedAt||Date.now(),until:t,subs:firebase.firestore.FieldValue.arrayUnion(entry)}).catch(writeFail);
-      if(amount>0&&plan!=="date"&&prices[plan]!==Math.round(amount))saveSettings({subPrices:{...prices,[plan]:Math.round(amount)}});
+      const av=m.querySelector("#subAmt").value.trim(),amount=plan==="none"||plan==="trial"||!av?0:parseAmt(av);if(av&&plan!=="none"&&plan!=="trial"&&!(amount>0)){err.textContent="المبلغ لازم يكون رقم.";return}
+      const label=plan==="trial"?`تجربة ${tDays} يوم`:SUB_PLANS.find(p=>p[0]===plan)[1],entry={at:Date.now(),plan,label,from:t?base:Date.now(),to:t,amount:Math.round(amount||0),by:S.me.name};
+      db.doc("shops/"+id).update({status:"active",activatedAt:x.activatedAt||Date.now(),until:t,trial:plan==="trial",subs:firebase.firestore.FieldValue.arrayUnion(entry)}).catch(writeFail);
+      if(amount>0&&plan!=="date"&&plan!=="trial"&&prices[plan]!==Math.round(amount))saveSettings({subPrices:{...prices,[plan]:Math.round(amount)}});
       log("edit","account",{detail:`اشتراك محل ${x.name}: ${label}${t?" إلى "+dmyMs(t):""}${amount?" بمبلغ "+fmt(amount):""}`});
       closeModal();toast(t?`انفعّل ${x.name} لحد ${dmyMs(t)}`:`انفعّل ${x.name} بدون مدة`)});
   });
@@ -3678,16 +3684,19 @@ function shopsPage(){
   const row=x=>{const [lbl,cls]=SHOP_ST[shopState(x)]||SHOP_ST.pending;
     return `<div class="user-row"><span class="avatar">${esc(markLetter(x.name))}</span><div class="meta"><b>${esc(x.name)}</b>
       <span>${esc(x.ownerName||"")} · <span class="num">@${esc(x.username||"")}</span>${x.phone?` · <span class="num">${esc(x.phone)}</span>`:""}</span>
-      <span class="ro-note">سجّل ${esc(timeAgo(x.createdAt||0))}${x.activatedAt?` · انفعّل ${esc(shortDate(new Date(x.activatedAt).toISOString().slice(0,10)))}`:""}</span>${subLine(x)}</div>
+      <span class="ro-note">سجّل ${esc(timeAgo(x.createdAt||0))}${x.activatedAt?` · انفعّل ${esc(shortDate(new Date(x.activatedAt).toISOString().slice(0,10)))}`:""}${subLine(x)?" · ":""}</span>${subLine(x)}</div>
       <div class="ops"><span class="chip ${cls}">${lbl}</span>
-        <button class="btn ${x.status==="active"&&!shopExpired(x)?"":"paid "}sm" type="button" data-shopact="sub" data-id="${esc(x.id)}">${x.status==="active"&&!shopExpired(x)?"تمديد":"تفعيل"}</button>
+        <button class="btn ${x.status==="active"&&!shopExpired(x)&&!x.trial?"":"paid "}sm" type="button" data-shopact="sub" data-id="${esc(x.id)}">${x.status==="active"&&!shopExpired(x)&&!x.trial?"تمديد":"تفعيل"}</button>
         ${x.status==="active"?`<button class="btn sm" type="button" data-shopact="disable" data-id="${esc(x.id)}">إيقاف</button>`:""}
         ${x.status==="pending"?`<button class="btn ghost sm danger-text" type="button" data-shopact="reject" data-id="${esc(x.id)}">رفض</button>`:""}</div></div>`};
   const by=st=>all.filter(x=>shopState(x)===st);
   const sec=(t,l)=>l.length?`<h3 style="margin:8px 0 0;font-size:15px">${t} (${l.length})</h3>${l.map(row).join("")}`:"";
   return `<h2>المحلات</h2><p class="lead">المشتري ينزّل نفس التطبيق (أو يفتح الموقع)، يضغط «سجّل محلك»، ويظهر هنا. فعّله بعد ما يدفع، ويصير إله دفتر منفصل: ما يشوف بياناتك ولا تشوف بياناته من هنا. الموقوف ما يكدر يفتح دفتره، وبياناته تبقى لحد ما ترجع تفعّله.</p>
-    <p class="ro-note">«تفعيل» و«تمديد»: تختار المدة (شهر، 3 أشهر، 6 أشهر، سنة أو تاريخ)، والمحل ينقفل وحده بنهايتها لحد ما تجدّد له. بياناته تبقى محفوظة.</p>
-    ${all.length?sec("بانتظار التفعيل",by("pending"))+sec("انتهى اشتراكهم",by("expired"))+sec("المحلات الشغّالة",by("active").sort((a,b)=>(a.until||9e15)-(b.until||9e15)))+sec("الموقوفة",by("disabled")):`<p class="ro-note">بعد ما سجّل أي محل.</p>`}`;
+    <p class="ro-note">«تفعيل» و«تمديد»: تختار المدة (تجربة، شهر، 3 أشهر، 6 أشهر، سنة أو تاريخ)، والمحل ينقفل وحده بنهايتها لحد ما تجدّد له. بياناته تبقى محفوظة.</p>
+    <div class="card" style="margin:10px 0;padding:12px 14px"><b style="font-size:15px">الفترة التجريبية</b>
+      <p class="ro-note" style="margin:4px 0 8px">المحل الجديد ينفتح وحده بعد ما يسجّل، لهذي المدة، وبنهايتها ينقفل لحد ما يدفع. «بدون» = ينتظر تفعيلك مثل قبل.</p>
+      <div class="chips" role="group" aria-label="الفترة التجريبية">${TRIAL_DAYS.map(n=>`<button type="button" data-trialdays="${n}" aria-pressed="${(S.trialDays||0)===n}">${n?n+" يوم":"بدون"}</button>`).join("")}</div></div>
+    ${all.length?sec("بانتظار التفعيل",by("pending"))+sec("انتهى اشتراكهم",by("expired"))+sec("فترة تجريبية",by("trial").sort((a,b)=>a.until-b.until))+sec("المحلات الشغّالة",by("active").sort((a,b)=>(a.until||9e15)-(b.until||9e15)))+sec("الموقوفة",by("disabled")):`<p class="ro-note">بعد ما سجّل أي محل.</p>`}`;
 }
 function shopAction(act,id){
   const x=S.shops.get(id);if(!x||!S.superOwner)return;
@@ -3784,9 +3793,9 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
       if(S.shop.status==="pending"){close();showWaiting(own?`تم تسجيل «${S.shop.name}» ✅ بانتظار التفعيل من صاحب البرنامج. أول ما يتفعّل يفتح دفترك تلقائياً.`:"المحل بعده ما متفعّل. راجع صاحب المحل.","warn");return}
       if(S.shop.status!=="active"){close();showWaiting(own?"اشتراك محلك موقوف. تواصل ويا صاحب البرنامج حتى يرجع يشتغل، وبياناتك محفوظة.":"المحل موقوف. راجع صاحب المحل.","bad");return}
       clearTimeout(enterShop.endT);
-      if(shopExpired(S.shop)){close();showWaiting(own?`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}. جدّد الاشتراك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وبياناتك كلها محفوظة.`:"انتهى اشتراك المحل. راجع صاحب المحل.","bad");return}
+      if(shopExpired(S.shop)){close();showWaiting(own?(S.shop.trial?`انتهت الفترة التجريبية لمحلك بتاريخ ${dmyMs(S.shop.until)}. اشترك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وكل اللي سجلته محفوظ.`:`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}. جدّد الاشتراك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وبياناتك كلها محفوظة.`):"انتهى اشتراك المحل. راجع صاحب المحل.","bad");return}
       // Close the notebook the moment the subscription ends while it is open (setTimeout can't wait more than ~24 days).
-      if(S.shop.until){const ms=S.shop.until-Date.now();if(ms<20*864e5)enterShop.endT=setTimeout(()=>{if(SHOP===S.shop.id&&shopExpired(S.shop)){close();showWaiting(own?`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}. جدّد الاشتراك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وبياناتك كلها محفوظة.`:"انتهى اشتراك المحل. راجع صاحب المحل.","bad")}},ms+1000)}
+      if(S.shop.until){const ms=S.shop.until-Date.now();if(ms<20*864e5)enterShop.endT=setTimeout(()=>{if(SHOP===S.shop.id&&shopExpired(S.shop)){close();showWaiting(own?(S.shop.trial?`انتهت الفترة التجريبية لمحلك بتاريخ ${dmyMs(S.shop.until)}. اشترك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وكل اللي سجلته محفوظ.`:`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}. جدّد الاشتراك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وبياناتك كلها محفوظة.`):"انتهى اشتراك المحل. راجع صاحب المحل.","bad")}},ms+1000)}
       if(own){
         const first=!S.me;S.isOwner=true;
         S.me={id:u.uid,name:S.settings.ownerName||S.shop.ownerName||"المدير",role:"owner",username:S.shop.username||uname};
@@ -3827,11 +3836,13 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
   async function registerShop(u,info){
     spin("جارِ تسجيل المحل…");
     const at=Date.now();
+    const days=await db.doc("meta/trial").get().then(s=>s.exists?Number(s.data().days)||0:0,()=>0);
+    const shop={id:u.uid,owner:u.uid,name:info.shop.slice(0,60),ownerName:info.name.slice(0,40),phone:(info.phone||"").slice(0,20),username:info.username||"",status:"pending",createdAt:at};
+    const save=doc=>{const b=db.batch();b.set(db.doc("shops/"+u.uid),doc);b.set(db.doc("memberOf/"+u.uid),{shop:u.uid,at});return b.commit()};
     try{
-      const b=db.batch();
-      b.set(db.doc("shops/"+u.uid),{id:u.uid,owner:u.uid,name:info.shop.slice(0,60),ownerName:info.name.slice(0,40),phone:(info.phone||"").slice(0,20),username:info.username||"",status:"pending",createdAt:at});
-      b.set(db.doc("memberOf/"+u.uid),{shop:u.uid,at});
-      await b.commit();
+      // A trial the rules refuse (not published yet, or the days just changed) falls back to waiting for activation.
+      if(days>0)await save({...shop,status:"active",trial:true,until:at+days*864e5}).catch(()=>save(shop));
+      else await save(shop);
     }catch(e){console.warn(e);if(auth.currentUser===u)showShopSetup(u,info,e&&e.code==="permission-denied"?"تسجيل المحلات بعده ما مفتوح. تواصل ويا صاحب البرنامج.":"تعذّر التسجيل. تحقق من الإنترنت وحاول مرة ثانية.");return}
     if(auth.currentUser!==u)return;
     try{localStorage.setItem(SHOP_KEY,JSON.stringify({uid:u.uid,shop:u.uid}))}catch(e){}
