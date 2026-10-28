@@ -1036,6 +1036,7 @@ async function log(kind,what,info){
   const a={id:uid(),at:Date.now(),kind,what,by:S.me?S.me.name:"",byRole:S.me?S.me.role:"",...info};
   if(a.customerName&&!a.customerId){const m=[...S.customers.values()].filter(c=>c.name===a.customerName);if(m.length===1)a.customerId=m[0].id}
   try{db.collection(P("activity")).doc(a.id).set(a).catch(()=>{})}catch(e){}
+  pushOut(a);
 }
 async function saveSettings(patch){
   S.settings={...S.settings,...patch};render();
@@ -1305,8 +1306,58 @@ function notifyAct(a){
   if(pr.sound)chime();
   if(document.visibilityState!=="visible")deviceNote(title,body,a.id);
 }
+/* Phone notifications that arrive with the app closed (Web Push through the AI worker, worker/src/push.js). The owner turns
+   them on per device in Settings > الإشعارات: the device's subscription goes into settings/main.push[hash] {e,p,a,u,k,at},
+   k = the kinds this device wants. A worker's device then asks the server to push each entry it records. The APK's own
+   browser can't receive them, so there the owner turns them on once in Chrome. */
+const PUSH_OK=!NATIVE&&"serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window;
+let pushState=null; // null = not checked yet, "on" = this device is stored, "off"
+const pushUrl=()=>window.AI_URL.replace(/\/$/,"")+"/push";
+const pushKinds=()=>{const pr=notifPrefs();return NOTIF_ITEMS.map(([k])=>k).filter(k=>pr[k])};
+async function pushHash(ep){const d=new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(ep)));return [...d.slice(0,8)].map(b=>b.toString(16).padStart(2,"0")).join("")}
+async function pushSub(){const r=await navigator.serviceWorker.getRegistration();return r?r.pushManager.getSubscription():null}
+async function pushCheck(){
+  if(!PUSH_OK||!isAdmin()){pushState="off";return}
+  try{const sub=Notification.permission==="granted"?await pushSub():null;pushState=sub&&(S.settings.push||{})[await pushHash(sub.endpoint)]?"on":"off"}catch(e){pushState="off"}
+  render();
+}
+async function pushOn(){
+  if(!window.AI_URL)return toast("الإشعارات بعدها ما مفعّلة على السيرفر.");
+  try{
+    if(await Notification.requestPermission()!=="granted"){render();return toast("لازم تسمح بالإشعارات حتى توصلك.")}
+    const kr=await fetch(pushUrl()),{key}=await kr.json();if(!key)return toast("الإشعارات بعدها ما مفعّلة على السيرفر. حاول بعد شوية.");
+    if(!await navigator.serviceWorker.getRegistration())await navigator.serviceWorker.register("sw.js");const reg=await navigator.serviceWorker.ready;
+    const app=Uint8Array.from(atob(key.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((key.length+3)%4)),c=>c.charCodeAt(0));
+    let sub=await reg.pushManager.getSubscription();
+    if(sub&&sub.options&&sub.options.applicationServerKey&&btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey)))!==btoa(String.fromCharCode(...app))){await sub.unsubscribe();sub=null}
+    sub=sub||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:app});
+    const j=sub.toJSON(),h=await pushHash(j.endpoint);
+    await db.doc(P("settings/main")).set({push:{[h]:{e:j.endpoint,p:j.keys.p256dh,a:j.keys.auth,u:auth.currentUser.uid,k:pushKinds(),at:Date.now()}}},{merge:true});
+    S.settings.push={...(S.settings.push||{}),[h]:{e:j.endpoint}};pushState="on";render();
+    toast("✓ تفعّل. هسه يوصلك الإشعار حتى لو البرنامج مسكّر.");pushTest();
+  }catch(e){console.warn(e);toast("تعذّر تفعيل الإشعار. تحقق من الإنترنت وحاول مرة ثانية.")}
+}
+async function pushOff(){
+  try{const sub=await pushSub();if(sub){const h=await pushHash(sub.endpoint);await sub.unsubscribe().catch(()=>{});
+    await db.doc(P("settings/main")).update({["push."+h]:firebase.firestore.FieldValue.delete()})}
+    pushState="off";render();toast("توقف الإشعار على هذا الجهاز.")}catch(e){console.warn(e);writeFail(e)}
+}
+// The kinds picked on this device follow it to the server.
+async function pushKindsSave(){
+  if(pushState!=="on")return;try{const sub=await pushSub();if(sub)db.doc(P("settings/main")).set({push:{[await pushHash(sub.endpoint)]:{k:pushKinds()}}},{merge:true}).catch(()=>{})}catch(e){}
+}
+async function pushCall(body){
+  const t=await auth.currentUser.getIdToken();
+  const r=await fetch(pushUrl(),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+t},body:JSON.stringify({shop:SHOP||"",...body})});
+  return r.json().catch(()=>({}));
+}
+function pushTest(){pushCall({kind:"test",title:"🔔 دفتر الديون",body:"هذا إشعار تجربة. هيج راح توصلك الديون والتسديدات.",tag:"test"}).then(j=>{if(!j.sent)toast(j.error||"ما وصل إشعار التجربة. حاول مرة ثانية.")},()=>toast("ما وصل إشعار التجربة. تحقق من الإنترنت."))}
+function pushOut(a){
+  if(!window.AI_URL||!S.me||isAdmin()||!auth.currentUser)return;const subs=S.settings.push;if(!subs||!Object.keys(subs).length)return;
+  const n=notifText(a);if(n)pushCall({kind:n[0],title:n[1],body:n[2]||"",tag:a.id}).catch(()=>{});
+}
 function startData(){
-  if(dataOn)return;dataOn=true;
+  if(dataOn)return;dataOn=true;pushState=null;
   const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied")toast("ما عندك صلاحية لقراءة البيانات. راجع المدير.");else if(e&&e.code==="resource-exhausted")toast(readErrMsg(e))};
   syncData(fail);
   // Activity: the whole business day live (the home log shows every one of today's entries), plus the last 100 before it, read once.
@@ -1355,8 +1406,10 @@ function maybeIntro(){
   if(S.customers.size>=3){try{localStorage.setItem(INTRO_KEY,"1")}catch(e){}return}
   setTimeout(()=>showIntro(0),600);
 }
+const OPEN_NOTIFY=location.hash==="#notify";
 function render(){
   if(!S.me||$("#app").hidden)return;
+  if(OPEN_NOTIFY&&!render.notify){render.notify=true;S.view="settings";S.setPage="notify";try{history.replaceState(null,"",location.pathname+location.search)}catch(e){}}
   maybeIntro();if(!dailyCheck.t&&!render.daily){render.daily=true;setTimeout(dailyCheck,1500)}
   $("#today").textContent=dayName(todayISO());
   $("#shopTitle").textContent="دفتر ديون "+shopName();document.title="دفتر ديون "+shopName();
@@ -2166,6 +2219,18 @@ async function bizExport(share){
 }
 
 /* ---------- settings ---------- */
+function pushBlock(){
+  if(pushState===null&&PUSH_OK)pushCheck();
+  const perm=PUSH_OK?Notification.permission:"";
+  const note=t=>`<span class="ro-note">${t}</span>`;
+  const body=NATIVE?note("بالتطبيق، الإشعار الطبيعي يشتغل عن طريق متصفح كروم: اضغط الزر، سجّل دخولك بكروم مرة وحدة، واضغط «تفعيل الإشعار على الموبايل». بعدها يوصلك الإشعار حتى لو التطبيق وكروم مسكّرين.")+`<div><button class="btn primary sm" type="button" data-act="pushchrome">${I.bell}فتح بكروم وتفعيل الإشعار</button></div>`
+    :!PUSH_OK?note(IS_IOS?"على الآيفون: افتح الموقع من سفاري، اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية»، وافتح البرنامج من أيقونته، وبعدها فعّل الإشعار من هنا.":"هذا المتصفح ما يدعم الإشعارات. افتح البرنامج من كروم.")
+    :perm==="denied"?note("الإشعارات ممنوعة لهذا الموقع. فعّلها من إعدادات المتصفح (رمز القفل جنب العنوان) وارجع هنا.")
+    :pushState==="on"?note("✓ مفعّل على هذا الجهاز: يوصلك الإشعار بشريط الموبايل حتى لو البرنامج مسكّر.")+`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" type="button" data-act="pushtest">${I.bell}إشعار تجربة</button><button class="btn sm" type="button" data-act="pushoff">إيقاف على هذا الجهاز</button></div>`
+    :pushState===null?note("لحظة…")
+    :note("فعّله حتى يوصلك الإشعار مثل إشعارات البرامج، حتى لو البرنامج مسكّر.")+`<div><button class="btn primary sm" type="button" data-act="pushon">${I.bell}تفعيل الإشعار على الموبايل</button></div>`;
+  return `<div class="tpl" style="margin-top:12px"><h3>${I.bell}إشعار على الموبايل</h3>${body}</div>`;
+}
 const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 function settingsView(){
   const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner));
@@ -2297,10 +2362,10 @@ function setPage(k){
       ${isAdmin()?NOTIF_ITEMS.map(([k2,l])=>seg(k2,l)).join("")+seg("sound","صوت واهتزاز مع الإشعار"):""}${seg("saveFx","صوت واهتزاز خفيف عند حفظ دين أو تسديد")}
       ${seg("daily","تنبيه يومي بالوعود والمتأخرين")}
       ${pr.daily?`<div class="toggle-row"><span>وقت التنبيه اليومي</span><select id="dailyAt" aria-label="وقت التنبيه اليومي">${[8,9,10,11,12,14,16,18,20].map(h=>`<option value="${h}" ${Number(pr.dailyAt)===h?"selected":""}>${h<12?h+" الصبح":h===12?"12 الظهر":(h-12)+" العصر/المسا"}</option>`).join("")}</select></div>`:""}
-      <div class="tpl" style="margin-top:12px"><h3>${I.bell}إشعارات الجهاز</h3>
+      ${isAdmin()?pushBlock():`<div class="tpl" style="margin-top:12px"><h3>${I.bell}إشعارات الجهاز</h3>
         <span class="ro-note">${!has?"هذا المتصفح أو التطبيق ما يدعم إشعارات الجهاز. الإشعار يطلع داخل البرنامج.":perm==="granted"?"مفعّلة: يطلعلك إشعار حتى لو البرنامج بالخلفية.":perm==="denied"?"الإشعارات ممنوعة لهذا الموقع. فعّلها من إعدادات المتصفح (رمز القفل جنب العنوان).":"حتى يطلعلك الإشعار والبرنامج بالخلفية، اسمح بالإشعارات."}</span>
         ${has&&perm==="default"?`<div><button class="btn primary sm" type="button" data-act="notifperm">${I.bell}السماح بالإشعارات</button></div>`:""}
-        <span class="ro-note">إذا البرنامج مسكّر بالكامل، توصلك الحركات بتقارير تيليكرام.</span></div>
+        </div>`}
       <div style="margin-top:12px"><button class="btn" type="button" data-act="notiftest">${I.bell}جرّب الإشعار</button></div>`}
   if(k==="look"){let th="system";try{th=localStorage.getItem(THEME_KEY)||"system"}catch(e){}
     return `<h2>المظهر</h2><div class="toggle-row"><span>الوضع</span><div class="seg" role="group" aria-label="الوضع">${[["system","تلقائي"],["light","فاتح"],["dark","ليلي"]].map(([k2,l])=>`<button type="button" data-theme-set="${k2}" aria-pressed="${th===k2}">${l}</button>`).join("")}</div></div>`}
@@ -3621,7 +3686,7 @@ document.addEventListener("click",e=>{
     if(n&&d!==lockDays())confirmBox("تشغيل قفل الحسابات",`${n} زبون راح ينقفل حسابه هسه لأنه ما سدد كامل خلال ${d} يوم. تكدر تفتح أي واحد منهم من صفحته.`,"تشغيل",go);else go();return}
   const vsb=t.closest("[data-vsearch]");if(vsb){voiceSearch(vsb);return}
   const sp=t.closest("[data-set]");if(sp){S.setPage=sp.dataset.set||null;render();window.scrollTo(0,0);return}
-  const nf=t.closest("[data-notif]");if(nf){const k=nf.dataset.notif,on=nf.dataset.v==="1";setNotif(k,on);if(on&&k==="sound")chime();if(on&&k==="saveFx")saveFx(false);if(k==="daily")dailyCheck();render();return}
+  const nf=t.closest("[data-notif]");if(nf){const k=nf.dataset.notif,on=nf.dataset.v==="1";setNotif(k,on);if(NOTIF_ITEMS.some(x=>x[0]===k))pushKindsSave();if(on&&k==="sound")chime();if(on&&k==="saveFx")saveFx(false);if(k==="daily")dailyCheck();render();return}
   const hd=t.closest("[data-hide]");if(hd){const k=hd.dataset.hide,h=hiddenNums().filter(x=>x!==k);if(hd.dataset.v==="1")h.push(k);setHidden(h);render();return}
   const ha=t.closest("[data-hideall]");if(ha){setHidden(ha.dataset.hideall==="1"?HIDE_ITEMS.map(x=>x[0]):[]);S.reveal=false;render();return}
   const th=t.closest("[data-theme-set]");if(th){const v=th.dataset.themeSet;try{localStorage.setItem(THEME_KEY,v)}catch(x){}applyTheme(v);render();return}
@@ -3677,6 +3742,10 @@ document.addEventListener("click",e=>{
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
     case "intro":showIntro(0);break;
+    case "pushon":pushOn();break;
+    case "pushoff":pushOff();break;
+    case "pushtest":pushTest();toast("أرسلنا إشعار تجربة، لازم يطلع بشريط الإشعارات.");break;
+    case "pushchrome":openExternal(WEB_URL+"#notify");break;
     case "notifperm":if("Notification" in window)Notification.requestPermission().then(()=>render(),()=>{});break;
     case "notiftest":{const pr=notifPrefs();toast("🔴 علي سجّل دين 25,000 د.ع على فلاح");if(pr.sound)chime();
       if("Notification" in window&&Notification.permission==="granted"){const opt={body:"هذا إشعار تجربة",lang:"ar",dir:"rtl",icon:"icons/icon-192.png"};const sw=navigator.serviceWorker;(sw?sw.getRegistration().then(r=>r?r.showNotification("دفتر الديون",opt):new Notification("دفتر الديون",opt)):Promise.resolve(new Notification("دفتر الديون",opt))).catch(()=>{})}break}

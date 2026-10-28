@@ -46,6 +46,13 @@ jobs:
           if [ -n "$GEMINI_API_KEY" ]; then printf '%s' "$GEMINI_API_KEY" | tr -d '[:space:]"'"'"'' | npx wrangler secret put GEMINI_API_KEY; fi
           if [ -n "$ANTHROPIC_API_KEY" ]; then printf '%s' "$ANTHROPIC_API_KEY" | npx wrangler secret put ANTHROPIC_API_KEY
           else yes | npx wrangler secret delete ANTHROPIC_API_KEY >/dev/null 2>&1 || true; fi
+      - name: Make the key for phone notifications (once)
+        # The same key must stay for good: a new one would cut off every phone already subscribed. So it is made only if missing.
+        run: |
+          list=$(npx wrangler secret list --format json) || { echo "::warning::Could not list the worker's secrets, so the notification key was left alone."; exit 0; }
+          if printf '%s' "$list" | grep -q '"VAPID_JWK"'; then echo "VAPID_JWK already set"; else
+            node -e 'const {generateKeyPairSync}=require("crypto");const k=generateKeyPairSync("ec",{namedCurve:"P-256"}).privateKey.export({format:"jwk"});process.stdout.write(JSON.stringify(k))' | npx wrangler secret put VAPID_JWK
+          fi
       - name: Store the GitHub token for the periodic report
         run: |
           if [ -n "$DISPATCH_TOKEN" ]; then printf '%s' "$DISPATCH_TOKEN" | tr -d '[:space:]' | npx wrangler secret put GH_DISPATCH_TOKEN

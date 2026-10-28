@@ -1,6 +1,6 @@
 // Offline shell for the debt book: the page always tries the network first (so updates arrive), everything else is served
 // from cache and refreshed in the background. Firebase traffic is cross-origin and never touched here.
-const CACHE = "shahm-v63";
+const CACHE = "shahm-v64";
 const SHELL = [
   "./", "index.html", "config.js", "manifest.webmanifest",
   "vendor/firebase-app-compat.js", "vendor/firebase-auth-compat.js", "vendor/firebase-firestore-compat.js",
@@ -35,5 +35,25 @@ self.addEventListener("fetch", e => {
   e.respondWith(caches.match(req).then(hit => {
     const net = fetch(req).then(r => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(req, copy)); } return r; }).catch(() => hit);
     return hit || net;
+  }));
+});
+
+// Phone notifications sent by the server (worker/src/push.js) when a worker records a debt or payment. While the app is
+// on screen it shows the entry itself, so the push is skipped then (the test push always shows).
+self.addEventListener("push", e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (x) {}
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
+    if (!d.force && list.some(c => c.focused && !new URL(c.url).pathname.includes("/pos/"))) return;
+    return self.registration.showNotification(d.title || "دفتر الديون", {
+      body: d.body || "", tag: d.tag || undefined, lang: "ar", dir: "rtl", icon: "icons/icon-192.png", badge: "icons/icon-192.png",
+    });
+  }));
+});
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
+    const app = list.find(c => !new URL(c.url).pathname.includes("/pos/"));
+    return app ? app.focus() : self.clients.openWindow("./");
   }));
 });
