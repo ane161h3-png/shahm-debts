@@ -23,5 +23,11 @@ name = "AI_LIMIT"
 namespace_id = "1001"
 simple = { limit = 10, period = 60 }
 
+# At most 60 phone notifications a minute per person (see src/push.js).
+[[ratelimits]]
+name = "PUSH_LIMIT"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }
+
 [triggers]
 crons = ["7 4,9,14,19 * * *"]

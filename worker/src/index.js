@@ -4,6 +4,7 @@
 // Uses Google Gemini (free tier) by default; adding an ANTHROPIC_API_KEY secret switches it to Claude.
 // POST /wa sends the customer a WhatsApp message through Meta's official Cloud API after a debt or payment (see sendWhatsApp).
 import Anthropic from "@anthropic-ai/sdk";
+import { handlePush, vapidPublic } from "./push.js";
 
 const MAX_IMAGES = 4;
 const MAX_IMAGE_CHARS = 7_000_000; // ~5 MB of base64 per photo
@@ -403,6 +404,12 @@ export default {
   async fetch(request, env) {
     const cors = corsFor(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    if (new URL(request.url).pathname === "/push") {
+      if (request.method === "GET") return json({ key: vapidPublic(env) }, 200, cors);
+      if (request.method !== "POST") return json({ error: "Not found" }, 404, cors);
+      try { return await handlePush(request, env, json, cors); }
+      catch (e) { console.error(e); return json({ error: "تعذّر إرسال الإشعار." }, 502, cors); }
+    }
     if (new URL(request.url).pathname === "/wa") {
       if (request.method === "GET") return json({ configured: !!(env.WA_TOKEN && env.WA_PHONE_ID) }, 200, cors);
       if (request.method !== "POST") return json({ error: "Not found" }, 404, cors);
