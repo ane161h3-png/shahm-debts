@@ -185,7 +185,7 @@ select.sort{border:1px solid var(--line);background:var(--paper-2);border-radius
 .chip.warn{background:var(--warn-soft);color:var(--warn)}
 .cust-row{display:flex;align-items:center;gap:4px}
 /* Swipe a row on a phone: right = payment (green), left = debt (red); the row slides over a tinted strip with its label. */
-.cust-row{position:relative;border-radius:var(--r-ctl);transition:background .15s}
+.cust-row{position:relative;border-radius:var(--r-ctl);transition:background .15s;touch-action:pan-y}
 .cust-row.swiping{transition:none}
 .cust-row.swiping>*{pointer-events:none}
 .cust-row[data-sw="pay"]{background:var(--paid-soft)}
@@ -1257,7 +1257,12 @@ const NOTIF_KEY="shahm-notif",NOTIF_ITEMS=[["debt","دين جديد"],["pay","ت
 function notifPrefs(){let o={};try{o=JSON.parse(localStorage.getItem(NOTIF_KEY)||"{}")||{}}catch(e){}return {debt:true,pay:true,edit:true,cust:false,sound:true,saveFx:true,daily:true,dailyAt:10,...o}}
 function setNotif(k,v){const o={...notifPrefs(),[k]:v};try{localStorage.setItem(NOTIF_KEY,JSON.stringify(o))}catch(e){}}
 let audioCtx=null;
-function chime(notes=[[880,0],[1320,.12]],buzz=60){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();const t=audioCtx.currentTime;
+/* iPhone Safari keeps a sound context silent until it is started from a touch, and pauses it again in the background, so
+   every touch wakes it (with an empty sound) and the tones play later too. */
+function audioWake(){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==="running")return;audioCtx.resume().catch(()=>{});
+  const s=audioCtx.createBufferSource();s.buffer=audioCtx.createBuffer(1,1,22050);s.connect(audioCtx.destination);s.start(0)}catch(e){}}
+document.addEventListener("touchend",audioWake,{passive:true});document.addEventListener("click",audioWake);
+function chime(notes=[[880,0],[1320,.12]],buzz=60){try{audioWake();const t=audioCtx.currentTime;
   for(const [f,d] of notes){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=f;o.connect(g);g.connect(audioCtx.destination);
     g.gain.setValueAtTime(.0001,t+d);g.gain.exponentialRampToValueAtTime(.18,t+d+.02);g.gain.exponentialRampToValueAtTime(.0001,t+d+.25);o.start(t+d);o.stop(t+d+.3)}}catch(e){}
   try{navigator.vibrate&&navigator.vibrate(buzz)}catch(e){}}
