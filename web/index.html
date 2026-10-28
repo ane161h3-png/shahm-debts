@@ -1031,7 +1031,7 @@ function authMsg(e){const c=(e&&e.code)||"";
   if(c==="auth/email-already-in-use")return "اسم المستخدم مأخوذ، اختر اسماً آخر.";
   if(c==="auth/too-many-requests")return "محاولات كثيرة. انتظر قليلاً وحاول مرة ثانية.";
   if(c==="auth/network-request-failed")return "لا يوجد اتصال بالإنترنت.";
-  if(c==="auth/weak-password")return "كلمة المرور 6 أحرف على الأقل.";
+  if(c==="auth/weak-password")return "كلمة المرور ضعيفة: 8 أحرف على الأقل.";
   if(c==="auth/operation-not-allowed")return "تسجيل الدخول غير مفعّل في Firebase (Email/Password).";
   return "صار خطأ: "+(c||(e&&e.message)||"غير معروف");
 }
@@ -1086,9 +1086,10 @@ function showRegister(){
     <form id="rf" class="field" style="gap:12px" novalidate>
       ${MULTI?`<div class="field"><label for="rShop">اسم المحل</label><input id="rShop" maxlength="60" placeholder="مثال: ماركت النور"></div>`:""}
       <div class="field"><label for="rName">اسمك</label><input id="rName" maxlength="40" placeholder="مثال: علي"></div>
-      ${MULTI?`<div class="field"><label for="rPhone">رقم الهاتف</label><input id="rPhone" inputmode="tel" maxlength="20" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx"></div>`:""}
+      <div class="field"><label for="rMail">الإيميل</label><input id="rMail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right" placeholder="name@gmail.com"><span class="help">يوصلك عليه رابط تأكيد، وتسترجع بيه كلمة المرور إذا نسيتها.</span></div>
+      <div class="field"><label for="rPhone">رقم الهاتف</label><input id="rPhone" inputmode="tel" autocomplete="tel" maxlength="20" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx"></div>
       <div class="field"><label for="rUser">اسم المستخدم</label><input id="rUser" maxlength="30" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right" placeholder="ali"><span class="help">أحرف إنجليزية أو أرقام، بدون فراغات.</span></div>
-      <div class="field"><label for="rPw">كلمة المرور</label><div class="pw"><input id="rPw" type="password" autocomplete="new-password"><button type="button" data-showpw="rPw">إظهار</button></div><span class="help">6 أحرف على الأقل.</span></div>
+      <div class="field"><label for="rPw">كلمة المرور</label><div class="pw"><input id="rPw" type="password" autocomplete="new-password"><button type="button" data-showpw="rPw">إظهار</button></div><span class="help">8 أحرف على الأقل، وخليها صعبة التخمين.</span></div>
       <p class="err" id="rErr"></p>
       <button class="btn primary block" type="submit" id="rGo">${MULTI?"تسجيل المحل":"إنشاء الحساب"}</button>
     </form>
@@ -1100,10 +1101,17 @@ function showRegister(){
       e.preventDefault();const err=$("#rErr"),btn=$("#rGo");
       const r=validateAccount($("#rName").value,$("#rUser").value,$("#rPw").value,null);
       if(r.error){err.textContent=r.error;return}
-      const shop=MULTI?{shop:$("#rShop").value.trim(),phone:normDigits($("#rPhone").value).trim()}:null;
+      const mail=$("#rMail").value.trim().toLowerCase(),phone=normDigits($("#rPhone").value).trim();
+      if(!MAIL_RE.test(mail)||isFakeEmail(mail)){err.textContent="اكتب إيميلك الحقيقي.";return}
+      if(phone.replace(/\D/g,"").length<10){err.textContent="اكتب رقم هاتف صحيح.";return}
+      const shop=MULTI?{shop:$("#rShop").value.trim(),phone}:null;
       if(shop&&!shop.shop){err.textContent="اكتب اسم المحل.";return}
-      const label=btn.textContent;btn.disabled=true;btn.textContent="جارِ الإنشاء…";REG={name:r.name,username:r.username,shop};
-      try{await auth.createUserWithEmailAndPassword(emailOf(r.username),r.pw)}catch(x){REG=null;err.textContent=authMsg(x);btn.disabled=false;btn.textContent=label}
+      const label=btn.textContent;btn.disabled=true;btn.textContent="جارِ الإنشاء…";REG={name:r.name,username:r.username,shop,phone,mail};
+      // The username stays the login's unique name (username@domain); the real e-mail becomes the login once the person
+      // opens the link Firebase mails them, and from then on «نسيت كلمة المرور؟» works.
+      try{const cr=await auth.createUserWithEmailAndPassword(emailOf(r.username),r.pw);
+        try{auth.languageCode="ar";await cr.user.verifyBeforeUpdateEmail(mail);rememberLogin(r.username,mail);toast(`دزينا رابط تأكيد إلى ${mail}. افتحه (شوف Spam هم).`,{ms:12000})}catch(x){console.warn(x)}
+      }catch(x){REG=null;err.textContent=authMsg(x);btn.disabled=false;btn.textContent=label}
     });
   }});
 }
@@ -1113,12 +1121,14 @@ function showWaiting(msg,kind,retry){
     <button class="btn block" type="button" id="wOut">تسجيل الخروج</button>`,
     mount:g=>{g.querySelector("#wOut").onclick=()=>signOut();const r=g.querySelector("#wRetry");if(r)r.onclick=()=>location.reload()}});
 }
+// New passwords: 8 characters at least (older accounts keep signing in with theirs until they change it).
+const PW_MIN=8,MAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function validateAccount(name,username,pw,selfId){
   name=String(name||"").trim();username=normDigits(username).trim().toLowerCase();
   if(!name)return {error:"اكتب الاسم."};
   if(!/^[a-z0-9_.]{3,30}$/.test(username))return {error:"اسم المستخدم من 3 إلى 30 حرفاً إنجليزياً أو رقماً."};
   if([...S.accounts.values()].some(a=>a.username===username&&a.id!==selfId))return {error:"اسم المستخدم مأخوذ، اختر اسماً آخر."};
-  if(pw!==null&&String(pw).length<6)return {error:"كلمة المرور 6 أحرف على الأقل."};
+  if(pw!==null&&String(pw).length<PW_MIN)return {error:`كلمة المرور ${PW_MIN} أحرف على الأقل.`};
   return {name,username,pw};
 }
 function wirePw(root){root.querySelectorAll("[data-showpw]").forEach(b=>b.addEventListener("click",()=>{const i=document.getElementById(b.dataset.showpw);const s=i.type==="password";i.type=s?"text":"password";b.textContent=s?"إخفاء":"إظهار"}))}
@@ -1203,7 +1213,7 @@ function navBtn([k,l,ic]){return `<button type="button" data-go="${k}" aria-curr
 /* ---------- notifications: the home alerts live behind a bell in the header ---------- */
 function alertsHTML(){
   let supOwed=0;for(const c of S.customers.values())if(isSup(c)){const b=balanceOf(c.id);if(b>0)supOwed+=b}
-  return subAlerts()+`${(()=>{const w=warnList().filter(x=>!x.snoozed&&x.level>=2);if(!w.length)return "";const h=w.filter(x=>x.level===3).length;
+  return mailAlert()+subAlerts()+`${(()=>{const w=warnList().filter(x=>!x.snoozed&&x.level>=2);if(!w.length)return "";const h=w.filter(x=>x.level===3).length;
           return `<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${I.alert} <b class="num">${w.length}</b> حساب يحتاج متابعة${h?`، منهم <b class="num">${h}</b> أولوية عالية`:""}.</span><button class="btn sm" type="button" data-act="gowarn">${I.bell}عرضهم</button></div>`})()}
         ${isAdmin()&&(!S.settings.lastBackupAt||Date.now()-S.settings.lastBackupAt>7*864e5)&&S.customers.size?`<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${S.settings.lastBackupAt?"مرّ أكثر من أسبوع على آخر نسخة احتياطية.":"لم تحفظ نسخة احتياطية بعد."}</span><button class="btn sm" type="button" data-act="gobackup">${I.save}احفظ نسخة</button></div>`:""}
         ${(()=>{const due=[...S.customers.values()].filter(c=>!isSup(c)&&c.promise&&promiseLeft(c)<=0&&balanceOf(c.id)>0);if(!due.length)return "";
@@ -1220,6 +1230,9 @@ function alertsHTML(){
           return h})()}
         ${supOwed>0?`<div class="banner warn">علينا للموردين: ${shown("sup",`<b class="num">${fmt(supOwed)}</b> ${CUR}`)}</div>`:""}`;
 }
+// Accounts still on the made-up login (no real e-mail confirmed) can't reset a forgotten password.
+function mailAlert(){const u=auth&&auth.currentUser;if(!u||!isFakeEmail(u.email))return "";
+  return `<div class="banner warn" style="display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>🔒 حسابك بدون إيميل مؤكد: إذا نسيت كلمة المرور ما ترجع. اربط إيميلك، وإذا وصلك رابط افتحه.</span><button class="btn sm" type="button" data-act="goaccount">ربط الإيميل</button></div>`}
 // Subscriptions: the shop's owner sees its own end date coming; the app's owner sees shops ending or ended.
 function subAlerts(){
   if(SHOP&&isAdmin()&&S.shop&&S.shop.until){const n=subLeft(S.shop);if(n>7)return "";
@@ -2075,7 +2088,7 @@ function setPage(k){
     <div class="tpl"><h3>${I.edit}تغيير كلمة المرور</h3>
       <form id="pwForm" class="field" style="gap:10px" novalidate>
         <div class="field"><label for="pCur">كلمة المرور الحالية</label><div class="pw"><input id="pCur" type="password" autocomplete="current-password"><button type="button" data-showpw="pCur">إظهار</button></div></div>
-        <div class="field"><label for="pNew">كلمة المرور الجديدة</label><div class="pw"><input id="pNew" type="password" autocomplete="new-password"><button type="button" data-showpw="pNew">إظهار</button></div><span class="help">6 أحرف على الأقل.</span></div>
+        <div class="field"><label for="pNew">كلمة المرور الجديدة</label><div class="pw"><input id="pNew" type="password" autocomplete="new-password"><button type="button" data-showpw="pNew">إظهار</button></div><span class="help">8 أحرف على الأقل.</span></div>
         <p class="err" id="pErr"></p>
         <div><button class="btn primary" type="submit">حفظ كلمة المرور</button></div>
       </form></div>
@@ -2588,7 +2601,7 @@ function accountForm(){
     <form id="af" class="field" style="gap:10px" novalidate>
       <div class="field"><label for="aName">الاسم</label><input id="aName" maxlength="40"></div>
       <div class="field"><label for="aUser">اسم المستخدم</label><input id="aUser" maxlength="30" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div>
-      <div class="field"><label for="aPw">كلمة المرور</label><div class="pw"><input id="aPw" type="password" autocomplete="new-password"><button type="button" data-showpw="aPw">إظهار</button></div><span class="help">6 أحرف على الأقل. أعطها له بنفسك، ويقدر يغيّرها من «حسابي».</span></div>
+      <div class="field"><label for="aPw">كلمة المرور</label><div class="pw"><input id="aPw" type="password" autocomplete="new-password"><button type="button" data-showpw="aPw">إظهار</button></div><span class="help">8 أحرف على الأقل. أعطها له بنفسك، ويقدر يغيّرها من «حسابي».</span></div>
       <div class="field"><label for="aRole">الصلاحية</label><select id="aRole"><option value="editor">محرر: يضيف ويعدّل الديون</option><option value="viewer">مشاهد: يشوف فقط</option></select></div>
       <p class="err" id="aErr"></p>
       <div class="foot"><button class="btn primary" type="submit" id="aGo">حفظ</button><button class="btn" type="button" data-close>إلغاء</button></div>
@@ -2651,7 +2664,7 @@ async function linkEmail(){
 async function changePassword(){
   const cur=$("#pCur").value,nw=$("#pNew").value,err=$("#pErr");
   if(!cur){err.textContent="اكتب كلمة المرور الحالية.";return}
-  if(nw.length<6){err.textContent="كلمة المرور الجديدة 6 أحرف على الأقل.";return}
+  if(nw.length<PW_MIN){err.textContent=`كلمة المرور الجديدة ${PW_MIN} أحرف على الأقل.`;return}
   try{
     const u=auth.currentUser;await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,cur));await u.updatePassword(nw);
     $("#pCur").value="";$("#pNew").value="";err.textContent="";toast("تم تغيير كلمة المرور");
@@ -3437,6 +3450,7 @@ document.addEventListener("click",e=>{
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
     case "goshops":S.view="settings";S.setPage="shops";render();break;
+    case "goaccount":S.view="settings";S.setPage="account";render();break;
     case "htpdf":custTableExport("pdf");break;
     case "htcsv":custTableExport("csv");break;
     case "remseq":if(canWrite())remSeq();break;
@@ -3761,8 +3775,8 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
         if(s.metadata.fromCache)return; // wait for the server before deciding the profile is missing
         const un=uname||(u.email||"").split("@")[0].toLowerCase().replace(/[^a-z0-9_.]/g,"").slice(0,30)||"user"; // a deleted account that had linked its e-mail asks again
         if(MULTI&&!SHOP){const r=REG;REG=null;showShopSetup(u,{username:un,name:r&&r.name,shop:r&&r.shop&&r.shop.shop,phone:r&&r.shop&&r.shop.phone});return}
-        const name=(REG&&REG.username===un&&REG.name)||un;REG=null;
-        db.collection(P("users")).doc(u.uid).set({id:u.uid,name,username:un,role:"viewer",status:"pending",createdAt:Date.now()})
+        const mine=REG&&REG.username===un,name=(mine&&REG.name)||un,phone=mine&&REG.phone||"";REG=null;
+        db.collection(P("users")).doc(u.uid).set({id:u.uid,name,username:un,role:"viewer",status:"pending",createdAt:Date.now(),...(phone?{phone}:{})})
           .catch(()=>showWaiting("تعذّر إرسال طلبك. تحقق من الإنترنت وسجّل دخول مرة ثانية.","bad"));
         return;
       }

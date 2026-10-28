@@ -135,8 +135,8 @@ service cloud.firestore {
     }
     // Signing up: a pending viewer with only the fields the sign-up form writes.
     function signUpOk(uid) {
-      return d().keys().hasOnly(['id', 'name', 'username', 'role', 'status', 'createdAt'])
-        && d().id == uid && nameOk(d().name) && str(d().username, 40)
+      return d().keys().hasOnly(['id', 'name', 'username', 'role', 'status', 'createdAt', 'phone'])
+        && d().id == uid && nameOk(d().name) && str(d().username, 40) && str(d().get('phone', ''), 30)
         && d().status == 'pending' && d().role == 'viewer';
     }
 
