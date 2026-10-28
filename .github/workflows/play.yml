@@ -1,0 +1,112 @@
+# Google Play bundles (.aab) for the two apps. Separate from android.yml so the APKs on the website are never touched:
+# - Play needs an App Bundle, not an APK, and a recent target SDK (Android 16, API 36, for new apps since 31 Aug 2026).
+# - Signed with the same shop key as the APKs (secrets ANDROID_KEYSTORE / ANDROID_KEYSTORE_PASSWORD); in Play Console
+#   this key is the upload key and Google keeps the app signing key (Play App Signing).
+# - versionCode = this workflow's run number, so every bundle uploaded to Play is newer than the last one.
+# On main the bundles go to the release play-latest; on a pull request that changes this file they are only built
+# (kept as a workflow artifact) so the build is checked before merging.
+name: Play bundle
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths: [.github/workflows/play.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: play-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  aab:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: debts
+            aab: shahm-debts.aab
+            assets: assets
+          - app: pos
+            aab: shahm-pos.aab
+            assets: assets-pos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Cashier app settings
+        if: matrix.app == 'pos'
+        run: |
+          echo '{"appId":"com.shahm.pos","appName":"كاشير الشهم","webDir":"web","server":{"url":"https://shahm-debts.app/pos/","errorPath":"pos/index.html"},"android":{"adjustMarginsForEdgeToEdge":"force"}}' > capacitor.config.json
+      - name: Create Android project
+        run: |
+          npx cap add android
+          npx @capacitor/assets generate --android --assetPath ${{ matrix.assets }} \
+            --iconBackgroundColor '#0e5a3a' --iconBackgroundColorDark '#0e5a3a' \
+            --splashBackgroundColor '#f4f2ec' --splashBackgroundColorDark '#0f1512'
+          npx cap sync android
+      # Target Android 16 (API 36). The Capacitor 7 template ships API 35 and Android Gradle Plugin 8.7.2; API 36 needs
+      # AGP 8.9.1, which still runs on the template's Gradle 8.11.1.
+      - name: Target SDK 36
+        run: |
+          yes | "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" > /dev/null
+          sed -i -E 's/compileSdkVersion = [0-9]+/compileSdkVersion = 36/; s/targetSdkVersion = [0-9]+/targetSdkVersion = 36/' android/variables.gradle
+          sed -i "s#com.android.tools.build:gradle:8.7.2#com.android.tools.build:gradle:8.9.1#" android/build.gradle
+          grep -E "SdkVersion" android/variables.gradle
+          grep "tools.build:gradle" android/build.gradle
+      - name: Permissions
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.READ_CONTACTS" />\n    <uses-permission android:name="android.permission.WRITE_CONTACTS" />#' $M
+          if [ "${{ matrix.app }}" = pos ]; then
+            sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.CAMERA" />#' $M
+          fi
+          grep "uses-permission" $M
+      - name: Set version
+        run: |
+          sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"1.1.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -E "versionCode|versionName" android/app/build.gradle
+      - name: Signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then echo "::error::Secret ANDROID_KEYSTORE is missing (see MAINTENANCE.md)"; exit 1; fi
+          printf %s "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/shahm.p12"
+      - name: Build bundle
+        working-directory: android
+        env:
+          KEY_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          ./gradlew bundleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/shahm.p12" -Pandroid.injected.signing.store.password="$KEY_PW" \
+            -Pandroid.injected.signing.key.alias=shahm -Pandroid.injected.signing.key.password="$KEY_PW"
+      - name: Check bundle
+        run: |
+          AAB=android/app/build/outputs/bundle/release/app-release.aab
+          keytool -printcert -jarfile "$AAB" | grep -E "SHA256|Owner" | head -3
+          unzip -l "$AAB" | grep -c "base/dex/"
+          cp "$AAB" ${{ matrix.aab }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.aab }}
+          path: ${{ matrix.aab }}
+          retention-days: 30
+      - name: Publish release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view play-latest > /dev/null 2>&1; then
+            gh release upload play-latest ${{ matrix.aab }} --clobber
+          else
+            gh release create play-latest ${{ matrix.aab }} --target "${{ github.sha }}" --latest=false --prerelease \
+              --title "Google Play bundles" --notes "ملفات AAB للرفع على Google Play Console (ليست للتثبيت المباشر). كل رفع جديد يحتاج رقم نسخة أكبر، وهذا يصير تلقائياً." \
+              || gh release upload play-latest ${{ matrix.aab }} --clobber
+          fi

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e5a3a">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="stylesheet" href="vendor/fonts/fonts.css">
+<style>
+:root{--bg:#f4f2ec;--paper:#ffffff;--line:#e3ded3;--ink:#1c2421;--muted:#5e6660;--accent:#0e5a3a;--accent-ink:#fff7e8;--accent-soft:#dceee3;--debt:#c2301e}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0f1512;--paper:#172019;--line:#2c3830;--ink:#ecf1ec;--muted:#9aa59d;--accent:#5fc48c;--accent-ink:#06200f;--accent-soft:#1b3527;--debt:#ff8a78;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1512;--paper:#172019;--line:#2c3830;--ink:#ecf1ec;--muted:#9aa59d;--accent:#5fc48c;--accent-ink:#06200f;--accent-soft:#1b3527;--debt:#ff8a78;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans Arabic","Tajawal",Tahoma,sans-serif;line-height:1.8;font-size:16px}
+header{background:var(--accent);color:var(--accent-ink);padding:22px 16px;text-align:center}
+header h1{margin:0;font-family:"Tajawal",sans-serif;font-size:24px}
+header p{margin:4px 0 0;opacity:.85;font-size:14px}
+main{max-width:780px;margin:0 auto;padding:16px}
+section{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:6px 18px;margin:14px 0}
+h2{font-family:"Tajawal",sans-serif;color:var(--accent);font-size:19px;margin:14px 0 4px}
+ul,ol{padding-inline-start:22px}
+a{color:var(--accent);font-weight:600}
+.en{direction:ltr;text-align:left;font-family:"Segoe UI",Roboto,Arial,sans-serif;font-size:15px}
+.en h2{font-family:inherit}
+.note{color:var(--muted);font-size:14px}
+.warn{color:var(--debt);font-weight:600}
+footer{text-align:center;color:var(--muted);font-size:13px;padding:10px 16px 30px}
+</style>
+<title>سياسة الخصوصية: ديون الشهم</title>
+</head>
+<body>
+<header><h1>سياسة الخصوصية</h1><p>تطبيق «ديون الشهم» (دفتر الديون) وتطبيق «كاشير الشهم» · آخر تحديث: 28 تشرين الأول 2026</p></header>
+<main>
+<section>
+<h2>من نحن</h2>
+<p>التطبيق دفتر ديون إلكتروني للمحلات: يسجل المحل ديون زبائنه وتسديداتهم وحسابات الموردين. يستخدمه صاحب المحل والعاملون اللي يعطيهم صلاحية. للتواصل بخصوص الخصوصية أو حذف البيانات: <a href="mailto:hydrzyd83@gmail.com">hydrzyd83@gmail.com</a>.</p>
+</section>
+<section>
+<h2>شنو البيانات اللي نخزنها</h2>
+<ul>
+<li><b>حساب الدخول:</b> اسم المستخدم وكلمة المرور (مشفّرة عند Google Firebase)، والإيميل إذا ربطه المستخدم بنفسه حتى يسترجع كلمة المرور.</li>
+<li><b>بيانات المحل اللي يكتبها المستخدم:</b> أسماء الزبائن والموردين وأرقام هواتفهم، المبالغ والتواريخ والملاحظات، صور الفواتير، ومن سجّل كل حركة ووقتها.</li>
+<li><b>الكاشير:</b> المواد والأسعار والمبيعات والورديات.</li>
+</ul>
+<p>ما نجمع موقعك، ولا نستخدم إعلانات أو أدوات تتبّع أو تحليلات، وما نبيع أي بيانات لأي جهة.</p>
+</section>
+<section>
+<h2>الصلاحيات على الموبايل</h2>
+<ul>
+<li><b>جهات الاتصال:</b> بس حتى تختار رقم زبون من موبايلك بدل ما تكتبه. التطبيق يقرأ جهة الاتصال اللي تختارها أنت فقط، وما يرفع دفتر الأسماء.</li>
+<li><b>المايكروفون:</b> للإدخال بالصوت وقت تضغط زر المايك فقط. تحويل الكلام لنص تسويه خدمة الكلام بالموبايل أو المتصفح (Google)، والتطبيق ما يسجل الصوت ولا يخزنه.</li>
+<li><b>الكاميرا (الكاشير):</b> لقراءة باركود المواد. الصورة ما تنحفظ ولا تنرفع.</li>
+</ul>
+</section>
+<section>
+<h2>وين تنحفظ البيانات ومن يشوفها</h2>
+<ul>
+<li>تنحفظ بقاعدة بيانات Google Firebase (Cloud Firestore) مع اتصال مشفّر (HTTPS). كل محل يشوف دفتره بس.</li>
+<li>داخل المحل: صاحب المحل يحدد منو يدخل، وكل مستخدم يشوف حسب صلاحيته (مشاهدة أو تعديل).</li>
+<li>قراءة صورة اليومية بالذكاء الاصطناعي (اختيارية): الصورة تنرسل لخدمة Google Gemini حتى تتحول لنص، وما تنحفظ هناك من طرفنا.</li>
+<li>النسخ الاحتياطية: صاحب المحل يقدر يحفظ نسخة على جهازه أو يستلمها على حسابه بتيليكرام. هاي بيده، وما نوصلها لأي أحد ثاني.</li>
+<li>رسائل واتساب للزبائن تنفتح بتطبيق واتساب بموبايلك وأنت اللي تدزها. التطبيق ما يدز رسائل وحده.</li>
+</ul>
+</section>
+<section>
+<h2>حذف الحساب والبيانات</h2>
+<p>تقدر تحذف حساب دخولك من داخل التطبيق: <b>الإعدادات ← حسابي ← حذف حسابي</b>. أو اطلب الحذف من صفحة <a href="delete-account.html">حذف الحساب</a>. بيانات المحل (الديون والزبائن) تنحذف بطلب من صاحب المحل خلال 30 يوم، إلا اللي يلزم القانون الاحتفاظ بيه.</p>
+</section>
+<section>
+<h2>الأطفال</h2>
+<p>التطبيق للمحلات وأصحاب الأعمال، ومو موجّه للأطفال دون 13 سنة.</p>
+</section>
+<section>
+<h2>التغييرات</h2>
+<p>إذا تغيّرت هاي السياسة نحدّث التاريخ بأعلى الصفحة.</p>
+</section>
+
+<section class="en" lang="en" dir="ltr">
+<h2>Privacy Policy (English summary)</h2>
+<p>"ديون الشهم" (Shahm Debts) and "كاشير الشهم" (Shahm Cashier) are bookkeeping apps for shops: they record customer debts, payments, supplier accounts and cashier sales. Contact: <a href="mailto:hydrzyd83@gmail.com">hydrzyd83@gmail.com</a>.</p>
+<ul>
+<li><b>Data stored:</b> login username and password (handled by Google Firebase Authentication), an optional e-mail for password reset, and the records the shop enters: customer and supplier names and phone numbers, amounts, dates, notes, invoice photos, items and sales, and which user recorded each entry.</li>
+<li><b>Where:</b> Google Firebase (Cloud Firestore), encrypted in transit. Each shop can only access its own data; the shop owner controls which staff accounts can view or edit.</li>
+<li><b>Permissions:</b> Contacts, only to pick one phone number the user selects (the address book is never uploaded). Microphone, only while the user taps the mic for voice entry; speech-to-text is done by the device/Google speech service and audio is not stored. Camera (cashier), only to scan barcodes; images are not stored.</li>
+<li><b>Optional processing:</b> photos of a handwritten daily sheet can be sent to Google Gemini to be read as text. WhatsApp messages are opened in WhatsApp and sent by the user.</li>
+<li><b>No</b> ads, analytics, tracking, location, or sale or sharing of data with third parties.</li>
+<li><b>Deletion:</b> in the app, Settings → حسابي (My account) → حذف حسابي (Delete my account), or via the <a href="delete-account.html">account deletion page</a>. Shop records are deleted on the shop owner's request within 30 days.</li>
+<li>The apps are intended for businesses, not for children under 13.</li>
+</ul>
+</section>
+</main>
+<footer>shahm-debts.app</footer>
+</body>
+</html>

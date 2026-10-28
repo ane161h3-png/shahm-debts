@@ -2156,7 +2156,8 @@ function setPage(k){
         <p class="err" id="pErr"></p>
         <div><button class="btn primary" type="submit">حفظ كلمة المرور</button></div>
       </form></div>
-    <div><button class="btn" type="button" data-act="logout" style="color:var(--debt)">${I.out}تسجيل الخروج</button></div>`;
+    <div><button class="btn" type="button" data-act="logout" style="color:var(--debt)">${I.out}تسجيل الخروج</button></div>
+    ${delAccountCard()}`;
   if(k==="install"){
     const shareTxt="برنامج دفتر ديون "+shopName()+":\nللأندرويد (APK): "+APK_URL+"\nللابتوب والآيفون: "+WEB_URL;
     return `<h2>تثبيت البرنامج</h2><p class="lead">${NATIVE?"أنت تستخدم تطبيق الأندرويد. الديون تتزامن تلقائياً مع اللابتوب وباقي الأجهزة.":"نفس الحساب يشتغل على كل الأجهزة، والديون تتزامن تلقائياً."}</p>
@@ -2724,6 +2725,29 @@ async function linkEmail(){
     $("#mNew").value="";$("#mPw").value="";err.textContent="";
     toast(`دزينا رابط تأكيد إلى ${m}. افتحه (شوف Spam هم)، وبعدها سجّل دخول من جديد.`,{ms:12000});
   }catch(x){err.textContent=x&&x.code==="auth/email-already-in-use"?"هذا الإيميل مربوط بحساب ثاني.":x&&x.code==="auth/invalid-email"?"اكتب إيميل صحيح.":authMsg(x)}
+}
+/* Settings > حسابي > حذف حسابي (Google Play asks for this in every app where people make accounts).
+   A staff login deletes itself: the shop's debts and movements it recorded stay, they belong to the shop. The owner of a
+   notebook can't delete its own login here (its debts would be left without anyone able to open them): a shop owner
+   sends a deletion request by e-mail, and the main notebook's owner has nothing to delete it for. */
+const DEL_MAIL="hydrzyd83@gmail.com";
+function delAccountCard(){
+  const head=`<div class="tpl"><h3>${I.trash}حذف حسابي</h3>`,page=`<a href="https://shahm-debts.app/delete-account.html" target="_blank" rel="noopener">صفحة حذف الحساب</a>`;
+  if(isAdmin()&&!SHOP)return head+`<span class="ro-note">هذا حساب صاحب الدفتر، وما ينحذف من هنا حتى ما تضيع الديون. المستخدمين الثانيين تحذفهم من الإعدادات ← المستخدمين. التفاصيل: ${page}.</span></div>`;
+  if(isAdmin()){const sub=encodeURIComponent("طلب حذف حساب محل"),body=encodeURIComponent(`اسم المستخدم: ${S.me.username||""}\nالمحل: ${shopName()}\nأريد حذف حسابي وكل بيانات المحل.`);
+    return head+`<span class="ro-note">حذف حساب صاحب المحل يحذف كل بيانات المحل (الزبائن والديون والحركات) ونهائي. احفظ نسخة احتياطية أولاً، ثم أرسل الطلب ونخلصه خلال 30 يوم. ${page}.</span>
+      <div><a class="btn" href="mailto:${DEL_MAIL}?subject=${sub}&body=${body}" style="color:var(--debt)">${I.trash}إرسال طلب الحذف</a></div></div>`}
+  return head+`<span class="ro-note">ينحذف حساب دخولك فوراً وما يرجع. الديون والحركات اللي سجلتها تبقى بدفتر المحل.</span>
+    <form id="delForm" class="field" style="gap:10px" novalidate><div class="field"><label for="dPw">اكتب كلمة المرور للتأكيد</label><div class="pw"><input id="dPw" type="password" autocomplete="current-password"><button type="button" data-showpw="dPw">إظهار</button></div></div>
+      <p class="err" id="dErr"></p><div><button class="btn debt" type="submit">${I.trash}حذف حسابي نهائياً</button></div></form></div>`;
+}
+function deleteMyAccount(){
+  const pw=$("#dPw").value,err=$("#dErr");if(!pw){err.textContent="اكتب كلمة المرور.";return}
+  confirmBox("حذف حسابي","ينحذف حساب الدخول مالتك نهائياً وما تكدر تدخل بيه مرة ثانية. متأكد؟","حذف",async()=>{
+    try{const u=auth.currentUser;await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,pw));
+      if(canWrite())try{log("delete","account",{detail:"حذف حساب الدخول مالته"})}catch(e){}
+      await u.delete();signOut("انحذف حسابك.","ok");
+    }catch(x){err.textContent=authMsg(x)}});
 }
 async function changePassword(){
   const cur=$("#pCur").value,nw=$("#pNew").value,err=$("#pErr");
@@ -3616,6 +3640,7 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("submit",e=>{
   if(e.target.id==="pwForm"){e.preventDefault();changePassword();return}
+  if(e.target.id==="delForm"){e.preventDefault();deleteMyAccount();return}
   if(e.target.id==="mailForm"){e.preventDefault();linkEmail();return}
   if(e.target.id==="bizForm"){e.preventDefault();if(!isAdmin())return;const b=bizData();S.bizDraft=null;
     saveSettings({shopName:b.name.trim()||shopName(),phone:b.phone.trim(),address:b.address.trim(),card:{desc:b.desc.trim(),manager:b.manager.trim(),social:b.social.trim(),style:b.style}}).then(ok=>{if(ok)toast("انحفظت البطاقة")});return}
