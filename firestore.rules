@@ -142,12 +142,16 @@ service cloud.firestore {
 
     // ---------- Other shops (one app, many shops) ----------
     // Each shop that signs up in the app gets its own notebook under shops/{s}, where s is its owner's uid. It opens only
-    // once this app's owner (isOwner) sets its status to 'active'; 'disabled' closes it again without deleting anything.
+    // once this app's owner (isOwner) sets its status to 'active'; 'disabled' or a passed end date (until) closes it again
+    // without deleting anything.
     // Nobody in another shop can read or write this shop's data at the root, and this owner has no access to theirs.
     // memberOf/{uid} only says which shop an account opens: each account writes its own, and it grants nothing by itself.
     function memberPath(uid) { return /databases/$(database)/documents/memberOf/$(uid); }
     function shopPath(s) { return /databases/$(database)/documents/shops/$(s); }
-    function shopOn(s) { return exists(shopPath(s)) && get(shopPath(s)).data.status == 'active'; }
+    // An active shop with an end date (until, in ms, set by this owner when it pays for a month, 6 months...) closes at
+    // that moment by itself; no until = no end. The data stays, and renewing (a later until) opens it again.
+    function shopOn(s) { return exists(shopPath(s)) && get(shopPath(s)).data.status == 'active'
+      && (get(shopPath(s)).data.get('until', null) == null || get(shopPath(s)).data.until > request.time.toMillis()); }
     function sOwner(s) { return signedIn() && request.auth.uid == s; }
     function sProfPath(s) { return /databases/$(database)/documents/shops/$(s)/users/$(request.auth.uid); }
     function sProf(s) { return get(sProfPath(s)).data; }
