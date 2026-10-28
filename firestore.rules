@@ -54,8 +54,14 @@ service cloud.firestore {
       allow read: if active();
       allow write: if isOwner() && (id != 'owner' || (request.resource != null && request.resource.data.uid is string));
     }
-    // Readable only once these rules are published; the app checks it before letting the owner change email.
-    match /meta/{id} { allow get: if signedIn() && id == 'rules-v2'; }
+    // Readable only once these rules are published: rules-v2 lets the owner change e-mail, rules-v3 lets the app read only
+    // what changed (it needs the gone notes below).
+    match /meta/{id} { allow get: if signedIn() && id in ['rules-v2', 'rules-v3']; }
+    // A deleted account or transaction leaves a note here, so the devices that keep their own copy drop it too (rules-v3).
+    match /gone/{id} {
+      allow read: if active();
+      allow create, update: if writer() && goneOk(id);
+    }
     // Cashier (web/pos/): the owner (and an editor given «يدير المواد») manages items and prices; editors sell;
     // only the owner cancels a sale. A sale lowers the stock of what it sold, so editors may change the stock field.
     match /products/{id}  {
@@ -152,6 +158,8 @@ service cloud.firestore {
     // that moment by itself; no until = no end. The data stays, and renewing (a later until) opens it again.
     function shopOn(s) { return exists(shopPath(s)) && get(shopPath(s)).data.status == 'active'
       && (get(shopPath(s)).data.get('until', null) == null || get(shopPath(s)).data.until > request.time.toMillis()); }
+    function goneOk(id) { return d().keys().hasOnly(['c', 'id', '_u']) && d().c in ['customers', 'txns'] && d().id is string
+      && id == d().c + '_' + d().id && d()._u == request.time; }
     function sOwner(s) { return signedIn() && request.auth.uid == s; }
     function sProfPath(s) { return /databases/$(database)/documents/shops/$(s)/users/$(request.auth.uid); }
     function sProf(s) { return get(sProfPath(s)).data; }
@@ -196,6 +204,10 @@ service cloud.firestore {
         allow read: if sReader(s);
         allow create: if sBoss(s) || (sReader(s) && d().id == id && sSigned(s, d()) && (sWriter(s) || d().kind == 'remind'));
         allow update, delete: if sBoss(s);
+      }
+      match /gone/{id} {
+        allow read: if sReader(s);
+        allow create, update: if sWriter(s) && goneOk(id);
       }
       match /settings/{id} {
         allow read: if sReader(s);

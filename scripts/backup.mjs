@@ -2,8 +2,8 @@
 // uses, and sends backups in the same format as the app's «حفظ نسخة» (so «استعادة» accepts them).
 //   MODE=periodic (every 5 hours from 2 AM Baghdad: 7 AM, noon, 5 PM, 10 PM): what changed in the debts app in the last five hours, what is still pending, and a PDF of all of today's
 //   transactions so far. It reads little on purpose (see periodic()); the backup file comes with the daily run.
-//   MODE=daily (02:00 Baghdad): backup, end-of-day summary, a PDF with every transaction of the day, and Excel files of
-//   who owes and who has not paid for a month.
+//   MODE=daily (02:00 Baghdad): end-of-day summary and a PDF with every transaction of the day, reading only that day.
+//   On Fridays (and MODE=full) also the backup file and Excel files of who owes and who has not paid for a month.
 // Runs from .github/workflows/backup.yml. Needs env: BACKUP_PASSWORD, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
 // The data never touches the repo or the logs.
 import { readFileSync } from "node:fs";
@@ -475,10 +475,37 @@ function dataPrint(customers, txns) {
   return { code: hx.slice(0, 4) + "-" + hx.slice(4), customers: cs.length, txns: ts.length, debt, pay, owed };
 }
 
+/* The nightly run on most days: only the day's transactions (the free plan allows 50,000 reads a day, and the full backup
+   reads every account and transaction ever recorded). The full backup file and the debt spreadsheets go out every Friday
+   night, and any time with mode full or backup. */
+const FULL_WEEKDAY = 5; // Friday, Baghdad time
+async function dayOnly(token, now) {
+  const day = reportDay(now), start = bizDayStart(day), end = start + 24 * 3600e3, next = isoDay(Date.parse(day + "T12:00:00Z") + 24 * 3600e3);
+  const opt = p => p.catch(e => (console.warn("Skipping:", e.message), []));
+  const [all, settings, activity, promised, fresh, sales, shifts, stocktakes] = await Promise.all([
+    readSince(token, "txns", "createdAt", start), readDoc(token, "settings/main"), readSince(token, "activity", "at", start),
+    query(token, "customers", "promise.date", "EQUAL", { stringValue: next }), readSince(token, "customers", "createdAt", start),
+    opt(readSince(token, "sales", "at", start)), opt(readSince(token, "shifts", "closedAt", start)), opt(readSince(token, "stocktakes", "at", start)),
+  ]);
+  const txns = all.filter(t => Number(t.createdAt) < end);
+  const known = new Map([...promised, ...fresh].map(c => [c.id, c]));
+  const customers = [...known.values(), ...await readIds(token, "customers", [...new Set(txns.map(t => t.customerId).filter(id => id && !known.has(id)))])];
+  const chat = env("TELEGRAM_CHAT_ID");
+  await tg("sendMessage", { chat_id: chat, text: (daySummary(customers, txns, settings, now, sales, [], shifts, stocktakes)
+    + "\n\n💾 النسخة الاحتياطية الكاملة وملفات الإكسل توصلك كل جمعة الساعة 2 بالليل.").slice(0, 4000) });
+  const file = await dayPdf({ day, customers, txns, activity, settings, fmt, isoDay: bizDay, hm });
+  if (file) await sendFile(file.name, file.data, file.type, `📄 كل حركات يوم ${day}`);
+  const notes = await dailyChecks(now);
+  if (notes.length) await tg("sendMessage", { chat_id: chat, text: notes.join("\n\n") });
+  const reads = all.length + 1 + activity.length + promised.length + fresh.length + sales.length + shifts.length + stocktakes.length + customers.length - known.size;
+  console.log(`Sent the day's transactions only: about ${reads} reads (${txns.length} transactions, ${activity.length} activity, ${customers.length} customers).`);
+}
+
 async function main() {
   const mode = (process.env.MODE || "daily").trim();
   const token = await signIn();
   if (mode === "periodic") return periodic(token);
+  if (mode === "daily" && new Date(Date.now() + BAGHDAD).getUTCDay() !== FULL_WEEKDAY) return dayOnly(token, new Date());
   const [customers, txns, activity, settings, sales, products, shifts, stocktakes] = await Promise.all([
     readAll(token, "customers"), readAll(token, "txns"), readAll(token, "activity"), readDoc(token, "settings/main"),
     readOptional(token, "sales"), readOptional(token, "products"), readOptional(token, "shifts"), readOptional(token, "stocktakes"),

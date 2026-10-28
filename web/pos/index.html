@@ -896,7 +896,7 @@ function custLock(c){const cc=S.customers.get(c.id)||c;if(cc.lockNow)return lock
   return lockOf(S.customers.get(c.id)||c,[...S.txns.values()].filter(t=>t.customerId===c.id).sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:(a.createdAt||0)-(b.createdAt||0))),n)}
 function unlockCust(c,how){
   const day=todayISO(),{lockNow,...rest}=S.customers.get(c.id)||c;S.customers.set(c.id,{...rest,lockReset:day});
-  try{db.collection("customers").doc(c.id).set({lockReset:day,lockNow:firebase.firestore.FieldValue.delete()},{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
+  try{db.collection("customers").doc(c.id).set(stamped({lockReset:day,lockNow:firebase.firestore.FieldValue.delete()}),{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
   log("edit","lock",{customerName:c.name,detail:`فتح قفل حساب ${c.name}${how?" "+how:""}`});toast("انفتح حساب "+c.name);
 }
 function watchTxns(id){
@@ -1761,7 +1761,7 @@ function newCustomer(name,st){
       if([...S.customers.values()].some(c=>!isSup(c)&&foldAr(c.name)===foldAr(nm))){m.querySelector("#ncErr").textContent="هذا الاسم موجود. ارجع واختاره من القائمة.";return}
       const c={id:uid(),name:nm,phone:normDigits(m.querySelector("#ncPhone").value).trim(),kind:"customer",limit:0,note:"",createdAt:Date.now(),by:S.me.name};
       S.customers.set(c.id,c);
-      try{db.collection("customers").doc(c.id).set(c).catch(writeFail)}catch(x){writeFail(x)}
+      try{db.collection("customers").doc(c.id).set(stamped(c)).catch(writeFail)}catch(x){writeFail(x)}
       log("add","customer",{customerName:nm});
       checkout({mode:st.mode,cashPart:st.cashPart,cust:c});
     });
@@ -1815,7 +1815,10 @@ function saveSale(pay){
 /* Invoices the server refused stay on this device (localStorage) until they are sent: retried on every start, when the
    internet comes back, and from the red bar under the header. */
 const UNSENT_KEY="shahm-pos-unsent";
-function addOp(b,[coll,id,data,kind]){const ref=db.collection(coll).doc(id);if(kind==="update")b.update(ref,data);else b.set(ref,data)}
+// Accounts and transactions carry _u (server time): the debt book reads only what changed since (see syncData there).
+const stamped=o=>({...o,_u:firebase.firestore.FieldValue.serverTimestamp()});
+function goneNote(coll,id){try{db.collection("gone").doc(coll+"_"+id).set({c:coll,id,_u:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("gone note",e&&e.code))}catch(e){}}
+function addOp(b,[coll,id,data,kind]){const ref=db.collection(coll).doc(id);const d=coll==="txns"||coll==="customers"?stamped(data):data;if(kind==="update")b.update(ref,d);else b.set(ref,d)}
 function unsentList(){try{const l=JSON.parse(localStorage.getItem(UNSENT_KEY)||"[]");return Array.isArray(l)?l:[]}catch(e){return []}}
 function unsentKeep(l){try{if(l.length)localStorage.setItem(UNSENT_KEY,JSON.stringify(l));else localStorage.removeItem(UNSENT_KEY)}catch(e){}renderUnsent()}
 function unsentAdd(x){unsentKeep([...unsentList(),x]);toast(`فاتورة #${x.no} ما انحفظت بالسيرفر. بقت محفوظة على هذا الجهاز وتنرسل لما يصير ممكن.`,7000)}
@@ -2455,7 +2458,7 @@ function voidSale(sale){
       const b=db.batch(),now=Date.now();
       const upd={status:"void",voidAt:now,voidBy:S.me.name};
       b.update(db.collection("sales").doc(sale.id),upd);
-      if(sale.txnId){b.delete(db.collection("txns").doc(sale.txnId));
+      if(sale.txnId){b.delete(db.collection("txns").doc(sale.txnId));goneNote("txns",sale.txnId);
         const a=activityDoc("delete","debt",{customerName:sale.customerName||"",amount:sale.debt,detail:`إلغاء فاتورة كاشير #${sale.no}`});b.set(db.collection("activity").doc(a.id),a)}
       for(const [pid,q] of stockMoves(sale.items||[]))b.update(db.collection("products").doc(pid),{stock:firebase.firestore.FieldValue.increment(q)});
       b.commit().catch(writeFail);
@@ -4086,7 +4089,7 @@ function supForm(s){
       // The same shape the debt book saves for a supplier.
       const obj=isNew?{id:uid(),name,kind:"supplier",visit:[],limit:0,phone,note,createdAt:Date.now(),by:S.me.name}:{...s,name,phone,note};
       S.customers.set(obj.id,obj);
-      try{db.collection("customers").doc(obj.id).set(obj).catch(writeFail)}catch(x){writeFail(x)}
+      try{db.collection("customers").doc(obj.id).set(stamped(obj)).catch(writeFail)}catch(x){writeFail(x)}
       log(isNew?"add":"edit","customer",{customerName:name});
       if(isNew||(S.rv&&S.rv.supId===obj.id)){rvSetSup(obj.id);closeModal();toast(isNew?`انضاف المجهّز «${name}»`:"انحفظ",2000)}else supPicker();
     });
