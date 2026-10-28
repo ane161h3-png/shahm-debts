@@ -24,8 +24,9 @@ if (!/^https:\/\/[a-z0-9.-]+\/$/.test(url)) fail("url: https://host/ with the tr
 const aiUrl = cfg.aiUrl || "";
 if (aiUrl && !/^https:\/\/[a-z0-9.-]+\/?$/.test(aiUrl)) fail("aiUrl: https://host");
 
-// 1. Copy web/ without the cashier, the old printable PDF (it carries the Shahm name) and any downloaded APKs.
-const skip = new Set(["pos", "dl", "daily-sheet.pdf"]);
+// 1. Copy web/ without the cashier, the old printable PDF (it carries the Shahm name), any downloaded APKs and the
+//    Google Play privacy and account-deletion pages (the in-app link always points at the main site).
+const skip = new Set(["pos", "dl", "daily-sheet.pdf", "privacy.html", "delete-account.html"]); // the Play pages belong to the main app
 fs.rmSync(out, { recursive: true, force: true });
 fs.cpSync("web", out, { recursive: true, filter: src => !skip.has(path.relative("web", src).split(path.sep)[0]) });
 
