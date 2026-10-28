@@ -184,6 +184,29 @@ select.sort{border:1px solid var(--line);background:var(--paper-2);border-radius
 .chip.zero{background:var(--paper-2);color:var(--muted)}
 .chip.warn{background:var(--warn-soft);color:var(--warn)}
 .cust-row{display:flex;align-items:center;gap:4px}
+/* Swipe a row on a phone: right = payment (green), left = debt (red); the row slides over a tinted strip with its label. */
+.cust-row{position:relative;border-radius:var(--r-ctl);transition:background .15s}
+.cust-row.swiping{transition:none}
+.cust-row.swiping>*{pointer-events:none}
+.cust-row[data-sw="pay"]{background:var(--paid-soft)}
+.cust-row[data-sw="debt"]{background:var(--debt-soft)}
+.cust-row[data-sw]::before{content:attr(data-swl);position:absolute;top:50%;transform:translateY(-50%);font-weight:700;font-size:13px;opacity:.55}
+.cust-row[data-sw="pay"]::before{left:12px;color:var(--paid)}
+.cust-row[data-sw="debt"]::before{right:12px;color:var(--debt)}
+.cust-row.sw-ready::before{opacity:1}
+.cust-row .sw-move{transition:transform .18s ease}
+.cust-row.swiping .sw-move{transition:none}
+.bal-spark{margin:10px 0 2px;padding:10px 12px 8px;border:1px solid var(--line);border-radius:var(--r);background:var(--paper)}
+.bal-spark .bs-head{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;font-weight:600;margin-bottom:4px}
+.bal-spark svg{display:block;width:100%;height:56px}
+.intro{text-align:center}
+.intro-ic{width:64px;height:64px;margin:4px auto 10px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
+.intro-ic svg{width:30px;height:30px}
+.intro p{color:var(--muted);line-height:1.8;margin:6px 0 12px}
+.intro-dots{display:flex;gap:6px;justify-content:center;margin-bottom:6px}
+.intro-dots span{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.intro-dots span.on{background:var(--accent);width:20px;border-radius:4px}
+.intro .foot{justify-content:center}
 .cust-row .cust{flex:1;min-width:0}
 .row-q{display:flex;gap:4px;flex:none}
 .row-q button{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--paper);cursor:pointer;display:grid;place-items:center}
@@ -1230,13 +1253,39 @@ async function syncData(fail){
    or in the background: a toast with «فتح», a short sound and vibration, and a phone/computer notification if allowed.
    They come from the day's activity log, which is already read live, so they cost no extra reads. */
 const NOTIF_KEY="shahm-notif",NOTIF_ITEMS=[["debt","دين جديد"],["pay","تسديد"],["edit","تعديل أو حذف حركة"],["cust","زبون جديد"]];
-function notifPrefs(){let o={};try{o=JSON.parse(localStorage.getItem(NOTIF_KEY)||"{}")||{}}catch(e){}return {debt:true,pay:true,edit:true,cust:false,sound:true,...o}}
+function notifPrefs(){let o={};try{o=JSON.parse(localStorage.getItem(NOTIF_KEY)||"{}")||{}}catch(e){}return {debt:true,pay:true,edit:true,cust:false,sound:true,saveFx:true,daily:true,dailyAt:10,...o}}
 function setNotif(k,v){const o={...notifPrefs(),[k]:v};try{localStorage.setItem(NOTIF_KEY,JSON.stringify(o))}catch(e){}}
 let audioCtx=null;
-function chime(){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();const t=audioCtx.currentTime;
-  for(const [f,d] of [[880,0],[1320,.12]]){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=f;o.connect(g);g.connect(audioCtx.destination);
+function chime(notes=[[880,0],[1320,.12]],buzz=60){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();const t=audioCtx.currentTime;
+  for(const [f,d] of notes){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=f;o.connect(g);g.connect(audioCtx.destination);
     g.gain.setValueAtTime(.0001,t+d);g.gain.exponentialRampToValueAtTime(.18,t+d+.02);g.gain.exponentialRampToValueAtTime(.0001,t+d+.25);o.start(t+d);o.stop(t+d+.3)}}catch(e){}
-  try{navigator.vibrate&&navigator.vibrate(60)}catch(e){}}
+  try{navigator.vibrate&&navigator.vibrate(buzz)}catch(e){}}
+// A short tone and buzz when a debt (lower) or a payment (higher) is saved on this device.
+function saveFx(debt){if(notifPrefs().saveFx)chime(debt?[[523,0],[392,.1]]:[[659,0],[988,.1]],35)}
+function deviceNote(title,body,tag){
+  if(!("Notification" in window)||Notification.permission!=="granted")return false;
+  const opt={body,tag,lang:"ar",dir:"rtl",icon:"icons/icon-192.png"},sw=navigator.serviceWorker;
+  (sw?sw.getRegistration().then(r=>r?r.showNotification(title,opt):new Notification(title,opt)):Promise.resolve(new Notification(title,opt))).catch(()=>{});return true}
+/* Daily reminder (per device, at the hour picked in Settings > الإشعارات): who promised to pay today or earlier and still
+   owes, and the accounts the early warning marks red. Shown once a business day, when the app is open or in the background. */
+const DAILY_KEY="shahm-daily-shown";
+function dailyDue(){const pr=[],late=[];
+  for(const c of S.customers.values()){if(isSup(c)||!c.promise)continue;const l=promiseLeft(c);if(l!==null&&l<=0&&balanceOf(c.id)>0)pr.push(c)}
+  try{for(const x of warnList())if(x.level===3&&!x.snoozed)late.push(x)}catch(e){}
+  return {pr,late}}
+function dailyCheck(){
+  clearTimeout(dailyCheck.t);const p=notifPrefs();if(!S.me||!p.daily||!S.ready.c||!S.ready.t)return;
+  const now=new Date(),at=new Date(now);at.setHours(Number(p.dailyAt)||10,0,0,0);
+  if(now<at){dailyCheck.t=setTimeout(dailyCheck,at-now+500);return}
+  const day=shopDay();let last="";try{last=localStorage.getItem(DAILY_KEY)||""}catch(e){}if(last===day)return;
+  try{localStorage.setItem(DAILY_KEY,day)}catch(e){}
+  const {pr,late}=dailyDue();if(!pr.length&&!late.length)return;
+  const txt=[pr.length?`${pr.length} وعد بالدفع حل موعده`:"",late.length?`${late.length} حساب متأخر`:""].filter(Boolean).join("، ");
+  const names=[...pr.map(c=>c.name),...late.map(x=>x.c&&x.c.name).filter(Boolean)].slice(0,5).join("، ");
+  toast(`📅 تذكير اليوم: ${txt}`,{label:"عرض",onClick:()=>go("reminders")});
+  if(p.sound)chime();
+  if(document.visibilityState!=="visible")deviceNote("📅 تذكير اليوم",`${txt}${names?": "+names:""}`,"daily-"+day);
+}
 function notifText(a){
   const amt=a.amount?` ${fmt(a.amount)} ${CUR}`:"",c=a.customerName||"";
   if(a.what==="debt"||a.what==="pay"){
@@ -1254,10 +1303,7 @@ function notifyAct(a){
   const [,title,body]=n,ac=actCust(a);
   toast(`${title}${body?" "+body:""}`,ac?{label:"فتح",onClick:()=>openCustomer(ac.id)}:null);
   if(pr.sound)chime();
-  if(document.visibilityState!=="visible"&&"Notification" in window&&Notification.permission==="granted"){
-    const opt={body,tag:a.id,lang:"ar",dir:"rtl",icon:"icons/icon-192.png"};
-    const sw=navigator.serviceWorker;(sw?sw.getRegistration().then(r=>r?r.showNotification(title,opt):new Notification(title,opt)):Promise.resolve(new Notification(title,opt))).catch(()=>{});
-  }
+  if(document.visibilityState!=="visible")deviceNote(title,body,a.id);
 }
 function startData(){
   if(dataOn)return;dataOn=true;
@@ -1287,8 +1333,31 @@ function showApp(){
   render();
 }
 function go(v){if(v==="customers"&&S.view!=="customers")S.kind="customer";S.view=v;if(v!=="customers")S.selected=null;if(v!=="settings"){S.setPage=null;S.bizDraft=null}render();window.scrollTo(0,0)}
+/* First-time tour: four steps, once per device. A notebook that already has accounts skips it; Settings > تثبيت البرنامج
+   has «شرح البرنامج» to see it again. */
+const INTRO_KEY="shahm-intro";
+const INTRO=[[I.book,"أهلاً بك بدفتر الديون","كل زبون إله حساب. الرئيسية تبين مجموع الديون، وآخر الحركات، ومنو يحتاج متابعة."],
+  [I.users,"أضف زبائنك","من «الحسابات» اضغط «إضافة زبون»، واكتب اسمه ورقم هاتفه حتى توصله الرسائل على واتساب."],
+  [I.plus,"سجّل دين أو تسديد","افتح حساب الزبون واضغط «دين» أو «تسديد». على الموبايل اسحب الزبون بالقائمة: لليمين تسديد، ولليسار دين."],
+  [I.bell,"ذكّر واحفظ","من «التذكيرات» ترسل تذكير للمتأخرين على واتساب، ومن الإعدادات تحفظ نسخة احتياطية كل يوم."]];
+function showIntro(i=0){
+  const [ic,h,txt]=INTRO[i],last=i===INTRO.length-1;
+  openModal(`<div class="intro"><div class="intro-ic">${ic}</div><h3>${h}</h3><p>${txt}</p>
+    <div class="intro-dots" aria-hidden="true">${INTRO.map((_,k)=>`<span${k===i?' class="on"':""}></span>`).join("")}</div>
+    <div class="foot"><button class="btn primary" type="button" id="inNext">${last?"يلا نبدي":"التالي"}</button>${i?`<button class="btn" type="button" id="inPrev">السابق</button>`:""}${last?"":`<button class="btn ghost" type="button" data-close>تخطي</button>`}</div></div>`,m=>{
+    try{localStorage.setItem(INTRO_KEY,"1")}catch(e){}
+    m.querySelector("#inNext").onclick=()=>last?closeModal():showIntro(i+1);
+    const pv=m.querySelector("#inPrev");if(pv)pv.onclick=()=>showIntro(i-1)});
+}
+function maybeIntro(){
+  if(maybeIntro.done||!S.ready.c||!S.ready.t||$("#modalRoot").children.length)return;maybeIntro.done=true;
+  let seen=false;try{seen=!!localStorage.getItem(INTRO_KEY)}catch(e){}if(seen)return;
+  if(S.customers.size>=3){try{localStorage.setItem(INTRO_KEY,"1")}catch(e){}return}
+  setTimeout(()=>showIntro(0),600);
+}
 function render(){
   if(!S.me||$("#app").hidden)return;
+  maybeIntro();if(!dailyCheck.t&&!render.daily){render.daily=true;setTimeout(dailyCheck,1500)}
   $("#today").textContent=dayName(todayISO());
   $("#shopTitle").textContent="دفتر ديون "+shopName();document.title="دفتر ديون "+shopName();
   const mk=brandMark();if(mk!==render.mark){render.mark=mk;$("header.top .logo").innerHTML=mk}
@@ -1555,6 +1624,17 @@ function ledgerFor(c){
   return {from,open,close:run,list,dSum,pSum};
 }
 const PERIODS=[["all","كل الحركات"],["sincepay","من آخر دفعة"],["month","هذا الشهر"],["30","آخر 30 يوم"]];
+// The balance after each of the account's last 60 transactions, as a small line under the balance card.
+function balSpark(c){
+  const rows=txnsOf(c.id);if(rows.length<2)return "";let b=0;const pts=rows.map(t=>(b+=t.type==="debt"?t.amount:-t.amount)).slice(-60);
+  const W=300,H=56,P=4,mx=Math.max(0,...pts),mn=Math.min(0,...pts),sp=mx-mn||1,x=i=>P+i*(W-2*P)/(pts.length-1),y=v=>P+(mx-v)*(H-2*P)/sp;
+  const line=pts.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" "),z=y(0).toFixed(1),last=pts[pts.length-1],col=last>0?"var(--debt)":"var(--paid)";
+  const first=rows[Math.max(0,rows.length-60)].date;
+  return `<div class="bal-spark" role="img" aria-label="حركة الرصيد: أعلى ${fmt(mx)}، هسه ${fmt(last)}"><div class="bs-head"><span>حركة الرصيد${rows.length>60?" (آخر 60 حركة)":""}</span><span class="ro-note">من ${esc(shortDate(first))} · أعلى <span class="num">${fmt(mx)}</span></span></div>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><line x1="${P}" x2="${W-P}" y1="${z}" y2="${z}" stroke="var(--line)" stroke-dasharray="3 3"/>
+      <polygon points="${x(0).toFixed(1)},${z} ${line} ${x(pts.length-1).toFixed(1)},${z}" fill="${col}" opacity=".12"/><polyline points="${line}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      <circle cx="${x(pts.length-1).toFixed(1)}" cy="${y(last).toFixed(1)}" r="3" fill="${col}"/></svg></div>`;
+}
 function renderDetail(){
   const el=$("#detail");if(!el)return;const c=S.customers.get(S.selected);
   if(!c){el.innerHTML=`<div class="placeholder">${I.book}<b>اختر حساباً من القائمة</b>لعرض كشفه${canWrite()?" وتسجيل دين أو دفعة":""}.</div>`;return}
@@ -1581,6 +1661,7 @@ function renderDetail(){
           return `<span class="chip ${n?"warn":"zero"}"><i class="lk">${I.lock}</i> ${n?"قفل بعد "+lockName(n):"بدون قفل"}${own?"":" (عام)"}</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">${n||own?"تغيير القفل":"+ قفل الحساب"}</button>`:""}`})()}${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
       ${w?`<div class="actions"><button class="btn debt" type="button" data-act="debt" title="اختصار: +">${I.plus}${sup?"فاتورة شراء":"دين"}</button><button class="btn paid" type="button" data-act="pay" title="اختصار: −">${I.minus}${sup?"دفعة للمورد":"دفعة"}</button>${per.bal!==0?`<button class="btn zero" type="button" data-act="zero">${I.zero}تصفير</button>`:""}</div>`:""}
     </div>
+    ${balSpark(c)}
     ${(()=>{const L=sup?null:lockState(c);if(!L||(!L.locked&&L.left>7))return "";
       if(!L.locked)return `<div class="banner warn"><i class="lk">${I.lock}</i> ينقفل الحساب ${L.left?`بعد <b class="num">${L.left}</b> يوم`:"اليوم"} إذا ما تسدد كامل (عليه دين من ${esc(shortDate(L.since))}).</div>`;
       return `<div class="banner bad promise-row"><span><i class="lk">${I.lock}</i> <b>الحساب مقفول:</b> ${lockWhy(L)}. ما ينكتب عليه دين جديد حتى ${L.manual?"ينفتح":"يسدد"}.</span>
@@ -2085,7 +2166,7 @@ async function bizExport(share){
 }
 
 /* ---------- settings ---------- */
-const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["notify","الإشعارات",I.bell,true],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
+const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 function settingsView(){
   const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner));
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
@@ -2195,6 +2276,7 @@ function setPage(k){
     <div><button class="btn" type="button" data-act="logout" style="color:var(--debt)">${I.out}تسجيل الخروج</button></div>
     ${delAccountCard()}`;
   if(k==="install"){
+    const introBtn=`<div style="margin-top:12px"><button class="btn" type="button" data-act="intro">${I.book}شرح البرنامج</button></div>`;
     const shareTxt="برنامج دفتر ديون "+shopName()+":\nللأندرويد (APK): "+APK_URL+"\nللابتوب والآيفون: "+WEB_URL;
     return `<h2>تثبيت البرنامج</h2><p class="lead">${NATIVE?"أنت تستخدم تطبيق الأندرويد. الديون تتزامن تلقائياً مع اللابتوب وباقي الأجهزة.":"نفس الحساب يشتغل على كل الأجهزة، والديون تتزامن تلقائياً."}</p>
     ${installEvt?`<div class="tpl"><h3>${I.save}تثبيت على هذا الجهاز</h3><span class="ro-note">يضيف أيقونة للبرنامج ويفتح بنافذة خاصة حتى بدون إنترنت.</span><div><button class="btn primary" type="button" data-act="pwainstall">${I.save}تثبيت الآن</button></div></div>`:""}
@@ -2203,7 +2285,7 @@ function setPage(k){
     <div class="tpl"><h3>اللابتوب (Chrome أو Edge)</h3><ol class="steps"><li>افتح <span class="num">${esc(WEB_URL)}</span></li><li>اضغط أيقونة التثبيت ⊕ بآخر شريط العنوان، أو من القائمة ⋮ اختر «تثبيت ديون الشهم».</li><li>تظهر أيقونة على سطح المكتب ويفتح كبرنامج مستقل.</li></ol></div>
     <div class="tpl"><h3>آيفون (Safari)</h3><ol class="steps"><li>افتح الرابط نفسه في Safari.</li><li>اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية».</li></ol></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button" data-act="copylinks" data-txt="${esc(shareTxt)}">${I.copy}نسخ روابط التثبيت</button><a class="btn wa" href="https://wa.me/?text=${encodeURIComponent(shareTxt)}" target="_blank" rel="noopener">${I.wa}إرسال الروابط واتساب</a></div>
-    <p class="ro-note" style="margin:0">يشتغل بدون إنترنت، وأول ما يرجع الإنترنت ترسل التعديلات وتتزامن.</p>`;}
+    <p class="ro-note" style="margin:0">يشتغل بدون إنترنت، وأول ما يرجع الإنترنت ترسل التعديلات وتتزامن.</p>${introBtn}`;}
   if(k==="card")return bizPage();
   if(k==="hide"){const h=hiddenNums();
     return `<h2>إخفاء أرقام الواجهة الرئيسية</h2><p class="lead">الرقم المخفي يظهر نقاط ••••. تكدر تشوفه مؤقتاً بزر «إظهار» بأعلى الواجهة. الإعداد خاص بهذا الجهاز فقط، والأرقام داخل صفحة كل زبون تبقى ظاهرة.</p>
@@ -2211,8 +2293,10 @@ function setPage(k){
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" type="button" data-hideall="1">${I.eyeOff}إخفاء الكل</button><button class="btn" type="button" data-hideall="0">${I.eye}إظهار الكل</button></div>`}
   if(k==="notify"){const pr=notifPrefs(),has="Notification" in window,perm=has?Notification.permission:"denied";
     const seg=(k2,l)=>`<div class="toggle-row"><span>${l}</span><div class="seg" role="group" aria-label="${l}">${[["1","يوصل"],["0","لا"]].map(([v,t2])=>`<button type="button" data-notif="${k2}" data-v="${v}" aria-pressed="${!!pr[k2]===(v==="1")}">${t2}</button>`).join("")}</div></div>`;
-    return `<h2>الإشعارات</h2><p class="lead">من يسجّل عامل أو حساب ثاني دين أو تسديد، يوصلك إشعار باسمه واسم الزبون والمبلغ، وتكدر تفتح حساب الزبون منه. الإعداد خاص بهذا الجهاز.</p>
-      ${NOTIF_ITEMS.map(([k2,l])=>seg(k2,l)).join("")}${seg("sound","صوت واهتزاز")}
+    return `<h2>الإشعارات</h2><p class="lead">${isAdmin()?"من يسجّل عامل أو حساب ثاني دين أو تسديد، يوصلك إشعار باسمه واسم الزبون والمبلغ، وتكدر تفتح حساب الزبون منه. ":""}الإعداد خاص بهذا الجهاز.</p>
+      ${isAdmin()?NOTIF_ITEMS.map(([k2,l])=>seg(k2,l)).join("")+seg("sound","صوت واهتزاز مع الإشعار"):""}${seg("saveFx","صوت واهتزاز خفيف عند حفظ دين أو تسديد")}
+      ${seg("daily","تنبيه يومي بالوعود والمتأخرين")}
+      ${pr.daily?`<div class="toggle-row"><span>وقت التنبيه اليومي</span><select id="dailyAt" aria-label="وقت التنبيه اليومي">${[8,9,10,11,12,14,16,18,20].map(h=>`<option value="${h}" ${Number(pr.dailyAt)===h?"selected":""}>${h<12?h+" الصبح":h===12?"12 الظهر":(h-12)+" العصر/المسا"}</option>`).join("")}</select></div>`:""}
       <div class="tpl" style="margin-top:12px"><h3>${I.bell}إشعارات الجهاز</h3>
         <span class="ro-note">${!has?"هذا المتصفح أو التطبيق ما يدعم إشعارات الجهاز. الإشعار يطلع داخل البرنامج.":perm==="granted"?"مفعّلة: يطلعلك إشعار حتى لو البرنامج بالخلفية.":perm==="denied"?"الإشعارات ممنوعة لهذا الموقع. فعّلها من إعدادات المتصفح (رمز القفل جنب العنوان).":"حتى يطلعلك الإشعار والبرنامج بالخلفية، اسمح بالإشعارات."}</span>
         ${has&&perm==="default"?`<div><button class="btn primary sm" type="button" data-act="notifperm">${I.bell}السماح بالإشعارات</button></div>`:""}
@@ -2436,7 +2520,7 @@ function txnForm(type,existing,pre){
       if(waBox)try{localStorage.setItem(WA_AUTO_KEY,autoWa?"1":"0")}catch(e){}
       const pdfBox=m.querySelector("#tPdf"),autoPdf=!!(pdfBox&&pdfBox.checked);
       if(pdfBox)try{localStorage.setItem(PDF_AUTO_KEY,autoPdf?"1":"0")}catch(e){}
-      closeModal();await put("txns",obj);log("add",what,{customerName:c.name,amount:amt,...(sup?{sup:true}:{})});lastAdd={id:obj.id,at:Date.now()};
+      closeModal();saveFx(isDebt);await put("txns",obj);log("add",what,{customerName:c.name,amount:amt,...(sup?{sup:true}:{})});lastAdd={id:obj.id,at:Date.now()};
       {const cur=S.customers.get(c.id)||c;if(!isDebt&&cur.promise){const left=cur.promise.amount?cur.promise.amount-amt:0;put("customers",{...cur,promise:left>0?{...cur.promise,amount:left}:null})}}
       const link=c.phone&&!isSup(c)?waLink(c.phone,fillTpl(what,c,{amount:amt,date,note,time:date===todayISO()?hm12(Date.now()):""})):"";
       const auto=autoWaOn(c);
@@ -3537,7 +3621,7 @@ document.addEventListener("click",e=>{
     if(n&&d!==lockDays())confirmBox("تشغيل قفل الحسابات",`${n} زبون راح ينقفل حسابه هسه لأنه ما سدد كامل خلال ${d} يوم. تكدر تفتح أي واحد منهم من صفحته.`,"تشغيل",go);else go();return}
   const vsb=t.closest("[data-vsearch]");if(vsb){voiceSearch(vsb);return}
   const sp=t.closest("[data-set]");if(sp){S.setPage=sp.dataset.set||null;render();window.scrollTo(0,0);return}
-  const nf=t.closest("[data-notif]");if(nf){setNotif(nf.dataset.notif,nf.dataset.v==="1");if(nf.dataset.notif==="sound"&&nf.dataset.v==="1")chime();render();return}
+  const nf=t.closest("[data-notif]");if(nf){const k=nf.dataset.notif,on=nf.dataset.v==="1";setNotif(k,on);if(on&&k==="sound")chime();if(on&&k==="saveFx")saveFx(false);if(k==="daily")dailyCheck();render();return}
   const hd=t.closest("[data-hide]");if(hd){const k=hd.dataset.hide,h=hiddenNums().filter(x=>x!==k);if(hd.dataset.v==="1")h.push(k);setHidden(h);render();return}
   const ha=t.closest("[data-hideall]");if(ha){setHidden(ha.dataset.hideall==="1"?HIDE_ITEMS.map(x=>x[0]):[]);S.reveal=false;render();return}
   const th=t.closest("[data-theme-set]");if(th){const v=th.dataset.themeSet;try{localStorage.setItem(THEME_KEY,v)}catch(x){}applyTheme(v);render();return}
@@ -3592,6 +3676,7 @@ document.addEventListener("click",e=>{
     case "setlimit":if(canWrite())customerForm(c);break;
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
+    case "intro":showIntro(0);break;
     case "notifperm":if("Notification" in window)Notification.requestPermission().then(()=>render(),()=>{});break;
     case "notiftest":{const pr=notifPrefs();toast("🔴 علي سجّل دين 25,000 د.ع على فلاح");if(pr.sound)chime();
       if("Notification" in window&&Notification.permission==="granted"){const opt={body:"هذا إشعار تجربة",lang:"ar",dir:"rtl",icon:"icons/icon-192.png"};const sw=navigator.serviceWorker;(sw?sw.getRegistration().then(r=>r?r.showNotification("دفتر الديون",opt):new Notification("دفتر الديون",opt)):Promise.resolve(new Notification("دفتر الديون",opt))).catch(()=>{})}break}
@@ -3699,7 +3784,20 @@ document.addEventListener("submit",e=>{
   if(e.target.id==="shopForm"){e.preventDefault();saveSettings({shopName:$("#sName").value.trim()||shopName(),ownerName:$("#sOwner").value.trim()||"المدير",phone:$("#sPhone").value.trim(),address:$("#sAddr").value.trim()}).then(ok=>{if(ok){S.me.name=S.settings.ownerName;render();toast("تم الحفظ")}})}
 });
 document.addEventListener("click",e=>{if(e.target.id==="exportBtn"&&isAdmin())exportData()});
-document.addEventListener("change",e=>{const i=e.target.closest&&e.target.closest("[data-listadd]");if(i){const f=[...i.files];i.value="";addListPhotos(i.dataset.listadd,f)}});
+document.addEventListener("change",e=>{if(e.target.id==="dailyAt"){setNotif("dailyAt",Number(e.target.value));try{localStorage.removeItem(DAILY_KEY)}catch(x){}dailyCheck();return}
+  const i=e.target.closest&&e.target.closest("[data-listadd]");if(i){const f=[...i.files];i.value="";addListPhotos(i.dataset.listadd,f)}});
+/* Swipe on a phone: a customer row dragged right records a payment, dragged left a debt (the row's own − / + buttons). */
+(()=>{const AT=72;let st=null;
+  const end=()=>{if(!st)return;const {r,m,dx,on}=st;st=null;if(!on)return;m.style.transform="";r.classList.remove("swiping","sw-ready");delete r.dataset.sw;
+    if(Math.abs(dx)>=AT){const b=r.querySelector(dx>0?"[data-qpay]":"[data-qdebt]");if(b)b.click()}};
+  document.addEventListener("touchstart",e=>{st=null;const r=e.target.closest&&e.target.closest(".cust-row");if(!r||e.touches.length>1||!r.querySelector("[data-qpay]"))return;
+    const t=e.touches[0];st={r,m:r.firstElementChild,x:t.clientX,y:t.clientY,dx:0,on:false}},{passive:true});
+  document.addEventListener("touchmove",e=>{if(!st)return;const t=e.touches[0],dx=t.clientX-st.x,dy=t.clientY-st.y;
+    if(!st.on){if(Math.abs(dy)>10&&Math.abs(dy)>Math.abs(dx)){st=null;return}if(Math.abs(dx)<16)return;st.on=true;st.r.classList.add("swiping");st.m.classList.add("sw-move")}
+    st.dx=Math.max(-110,Math.min(110,dx));st.m.style.transform=`translateX(${st.dx}px)`;const pay=st.dx>0,sup=S.view==="customers"&&S.kind==="supplier";
+    st.r.dataset.sw=pay?"pay":"debt";st.r.dataset.swl=pay?(sup?"دفعة":"تسديد"):(sup?"فاتورة":"دين");st.r.classList.toggle("sw-ready",Math.abs(st.dx)>=AT)},{passive:true});
+  document.addEventListener("touchend",end);document.addEventListener("touchcancel",()=>{if(st){st.dx=0;end()}});
+})();
 /* ---------- shops (root owner) ---------- */
 const shopsPending=()=>S.superOwner?[...S.shops.values()].filter(x=>x.status==="pending").length:0;
 const SHOP_ST={pending:["بانتظار التفعيل","warn"],trial:["فترة تجريبية","warn"],active:["شغّال","paid"],disabled:["موقوف","debt"],expired:["انتهى الاشتراك","debt"]};
