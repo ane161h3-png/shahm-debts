@@ -3987,7 +3987,7 @@ const SHOP_ST={pending:["بانتظار التفعيل","warn"],trial:["فترة
 /* Free trial: when the owner sets meta/trial.days, a new shop opens by itself for that many days (trial:true, until);
    the rules check the length against meta/trial, so a shop can't give itself more. Paying ends the trial from today. */
 const TRIAL_DAYS=[0,7,15,30];
-const SUB_PLANS=[["trial","تجربة",0],["1","شهر",1],["3","3 أشهر",3],["6","6 أشهر",6],["12","سنة",12],["date","تاريخ معيّن",0],["none","بدون مدة",0]];
+const SUB_PLANS=[["trial","تجربة",0],["1","شهر",1],["3","3 أشهر",3],["6","6 أشهر",6],["12","سنة",12],["none","دائمي",0],["date","تاريخ معيّن",0]];
 const subLeft=x=>x&&x.until?Math.ceil((x.until-Date.now())/864e5):null;
 const shopExpired=x=>!!(x&&x.status==="active"&&x.until&&x.until<=Date.now());
 const shopState=x=>shopExpired(x)?"expired":x.status==="active"&&x.trial?"trial":(x.status||"pending");
@@ -3995,7 +3995,7 @@ const dmyMs=ms=>{const d=new Date(ms);return `${d.getDate()}/${d.getMonth()+1}/$
 function addMonths(ms,n){const d=new Date(ms),day=d.getDate();d.setMonth(d.getMonth()+n);if(d.getDate()<day)d.setDate(0);return d.getTime()}
 function subLine(x){
   if(x.status!=="active"&&!x.until)return "";
-  if(!x.until)return `<span class="ro-note">الاشتراك: بدون مدة</span>`;
+  if(!x.until)return `<span class="ro-note">الاشتراك: دائمي</span>`;
   const n=subLeft(x);return `<span class="ro-note ${n<=0?"sub-end":n<=7?"sub-soon":""}">${x.trial?"التجربة":"الاشتراك"} إلى ${dmyMs(x.until)} · ${n<=0?"انتهى":n===1?"باقي يوم":`باقي ${n} يوم`}</span>`;
 }
 // Redraw the shops list and the bell when the next subscription ends, so an ended shop moves without a reload.
@@ -4006,7 +4006,7 @@ function subForm(id){
   const prices=(S.settings.subPrices||{}),subs=(x.subs||[]).slice().reverse(),paid=subs.reduce((a,v)=>a+(Number(v.amount)||0),0);
   const base=Math.max(Date.now(),x.until&&x.status==="active"&&!x.trial?x.until:0),tDays=S.trialDays||15;
   openModal(`<h3>اشتراك ${esc(x.name)}</h3>
-    <p class="hint">${x.trial&&x.status==="active"?`بالفترة التجريبية لحد ${dmyMs(x.until)}${shopExpired(x)?" (انتهت)":""}. الاشتراك المدفوع يبدأ من اليوم.`:x.until&&x.status==="active"?`ينتهي حالياً ${dmyMs(x.until)}${shopExpired(x)?" (انتهى)":""}. التمديد يبدأ ${shopExpired(x)||x.status!=="active"?"من اليوم":"من نهاية الاشتراك الحالي"}.`:x.status==="active"?"شغّال بدون مدة. اختار مدة حتى ينقفل وحده بنهايتها.":"اختار المدة اللي دفع عليها، وينفتح دفتره هسه."}</p>
+    <p class="hint">${x.trial&&x.status==="active"?`بالفترة التجريبية لحد ${dmyMs(x.until)}${shopExpired(x)?" (انتهت)":""}. الاشتراك المدفوع يبدأ من اليوم.`:x.until&&x.status==="active"?`ينتهي حالياً ${dmyMs(x.until)}${shopExpired(x)?" (انتهى)":""}. التمديد يبدأ ${shopExpired(x)||x.status!=="active"?"من اليوم":"من نهاية الاشتراك الحالي"}.`:x.status==="active"?"شغّال تفعيل دائمي. اختار مدة حتى ينقفل وحده بنهايتها.":"اختار المدة اللي دفع عليها، وينفتح دفتره هسه."}</p>
     <form id="subF" class="field" style="gap:12px" novalidate>
       <div class="chips" role="group" aria-label="المدة">${SUB_PLANS.map(([k,l])=>`<button type="button" data-subplan="${k}" aria-pressed="${k==="1"}">${k==="trial"?`تجربة ${tDays} يوم`:l}</button>`).join("")}</div>
       <div class="field" id="subDateF" hidden><label for="subDate">ينتهي بتاريخ</label><input id="subDate" type="date" min="${todayISO()}"></div>
@@ -4015,21 +4015,21 @@ function subForm(id){
       <p class="err" id="subErr"></p>
       <div class="foot"><button class="btn primary" type="submit">${x.status==="active"&&!shopExpired(x)?"تمديد الاشتراك":"تفعيل"}</button><button class="btn" type="button" data-close>إلغاء</button></div>
     </form>
-    ${subs.length?`<h3 style="margin-top:14px;font-size:15px">الاشتراكات السابقة${paid?` · المجموع <span class="num">${fmt(paid)}</span>`:""}</h3><ul class="sub-hist">${subs.slice(0,12).map(v=>`<li><span>${esc(v.label||"")}</span><span class="num">${v.to?"إلى "+dmyMs(v.to):"بدون مدة"}</span><span class="num">${v.amount?fmt(v.amount):"—"}</span><span class="ro-note">${dmyMs(v.at)}</span></li>`).join("")}</ul>`:""}`,m=>{
+    ${subs.length?`<h3 style="margin-top:14px;font-size:15px">الاشتراكات السابقة${paid?` · المجموع <span class="num">${fmt(paid)}</span>`:""}</h3><ul class="sub-hist">${subs.slice(0,12).map(v=>`<li><span>${esc(v.label||"")}</span><span class="num">${v.to?"إلى "+dmyMs(v.to):"دائمي"}</span><span class="num">${v.amount?fmt(v.amount):"—"}</span><span class="ro-note">${dmyMs(v.at)}</span></li>`).join("")}</ul>`:""}`,m=>{
     let plan="1";const to=()=>{const P=SUB_PLANS.find(p=>p[0]===plan);if(plan==="none")return null;if(plan==="trial")return Math.max(Date.now(),x.until||0)+tDays*864e5;if(plan==="date"){const v=m.querySelector("#subDate").value;if(!v)return undefined;const [y,mo,d]=v.split("-").map(Number);return new Date(y,mo-1,d,23,59,59).getTime()}return addMonths(base,P[2])};
-    const show=()=>{const t=to();m.querySelector("#subTo").innerHTML=t===null?"ينفتح بدون تاريخ انتهاء.":t?`ينفتح لحد <b class="num">${dmyMs(t)}</b> (${Math.ceil((t-Date.now())/864e5)} يوم).`:""};
+    const show=()=>{const t=to();m.querySelector("#subTo").innerHTML=t===null?"تفعيل دائمي: ينفتح بدون تاريخ انتهاء.":t?`ينفتح لحد <b class="num">${dmyMs(t)}</b> (${Math.ceil((t-Date.now())/864e5)} يوم).`:""};
     m.querySelectorAll("[data-subplan]").forEach(b=>b.addEventListener("click",()=>{plan=b.dataset.subplan;m.querySelectorAll("[data-subplan]").forEach(o=>o.setAttribute("aria-pressed",o===b));
-      m.querySelector("#subDateF").hidden=plan!=="date";m.querySelector("#subAmtF").hidden=plan==="none"||plan==="trial";const pr=prices[plan];m.querySelector("#subAmt").value=pr?fmt(pr):"";show()}));
+      m.querySelector("#subDateF").hidden=plan!=="date";m.querySelector("#subAmtF").hidden=plan==="trial";const pr=prices[plan];m.querySelector("#subAmt").value=pr?fmt(pr):"";show()}));
     m.querySelector("#subDate").addEventListener("input",show);show();
     m.querySelector("#subF").addEventListener("submit",e=>{e.preventDefault();
       const t=to(),err=m.querySelector("#subErr");if(t===undefined){err.textContent="اختار تاريخ الانتهاء.";return}
       if(t&&t<=Date.now()){err.textContent="التاريخ لازم يكون بعد اليوم.";return}
-      const av=m.querySelector("#subAmt").value.trim(),amount=plan==="none"||plan==="trial"||!av?0:parseAmt(av);if(av&&plan!=="none"&&plan!=="trial"&&!(amount>0)){err.textContent="المبلغ لازم يكون رقم.";return}
+      const av=m.querySelector("#subAmt").value.trim(),amount=plan==="trial"||!av?0:parseAmt(av);if(av&&plan!=="trial"&&!(amount>0)){err.textContent="المبلغ لازم يكون رقم.";return}
       const label=plan==="trial"?`تجربة ${tDays} يوم`:SUB_PLANS.find(p=>p[0]===plan)[1],entry={at:Date.now(),plan,label,from:t?base:Date.now(),to:t,amount:Math.round(amount||0),by:S.me.name};
       db.doc("shops/"+id).update({status:"active",activatedAt:x.activatedAt||Date.now(),until:t,trial:plan==="trial",subs:firebase.firestore.FieldValue.arrayUnion(entry)}).catch(writeFail);
       if(amount>0&&plan!=="date"&&plan!=="trial"&&prices[plan]!==Math.round(amount))saveSettings({subPrices:{...prices,[plan]:Math.round(amount)}});
       log("edit","account",{detail:`اشتراك محل ${x.name}: ${label}${t?" إلى "+dmyMs(t):""}${amount?" بمبلغ "+fmt(amount):""}`});
-      closeModal();toast(t?`انفعّل ${x.name} لحد ${dmyMs(t)}`:`انفعّل ${x.name} بدون مدة`)});
+      closeModal();toast(t?`انفعّل ${x.name} لحد ${dmyMs(t)}`:`انفعّل ${x.name} تفعيل دائمي`)});
   });
 }
 function shopsPage(){
