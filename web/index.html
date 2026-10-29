@@ -2387,6 +2387,31 @@ function openModal(html,onMount){
 }
 function closeModal(){$("#modalRoot").innerHTML=""}
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(S.bellOpen){S.bellOpen=false;renderBell()}closeModal()}});
+/* Zeroing writes a payment (or debt) for the balance this device shows. If another device's entries haven't arrived yet,
+   that balance is old and the account is left wrong while the receipt says 0. So first ask the server for this account's
+   entries (a few reads), add any that are missing here, and say so; offline or if the server doesn't answer, warn. */
+async function zeroAccount(c){
+  const b0=balanceOf(c.id);if(!b0)return;
+  let fresh=false,got=0;
+  if(navigator.onLine!==false){
+    toast("جاري التأكد من آخر القيود…");
+    try{
+      const q=db.collection(P("txns")).where("customerId","==",c.id).get({source:"server"});
+      const s=await Promise.race([q,new Promise((_,no)=>setTimeout(()=>no(new Error("timeout")),8000))]);
+      for(const d of s.docs){const [x,u]=unpack(d);if(!S.txns.has(d.id)){S.txns.set(d.id,x);UT.set(d.id,u);got++}}
+      fresh=true;if(got)render();
+    }catch(e){console.warn("zero check",e&&e.code||e)}
+  }
+  const b=balanceOf(c.id);
+  if(!b){toast(got?`وصلت ${got} قيود جديدة والرصيد صار صفر. ما يحتاج تصفير.`:"الرصيد صفر.");return}
+  const what=`سيُسجّل ${b>0?"دفعة":"دين"} بمبلغ ${fmt(Math.abs(b))} ${CUR} حتى يصبح رصيد ${c.name} صفراً.`;
+  const why=!fresh?"تنبيه: ما گدرنا نتأكد من السيرفر (الإنترنت ضعيف أو مقطوع)، فممكن أكو قيود سجّلها غيرك ما وصلت لهذا الجهاز بعد، والمبلغ يكون ناقص. الأفضل تتصل بالإنترنت وتعيد. ":
+    got?`انتبه: وصلت ${got} قيود جديدة من جهاز ثاني، فتغيّر الرصيد من ${fmt(Math.abs(b0))} إلى ${fmt(Math.abs(b))} ${CUR}. `:"";
+  confirmBox("تصفير الحساب",why+what+(fresh?"":" (إذا عامل سجّل من موبايل بلا إنترنت، قيوده توصل بعدين.)"),"تصفير",()=>{
+    // Something may have arrived while the box was open: never record a stale amount.
+    const b2=balanceOf(c.id);if(b2!==b){toast("تغيّر الرصيد قبل التصفير، راجع المبلغ الجديد.");if(b2)zeroAccount(c);return}
+    const t0={id:uid(),customerId:c.id,type:b>0?"pay":"debt",amount:Math.abs(b),note:"تصفير الحساب",date:todayISO(),createdAt:Date.now(),by:S.me.name};put("txns",t0);log("add",t0.type,{customerName:c.name,amount:t0.amount});toast("تم تصفير الحساب");waAfter(c,t0)});
+}
 function confirmBox(title,text,label,fn,focusOk){
   openModal(`<h3>${esc(title)}</h3><p style="margin:0;color:var(--muted)">${esc(text)}</p>
     <div class="foot"><button class="btn debt" type="button" id="okBtn">${esc(label)}</button><button class="btn" type="button" data-close>إلغاء</button></div>`,
@@ -3741,8 +3766,7 @@ document.addEventListener("click",e=>{
     case "pay":if(canWrite())txnForm("pay");break;
     case "editcust":if(canWrite())customerForm(c);break;
     case "statement":showStatement();break;
-    case "zero":if(canWrite()&&c){const b0=balanceOf(c.id);if(b0)confirmBox("تصفير الحساب",`سيُسجّل ${b0>0?"دفعة":"دين"} بمبلغ ${fmt(Math.abs(b0))} ${CUR} حتى يصبح رصيد ${c.name} صفراً.`,"تصفير",async()=>{
-      const t0={id:uid(),customerId:c.id,type:b0>0?"pay":"debt",amount:Math.abs(b0),note:"تصفير الحساب",date:todayISO(),createdAt:Date.now(),by:S.me.name};await put("txns",t0);log("add",t0.type,{customerName:c.name,amount:t0.amount});toast("تم تصفير الحساب");waAfter(c,t0)})}break;
+    case "zero":if(canWrite()&&c)zeroAccount(c);break;
     case "setlimit":if(canWrite())customerForm(c);break;
     case "custpdf":if(c)custPdf(c);break;
     case "listpdf":listPdf();break;
