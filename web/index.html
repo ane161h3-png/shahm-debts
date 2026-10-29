@@ -1828,6 +1828,7 @@ function renderDetail(){
       <button class="btn ghost back" type="button" data-act="back">${I.back}رجوع</button>
       <div class="who"><h2>${esc(c.name)}</h2><div class="phone">${sup?"مورد":"زبون"}${sup&&c.visit&&c.visit.length?" · يزورك: "+c.visit.slice().sort().map(i=>AR_DAYS[i]).join("، "):""} · ${c.phone?'<span class="num">'+esc(c.phone)+'</span>':"بدون رقم هاتف"}${c.note?" · "+esc(c.note):""}</div></div>
       <div class="head-tools">
+        ${waNumber(c.phone)?`<a class="btn sm" href="tel:+${waNumber(c.phone)}">${I.call}اتصال</a>`:""}
         ${c.phone?`<a class="btn sm" href="${esc(waLink(c.phone,statementText(c)))}" target="_blank" rel="noopener">${I.wa}إرسال الكشف</a>`:""}
         <button class="btn sm" type="button" data-act="statement">${I.copy}نسخ الكشف</button>
         ${w&&can("edit")?`<button class="btn sm" type="button" data-act="editcust">${I.edit}تعديل</button>
