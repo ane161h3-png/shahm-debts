@@ -1,6 +1,6 @@
 {
   "appId": "com.shahm.debts",
-  "appName": "دفتر ديوني",
+  "appName": "ديون الشهم",
   "webDir": "web",
   "android": {
     "adjustMarginsForEdgeToEdge": "force"
