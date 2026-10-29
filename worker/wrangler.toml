@@ -29,5 +29,11 @@ name = "PUSH_LIMIT"
 namespace_id = "1002"
 simple = { limit = 60, period = 60 }
 
+# At most 20 cloud backup uploads a minute per person (see src/backup.js).
+[[ratelimits]]
+name = "BK_LIMIT"
+namespace_id = "1003"
+simple = { limit = 20, period = 60 }
+
 [triggers]
 crons = ["7 4,9,14,19 * * *"]
