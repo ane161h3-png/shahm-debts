@@ -45,7 +45,7 @@ function edit(rel, pairs) {
 const mark = `<svg viewBox="0 0 100 100" aria-hidden="true"><text x="50" y="72" text-anchor="middle" font-family="Lalezar, Tajawal, sans-serif" font-size="74" fill="currentColor">${letter}</text></svg>`;
 edit("index.html", [
   ["ماركت الشهم", name],
-  ["دفتر ديوني", short],
+  ["ديون الشهم", short],
   ['l:"الشهم"', 'l:"الأخضر"'],
   ["const MULTI=true;", "const MULTI=false;"], // a copy is one shop: no «سجّل محلك», no «المحلات»
   ['const WEB_URL="https://shahm-debts.app/";', `const WEB_URL="${url}";`],

@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="دفتر ديوني">
+<meta name="apple-mobile-web-app-title" content="ديون الشهم">
 <link rel="stylesheet" href="vendor/fonts/fonts.css">
 <style>
 /* Layout: shop debt app. Gate (login) -> app with Home / Customers / Settings. Wide: top tabs, list + account side by side. Narrow: bottom nav, one pane. Colors and fonts follow BRAND.md: brand green chrome, red = owed, green = paid. */
@@ -1035,7 +1035,7 @@ function promiseForm(c){
 /* Pick a phone number from the phone's contacts: the Android app uses the Contacts plugin, Chrome on Android the Contact Picker API. */
 /* App name for the "allow contacts" hint (the debt book also opens inside the cashier app, whose name differs). */
 let APP_NAME="";if(NATIVE)plugin("App").getInfo().then(i=>{APP_NAME=i&&i.name||""}).catch(()=>{});
-const contactsOff=()=>`جهات الاتصال مقفولة على هذا التطبيق. افتح إعدادات الموبايل ← التطبيقات ← «${APP_NAME||"دفتر ديوني"}» ← الأذونات ← جهات الاتصال ← سماح.`;
+const contactsOff=()=>`جهات الاتصال مقفولة على هذا التطبيق. افتح إعدادات الموبايل ← التطبيقات ← «${APP_NAME||"ديون الشهم"}» ← الأذونات ← جهات الاتصال ← سماح.`;
 const contactErr=e=>/permission/i.test(String(e&&e.message))?contactsOff():"تعذّر فتح جهات الاتصال.";
 const canPickContact=()=>NATIVE||("contacts" in navigator&&"select" in navigator.contacts);
 async function pickContact(){
@@ -1116,7 +1116,7 @@ function showLogin(msg,kind){
   $("#gate").hidden=false;$("#app").hidden=true;$("#bottomNav").hidden=true;
   const nm=gateName(),tab=showLogin.tab||"user";
   $("#gate").innerHTML=`<div class="gate-login">
-    <div class="gate-hero"><div class="logo">${brandMark()}</div><div><b>أهلاً بك!</b><span>${nm?"سجل ديون "+esc(nm):"دفتر ديوني"}: كل دين وتسديد محفوظ ومرتب.</span></div></div>
+    <div class="gate-hero"><div class="logo">${brandMark()}</div><div><b>أهلاً بك!</b><span>${nm?"سجل ديون "+esc(nm):"ديون الشهم"}: كل دين وتسديد محفوظ ومرتب.</span></div></div>
     <div class="gate-title"><h1>تسجيل الدخول</h1><p>اكتب اسم المستخدم أو بريدك وكلمة المرور للمتابعة</p></div>
     <div class="gate-card">
     ${msg?`<div class="banner ${kind||"bad"}">${esc(msg)}</div>`:""}
@@ -1206,7 +1206,7 @@ function showRegister(){
 const SUPPORT={wa:"9647768987668",tel:"+9647768987668",tg:""};
 function showLocked(title,msg,own){
   $("#gate").hidden=false;$("#app").hidden=true;$("#bottomNav").hidden=true;
-  const ways=own?[[I.wa,"واتساب","wa","https://wa.me/"+SUPPORT.wa+"?text="+encodeURIComponent("السلام عليكم، أريد أجدد اشتراك محل «"+(S.shop&&S.shop.name||gateName()||"")+"» بدفتر ديوني.")],
+  const ways=own?[[I.wa,"واتساب","wa","https://wa.me/"+SUPPORT.wa+"?text="+encodeURIComponent("السلام عليكم، أريد أجدد اشتراك محل «"+(S.shop&&S.shop.name||gateName()||"")+"» بديون الشهم.")],
     SUPPORT.tg?[I.tg,"تيليجرام","","https://t.me/"+SUPPORT.tg]:null,[I.call,"اتصال","","tel:"+SUPPORT.tel]].filter(Boolean):[];
   $("#gate").innerHTML=`<div class="lockd">
     <div class="lockd-top"><div class="lockd-bar"><button type="button" id="lkOut" aria-label="تسجيل الخروج">${I.out}</button><h1>${esc(title)}</h1><span style="width:40px"></span></div><div class="lockd-ic">${I.lockClock}</div></div>
@@ -2433,7 +2433,7 @@ function setPage(k){
     ${installEvt?`<div class="tpl"><h3>${I.save}تثبيت على هذا الجهاز</h3><span class="ro-note">يضيف أيقونة للبرنامج ويفتح بنافذة خاصة حتى بدون إنترنت.</span><div><button class="btn primary" type="button" data-act="pwainstall">${I.save}تثبيت الآن</button></div></div>`:""}
     <div class="tpl"><h3>أندرويد (ملف APK)</h3><ol class="steps"><li>حمّل الملف من الزر تحت.</li><li>افتحه واضغط «تثبيت». إذا طلب، فعّل «السماح بالتثبيت من هذا المصدر».</li><li>للتحديث لاحقاً: حمّل الملف من نفس الزر وثبّته فوق القديم، البيانات ما تنمسح.</li></ol>
       <div><a class="btn primary" href="${APK_URL}" target="_blank" rel="noopener">${I.save}تحميل ملف APK</a></div></div>
-    <div class="tpl"><h3>اللابتوب (Chrome أو Edge)</h3><ol class="steps"><li>افتح <span class="num">${esc(WEB_URL)}</span></li><li>اضغط أيقونة التثبيت ⊕ بآخر شريط العنوان، أو من القائمة ⋮ اختر «تثبيت دفتر ديوني».</li><li>تظهر أيقونة على سطح المكتب ويفتح كبرنامج مستقل.</li></ol></div>
+    <div class="tpl"><h3>اللابتوب (Chrome أو Edge)</h3><ol class="steps"><li>افتح <span class="num">${esc(WEB_URL)}</span></li><li>اضغط أيقونة التثبيت ⊕ بآخر شريط العنوان، أو من القائمة ⋮ اختر «تثبيت ديون الشهم».</li><li>تظهر أيقونة على سطح المكتب ويفتح كبرنامج مستقل.</li></ol></div>
     <div class="tpl"><h3>آيفون (Safari)</h3><ol class="steps"><li>افتح الرابط نفسه في Safari.</li><li>اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية».</li></ol></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button" data-act="copylinks" data-txt="${esc(shareTxt)}">${I.copy}نسخ روابط التثبيت</button><a class="btn wa" href="https://wa.me/?text=${encodeURIComponent(shareTxt)}" target="_blank" rel="noopener">${I.wa}إرسال الروابط واتساب</a></div>
     <p class="ro-note" style="margin:0">يشتغل بدون إنترنت، وأول ما يرجع الإنترنت ترسل التعديلات وتتزامن.</p>${introBtn}`;}
