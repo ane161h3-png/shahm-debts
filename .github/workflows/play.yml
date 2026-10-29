@@ -52,12 +52,12 @@ jobs:
             --iconBackgroundColor '#0e5a3a' --iconBackgroundColorDark '#0e5a3a' \
             --splashBackgroundColor '#f4f2ec' --splashBackgroundColorDark '#0f1512'
           npx cap sync android
-      # Target Android 16 (API 36). The Capacitor 7 template ships API 35 and Android Gradle Plugin 8.7.2; API 36 needs
+      # Target Android 16 (API 36); minimum Android 7 (API 24), which Play's automatic protection requires. The Capacitor 7 template ships API 35 and Android Gradle Plugin 8.7.2; API 36 needs
       # AGP 8.9.1, which still runs on the template's Gradle 8.11.1.
       - name: Target SDK 36
         run: |
           yes | "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" > /dev/null
-          sed -i -E 's/compileSdkVersion = [0-9]+/compileSdkVersion = 36/; s/targetSdkVersion = [0-9]+/targetSdkVersion = 36/' android/variables.gradle
+          sed -i -E 's/compileSdkVersion = [0-9]+/compileSdkVersion = 36/; s/targetSdkVersion = [0-9]+/targetSdkVersion = 36/; s/minSdkVersion = [0-9]+/minSdkVersion = 24/' android/variables.gradle
           sed -i "s#com.android.tools.build:gradle:8.7.2#com.android.tools.build:gradle:8.9.1#" android/build.gradle
           grep -E "SdkVersion" android/variables.gradle
           grep "tools.build:gradle" android/build.gradle
