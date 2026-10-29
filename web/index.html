@@ -1287,14 +1287,22 @@ const bkTenant=()=>SHOP||"main",bkUrl=()=>window.AI_URL.replace(/\/$/,"")+"/back
 let caught=new Set(),cloudT=null;
 function caughtUp(...ks){for(const k of ks)caught.add(k);
   if(caught.has("customers")&&caught.has("txns")&&caught.has("gone")&&!cloudT&&window.AI_URL)cloudT=setTimeout(()=>{cloudT=null;cloudBackup()},20000)}
+// What this device's last attempt did, shown on the settings card: {at, ok, msg}.
+const BK_LAST="shahm-cloudbk-last",bkLast=v=>{try{if(v)localStorage.setItem(BK_LAST,JSON.stringify(v));else return JSON.parse(localStorage.getItem(BK_LAST)||"null")}catch(e){return null}};
 async function cloudBackup(){
-  if(!S.me||!dataOn||!navigator.onLine||!S.ready.c||!S.ready.t||!auth.currentUser)return;
+  if(!S.me||!dataOn||!navigator.onLine||!S.ready.c||!S.ready.t||!auth.currentUser||typeof CompressionStream!=="function")return;
   const flag="shahm-cloudbk:"+bkTenant()+":"+shopDay();try{if(localStorage.getItem(flag))return}catch(e){}
+  if(Date.now()-(cloudBackup.tried||0)<30*60e3)return; // every change re-checks; after a failed try, wait a while
+  cloudBackup.tried=Date.now();
   try{
     const data={app:"shahm-debts",version:3,exportedAt:new Date().toISOString(),settings:S.settings,customers:[...S.customers.values()],txns:[...S.txns.values()],accounts:[],activity:S.activity};
-    const r=await fetch(bkUrl(),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body:JSON.stringify({tenant:bkTenant(),by:S.me.name,data})});
+    const body=await new Response(new Blob([JSON.stringify(data)]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer();
+    const q=new URLSearchParams({tenant:bkTenant(),c:data.customers.length,t:data.txns.length,by:S.me.name});
+    const r=await fetch(bkUrl()+"?"+q,{method:"POST",headers:{"Content-Type":"application/octet-stream",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body});
+    const j=await r.json().catch(()=>({}));
+    bkLast({at:Date.now(),ok:r.ok,msg:r.ok?"":(j.error||"خطأ "+r.status)});
     if(r.ok)try{localStorage.setItem(flag,"1")}catch(e){}
-  }catch(e){console.warn("cloud backup",e)}
+  }catch(e){console.warn("cloud backup",e);bkLast({at:Date.now(),ok:false,msg:"ما وصل للسحابة (الإنترنت)"})}
 }
 async function cloudList(){
   const box=$("#cloudBk");if(!box)return;box.innerHTML=`<span class="ro-note">جاري جلب النسخ…</span>`;
@@ -1309,7 +1317,7 @@ async function cloudGet(key){
   toast("جاري تنزيل النسخة…");
   try{const r=await fetch(bkUrl()+"?tenant="+encodeURIComponent(bkTenant())+"&key="+encodeURIComponent(key),{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
     if(!r.ok){const j=await r.json().catch(()=>({}));toast(j.error||"تعذّر تنزيل النسخة.");return}
-    restorePreview(await r.text());
+    restorePreview(await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).text());
   }catch(e){toast("تعذّر الاتصال. تأكد من الإنترنت.")}
 }
 async function syncData(fail){
@@ -2436,6 +2444,7 @@ function setPage(k){
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button><button class="btn" type="button" data-act="daybackup" data-prev="1">${I.save}نسخة أمس (${prevShopDay().split("-").slice(1).reverse().join("/")})</button>${FOLDER_OK?`<button class="btn ghost sm" type="button" data-act="bkrootreset">تغيير مجلد الفلاش</button>`:""}</div></div>
     ${window.AI_URL?`<div class="tpl"><h3>${I.save}النسخ على السحابة (تلقائي)</h3>
       <span class="ro-note">كل يوم أول ما ينفتح البرنامج على أي جهاز ويتزامن، تنحفظ نسخة كاملة على سحابة البرنامج بدون ما تسوي شي. تبقى نسخة كل يوم لمدة شهر، ونسخة أول كل شهر بلا نهاية. الاسترجاع يدمج المحذوف وما يمسح شي موجود.</span>
+      ${(()=>{const l=bkLast();return l?`<span class="ro-note">آخر محاولة من هذا الجهاز: ${esc(timeAgo(l.at))} · ${l.ok?"✓ انحفظت":"ما انحفظت: "+esc(l.msg)}</span>`:""})()}
       <div id="cloudBk"><button class="btn" type="button" data-act="cloudlist">${I.back}عرض النسخ واسترجاعها</button></div></div>`:""}
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
       <span class="ro-note">${lb?"آخر نسخة: "+esc(timeAgo(lb)):"لم تحفظ أي نسخة بعد"}</span>
