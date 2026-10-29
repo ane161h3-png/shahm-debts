@@ -91,6 +91,18 @@ jobs:
           ./gradlew assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file="$RUNNER_TEMP/shahm.p12" -Pandroid.injected.signing.store.password="$KEY_PW" \
             -Pandroid.injected.signing.key.alias=shahm -Pandroid.injected.signing.key.password="$KEY_PW"
+      # The same build as an App Bundle (.aab) for Google Play, signed with the same key (Play uses it as the upload key).
+      # versionCode is the run number, so every new bundle is accepted as newer.
+      - name: Build AAB (Google Play)
+        working-directory: android
+        env:
+          KEY_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          ./gradlew bundleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/shahm.p12" -Pandroid.injected.signing.store.password="$KEY_PW" \
+            -Pandroid.injected.signing.key.alias=shahm -Pandroid.injected.signing.key.password="$KEY_PW"
+          cp app/build/outputs/bundle/release/app-release.aab ../${{ matrix.app == 'debts' && 'shahm-debts' || 'shahm-pos' }}.aab
+          grep -E "targetSdkVersion|compileSdkVersion" variables.gradle
       - name: Check signature
         run: |
           APK=android/app/build/outputs/apk/release/app-release.apk
@@ -102,10 +114,10 @@ jobs:
         run: |
           gh release delete ${{ matrix.tag }} --yes --cleanup-tag || true
           # Only the debt book is marked "latest", so its releases/latest/download link keeps working.
-          gh release create ${{ matrix.tag }} ${{ matrix.apk }} --target "${{ github.sha }}" \
+          gh release create ${{ matrix.tag }} ${{ matrix.apk }} ${{ matrix.app == 'debts' && 'shahm-debts' || 'shahm-pos' }}.aab --target "${{ github.sha }}" \
             ${{ matrix.app == 'debts' && '--latest' || '--latest=false' }} \
             --title "${{ matrix.title }} 1.0.${{ github.run_number }}" \
-            --notes "حمّل ${{ matrix.apk }} وثبّته على موبايل الأندرويد. للتحديث ثبّته فوق النسخة القديمة. إذا رفض التنصيب (التطبيق المنصّب من قبل 12 تشرين الأول 2026 موقّع بمفتاح قديم): احذف القديم أولاً ثم ثبّت هذا وسجّل دخول."
+            --notes "ملف .aab للرفع على Google Play. حمّل ${{ matrix.apk }} وثبّته على موبايل الأندرويد. للتحديث ثبّته فوق النسخة القديمة. إذا رفض التنصيب (التطبيق المنصّب من قبل 12 تشرين الأول 2026 موقّع بمفتاح قديم): احذف القديم أولاً ثم ثبّت هذا وسجّل دخول."
       # Put the new APK on the website (its /dl/ folder).
       - name: Publish on the website
         if: matrix.app == 'debts'

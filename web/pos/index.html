@@ -228,7 +228,7 @@ input:disabled{opacity:.55}
 .sd-tabs button{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:10px 4px;border:0;background:none;cursor:pointer;color:var(--muted);font:600 13px var(--f-body);border-bottom:2px solid transparent}
 .sd-tabs button svg{width:16px;height:16px}
 .sd-tabs button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
-.sd-x{display:none;flex:none;width:44px;border:0;background:none;cursor:pointer;color:var(--muted);font-size:20px}
+.sd-tabs .sd-x{display:none;flex:none;width:44px;border:0;background:none;cursor:pointer;color:var(--muted);font-size:20px}
 .sd-body{padding:10px;overflow:auto;display:flex;flex-direction:column;gap:8px}
 .sd-qp{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
 .sd-qp button{padding:14px 6px;border:1px solid var(--line);background:var(--paper-2);border-radius:var(--r-ctl);cursor:pointer;font:700 17px var(--f-display);color:var(--ink)}
@@ -241,7 +241,7 @@ input:disabled{opacity:.55}
 .sd-it{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--line);background:var(--paper-2);border-radius:var(--r-ctl);cursor:pointer;text-align:right;font:inherit}
 .sd-it:hover:not(:disabled){border-color:var(--accent)}
 .sd-it b{font-weight:600}.sd-it span{color:var(--muted);font-size:13px;white-space:nowrap}.sd-it small{font-size:11px}
-@media (max-width:900px){.ib-wrap{grid-template-columns:minmax(0,1fr)}.ib-quick{display:flex}.ib-side{display:none;position:fixed;inset:auto 0 0 0;top:auto;z-index:15;max-height:70dvh;border-radius:var(--r) var(--r) 0 0}body.side-open .ib-side{display:flex}.sd-x{display:block}}
+@media (max-width:900px){.ib-wrap{grid-template-columns:minmax(0,1fr)}.ib-quick{display:flex}.ib-side{display:none;position:fixed;inset:auto 0 0 0;top:auto;z-index:15;max-height:70dvh;border-radius:var(--r) var(--r) 0 0}body.side-open .ib-side{display:flex}body.side-open .sd-tabs .sd-x{display:block}}
 @media (max-width:700px){.ib-top{flex-wrap:wrap}.ib-cust{flex:1 1 100%}.ib-search{flex:1 1 60%}.ib-line .lt{min-width:70px}.ib-sum b{font-size:32px}.ib-btns{width:100%}.ib-btns .btn{flex:1}}
 .modal.bgen{max-width:860px}
 .bg-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
