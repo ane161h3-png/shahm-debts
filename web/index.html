@@ -66,6 +66,44 @@ h1,h2,h3{text-wrap:balance}
 .pw button{position:absolute;left:6px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--muted);cursor:pointer;padding:6px 8px;font-size:13px}
 .linkish{border:0;background:none;color:var(--accent);cursor:pointer;font-weight:600;padding:4px}
 .gate-foot{text-align:center;color:var(--muted);font-size:14px}
+/* Login: welcome strip, tabs (username / e-mail), fields with an icon, eye button. */
+.gate-login{width:100%;max-width:440px;display:flex;flex-direction:column;gap:18px}
+.gate-hero{display:flex;align-items:center;gap:14px;padding:18px;border-radius:22px;color:var(--brand-cream);background:linear-gradient(110deg,color-mix(in srgb,var(--brand-orange) 28%,var(--brand-deep)),var(--brand-deep) 70%);box-shadow:var(--shadow)}
+.gate-hero .logo{width:56px;height:56px;border-radius:16px;background:var(--brand-cream);color:var(--brand-deep)}
+.gate-hero b{display:block;font-family:var(--f-display);font-size:22px;font-weight:800}
+.gate-hero span{font-size:13px;opacity:.85}
+.gate-title{text-align:center}
+.gate-title h1{margin:0;font-family:var(--f-display);font-weight:800;font-size:26px}
+.gate-title p{margin:4px 0 0;color:var(--muted)}
+.gate-login .gate-card{gap:14px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:14px;background:var(--paper-2);border:1px solid var(--line)}
+.seg button{border:0;background:none;border-radius:10px;padding:10px;display:flex;align-items:center;justify-content:center;gap:8px;font-family:var(--f-display);font-weight:700;color:var(--muted);cursor:pointer}
+.seg button svg{width:18px;height:18px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.ifield{position:relative}
+.ifield>svg{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:20px;height:20px;color:var(--muted);pointer-events:none}
+.ifield input{padding-right:44px!important;min-height:52px;border-radius:14px!important}
+.pw .pw-eye{width:40px;height:40px;display:grid;place-items:center}.pw .pw-eye svg{width:20px;height:20px}
+.gate-row{display:flex;justify-content:flex-start}
+.btn.big{min-height:52px;border-radius:14px;font-size:17px}
+.btn.big svg{width:20px;height:20px}
+/* Locked shop (subscription ended or stopped): red top with a lock, the reason, and how to reach the seller. */
+.lockd{width:100%;max-width:460px;align-self:start;margin-top:-24px}
+.lockd-top{margin-inline:-16px;padding:16px 16px 70px;background:linear-gradient(160deg,var(--brand-tomato),color-mix(in srgb,var(--brand-tomato) 62%,black));color:var(--brand-cream);border-radius:0 0 36px 36px;text-align:center}
+.lockd-bar{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.lockd-bar h1{margin:0;font-family:var(--f-display);font-size:19px;font-weight:800}
+.lockd-bar button{border:0;background:none;color:inherit;width:40px;height:40px;display:grid;place-items:center;cursor:pointer;border-radius:12px}
+.lockd-bar button svg{width:24px;height:24px}
+.lockd-ic{width:96px;height:96px;margin:18px auto 0;border-radius:50%;background:color-mix(in srgb,var(--brand-cream) 18%,transparent);display:grid;place-items:center}
+.lockd-ic svg{width:48px;height:48px}
+.lockd .gate-card{margin-top:-52px;text-align:center}
+.lockd h2{margin:0;color:var(--debt);font-family:var(--f-display);font-weight:800;font-size:24px}
+.lockd .msg{margin:0;color:var(--ink)}
+.lockd .banner{text-align:start;display:flex;gap:10px;align-items:flex-start}
+.lockd .banner svg{width:20px;height:20px;flex:none;margin-top:2px}
+.lockd-help{margin:18px 0 8px;text-align:center;color:var(--muted);font-size:14px}
+.lockd-ways{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+.lockd-ways a{min-height:50px}
 .spinner{width:30px;height:30px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);margin:8px auto}
 @media (prefers-reduced-motion:no-preference){.spinner{animation:spin 0.9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}}
 
@@ -806,6 +844,15 @@ const I={
   wa:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 1a4 4 0 0 1-2-2l1-1-1-2z"/></svg>',
   save:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>',
   eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
+  at:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>',
+  person:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+  mail:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+  enter:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l4-4-4-4M14 12H4"/></svg>',
+  lockClock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21H6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2h12"/><path d="M7 11V8a5 5 0 0 1 10 0v3"/><circle cx="17.5" cy="17.5" r="4.5"/><path d="M17.5 15.5v2l1.3 1"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
+  tg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 4L3 11l6 2 2 6 3-4 5 4z"/><path d="M9 13l8-6"/></svg>',
+  call:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>',
   eyeOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.6 3.4M6.6 6.6C3.6 8.5 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m3 3 18 18"/></svg>',
   moon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
   out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/></svg>',
@@ -1060,27 +1107,37 @@ function authMsg(e){const c=(e&&e.code)||"";
   return "صار خطأ: "+(c||(e&&e.message)||"غير معروف");
 }
 function showLogin(msg,kind){
-  gateCard({sub:"سجّل الدخول للمتابعة",body:`
+  $("#gate").hidden=false;$("#app").hidden=true;$("#bottomNav").hidden=true;
+  const nm=gateName(),tab=showLogin.tab||"user";
+  $("#gate").innerHTML=`<div class="gate-login">
+    <div class="gate-hero"><div class="logo">${brandMark()}</div><div><b>أهلاً بك!</b><span>${nm?"سجل ديون "+esc(nm):"دفتر ديوني"}: كل دين وتسديد محفوظ ومرتب.</span></div></div>
+    <div class="gate-title"><h1>تسجيل الدخول</h1><p>اكتب اسم المستخدم أو بريدك وكلمة المرور للمتابعة</p></div>
+    <div class="gate-card">
     ${msg?`<div class="banner ${kind||"bad"}">${esc(msg)}</div>`:""}
+    <div class="seg" role="group" aria-label="طريقة الدخول"><button type="button" data-ltab="user" aria-pressed="${tab==="user"}">${I.person}اسم المستخدم</button><button type="button" data-ltab="mail" aria-pressed="${tab==="mail"}">${I.at}بريد</button></div>
     <form id="lf" class="field" style="gap:12px" novalidate>
-      <div class="field"><label for="lUser">اسم المستخدم أو الإيميل</label><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div>
-      <div class="field"><label for="lPw">كلمة المرور</label><div class="pw"><input id="lPw" type="password" autocomplete="current-password"><button type="button" data-showpw="lPw">إظهار</button></div></div>
+      <div class="field"><label for="lUser" id="lUserL"></label><div class="ifield" id="lUserW"><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div></div>
+      <div class="field"><label for="lPw">كلمة المرور</label><div class="ifield pw">${I.lock}<input id="lPw" type="password" autocomplete="current-password" placeholder="••••••••"><button type="button" class="pw-eye" data-showpw="lPw" aria-label="إظهار كلمة المرور">${I.eye}</button></div></div>
+      <div class="gate-row"><button class="linkish" type="button" id="toForgot">نسيت كلمة المرور؟</button></div>
       <p class="err" id="lErr"></p>
-      <button class="btn primary block" type="submit" id="lGo">دخول</button>
+      <button class="btn primary block big" type="submit" id="lGo">${I.enter}تسجيل الدخول</button>
     </form>
-    <div class="gate-foot"><button class="linkish" type="button" id="toForgot">نسيت كلمة المرور؟</button></div>
-    <div class="gate-foot">${MULTI?`محل جديد؟ <button class="linkish" type="button" id="toReg">سجّل محلك</button>`:`ليس لديك حساب؟ <button class="linkish" type="button" id="toReg">إنشاء حساب</button>`}</div>`,
-  mount:g=>{
-    wirePw(g);g.querySelector("#toReg").onclick=()=>showRegister();g.querySelector("#toForgot").onclick=()=>showForgot($("#lUser").value);
-    g.querySelector("#lf").addEventListener("submit",async e=>{
-      e.preventDefault();const u=normDigits($("#lUser").value).trim().toLowerCase(),p=$("#lPw").value;const err=$("#lErr"),btn=$("#lGo");
-      if(!u||!p){err.textContent="اكتب اسم المستخدم وكلمة المرور.";return}
-      if(!/^[a-z0-9_.]{3,30}$/.test(u)&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u)){err.textContent="اسم المستخدم أو كلمة المرور غير صحيحة.";return}
-      btn.disabled=true;btn.textContent="جارِ الدخول…";
-      try{await signInAny(u,p)}catch(x){err.textContent=authMsg(x)+(badLogin(x)&&!u.includes("@")?" إذا ربطت إيميلك، ادخل بالإيميل.":"");btn.disabled=false;btn.textContent="دخول"}
-    });
-    setTimeout(()=>$("#lUser")&&$("#lUser").focus(),30);
-  }});
+    <div class="gate-foot">${MULTI?`محل جديد؟ <button class="linkish" type="button" id="toReg">سجّل محلك</button>`:`ليس لديك حساب؟ <button class="linkish" type="button" id="toReg">إنشاء حساب</button>`}</div>
+    </div></div>`;
+  const g=$("#gate"),inp=$("#lUser");
+  const setTab=t=>{showLogin.tab=t;g.querySelectorAll("[data-ltab]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.ltab===t)));
+    const mail=t==="mail";$("#lUserL").textContent=mail?"البريد الإلكتروني":"اسم المستخدم";inp.placeholder=mail?"name@example.com":"مثال: ali";
+    inp.type=mail?"email":"text";inp.inputMode=mail?"email":"text";const w=$("#lUserW");const old=w.querySelector("svg");if(old)old.remove();w.insertAdjacentHTML("afterbegin",mail?I.mail:I.person)};
+  setTab(tab);g.querySelectorAll("[data-ltab]").forEach(b=>b.onclick=()=>{setTab(b.dataset.ltab);inp.focus()});
+  wirePw(g);g.querySelector("#toReg").onclick=()=>showRegister();g.querySelector("#toForgot").onclick=()=>showForgot(inp.value);
+  g.querySelector("#lf").addEventListener("submit",async e=>{
+    e.preventDefault();const u=normDigits(inp.value).trim().toLowerCase(),p=$("#lPw").value;const err=$("#lErr"),btn=$("#lGo");
+    if(!u||!p){err.textContent=showLogin.tab==="mail"?"اكتب البريد وكلمة المرور.":"اكتب اسم المستخدم وكلمة المرور.";return}
+    if(!/^[a-z0-9_.]{3,30}$/.test(u)&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u)){err.textContent="اسم المستخدم أو كلمة المرور غير صحيحة.";return}
+    btn.disabled=true;btn.innerHTML="جارِ الدخول…";
+    try{await signInAny(u,p)}catch(x){err.textContent=authMsg(x)+(badLogin(x)&&!u.includes("@")?" إذا ربطت إيميلك، ادخل بالإيميل.":"");btn.disabled=false;btn.innerHTML=I.enter+"تسجيل الدخول"}
+  });
+  setTimeout(()=>inp.focus(),30);
 }
 // Password reset works only for accounts that linked a real e-mail (Settings > حسابي); Firebase sends the link.
 function showForgot(prefill){
@@ -1139,6 +1196,21 @@ function showRegister(){
     });
   }});
 }
+/* How a shop owner reaches the seller when the notebook is locked (shop copies keep these: it's the same seller). */
+const SUPPORT={wa:"9647768987668",tel:"+9647768987668",tg:""};
+function showLocked(title,msg,own){
+  $("#gate").hidden=false;$("#app").hidden=true;$("#bottomNav").hidden=true;
+  const ways=own?[[I.wa,"واتساب","wa","https://wa.me/"+SUPPORT.wa+"?text="+encodeURIComponent("السلام عليكم، أريد أجدد اشتراك محل «"+(S.shop&&S.shop.name||gateName()||"")+"» بدفتر ديوني.")],
+    SUPPORT.tg?[I.tg,"تيليجرام","","https://t.me/"+SUPPORT.tg]:null,[I.call,"اتصال","","tel:"+SUPPORT.tel]].filter(Boolean):[];
+  $("#gate").innerHTML=`<div class="lockd">
+    <div class="lockd-top"><div class="lockd-bar"><button type="button" id="lkOut" aria-label="تسجيل الخروج">${I.out}</button><h1>${esc(title)}</h1><span style="width:40px"></span></div><div class="lockd-ic">${I.lockClock}</div></div>
+    <div class="gate-card"><h2>${esc(title)}</h2><p class="msg">${esc(msg)}</p>
+      <div class="banner info">${I.info}<span>${own?"جدّد الاشتراك ويرجع دفترك يفتح تلقائياً، وكل اللي سجلته محفوظ. تواصل وياي من الأزرار الجوة.":"صاحب المحل يجدد الاشتراك، وبعدها يرجع الدفتر يفتح لحاله."}</span></div></div>
+    ${ways.length?`<p class="lockd-help">لتجديد الاشتراك تواصل معنا</p><div class="lockd-ways">${ways.map(([ic,t,c,u])=>`<a class="btn ${c}" href="${esc(u)}" target="_blank" rel="noopener" data-ext="${esc(u)}">${ic}${t}</a>`).join("")}</div>`:""}
+  </div>`;
+  const g=$("#gate");g.querySelector("#lkOut").onclick=()=>signOut();
+  g.querySelectorAll("[data-ext]").forEach(a=>a.addEventListener("click",e=>{if(!/^tel:/.test(a.dataset.ext)){e.preventDefault();openExternal(a.dataset.ext)}}));
+}
 function showWaiting(msg,kind,retry){
   gateCard({sub:"",body:`<div class="banner ${kind||"warn"}">${esc(msg)}</div>
     ${retry?`<button class="btn primary block" type="button" id="wRetry">إعادة المحاولة</button>`:""}
@@ -1155,7 +1227,8 @@ function validateAccount(name,username,pw,selfId){
   if(pw!==null&&String(pw).length<PW_MIN)return {error:`كلمة المرور ${PW_MIN} أحرف على الأقل.`};
   return {name,username,pw};
 }
-function wirePw(root){root.querySelectorAll("[data-showpw]").forEach(b=>b.addEventListener("click",()=>{const i=document.getElementById(b.dataset.showpw);const s=i.type==="password";i.type=s?"text":"password";b.textContent=s?"إخفاء":"إظهار"}))}
+function wirePw(root){root.querySelectorAll("[data-showpw]").forEach(b=>b.addEventListener("click",()=>{const i=document.getElementById(b.dataset.showpw);const s=i.type==="password";i.type=s?"text":"password";
+  if(b.classList.contains("pw-eye")){b.innerHTML=s?I.eyeOff:I.eye;b.setAttribute("aria-label",s?"إخفاء كلمة المرور":"إظهار كلمة المرور")}else b.textContent=s?"إخفاء":"إظهار"}))}
 // Signing out also wipes this device's offline copy of the data, so a shared laptop keeps nothing for the next person; but only
 // once every change made here has reached the server: offline, the copy stays so nothing is lost. True when it was wiped (the
 // database connection is closed then, so the page has to start afresh).
@@ -4054,6 +4127,7 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
     return cached;
   }
   // Opens a shop's notebook once its owner (the root owner) has activated it; its owner is the account whose uid is the shop id.
+  function showExpired(own){const tr=S.shop.trial;showLocked(tr?"انتهت الفترة التجريبية":"انتهى الاشتراك",own?(tr?`انتهت الفترة التجريبية لمحلك بتاريخ ${dmyMs(S.shop.until)}.`:`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}.`):"انتهى اشتراك المحل. راجع صاحب المحل.",own)}
   function enterShop(u,uname){
     const own=SHOP===u.uid;let profOff=null;
     const close=()=>{stopData();S.me=null};
@@ -4061,11 +4135,12 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
       if(!s.exists){if(s.metadata.fromCache)return;close();showWaiting(own?"طلب محلك انرفض أو انحذف. تواصل ويا صاحب البرنامج.":"هذا المحل انحذف. راجع صاحب المحل.","bad");return}
       S.shop={...s.data(),id:s.id};
       if(S.shop.status==="pending"){close();showWaiting(own?`تم تسجيل «${S.shop.name}» ✅ بانتظار التفعيل من صاحب البرنامج. أول ما يتفعّل يفتح دفترك تلقائياً.`:"المحل بعده ما متفعّل. راجع صاحب المحل.","warn");return}
-      if(S.shop.status!=="active"){close();showWaiting(own?"اشتراك محلك موقوف. تواصل ويا صاحب البرنامج حتى يرجع يشتغل، وبياناتك محفوظة.":"المحل موقوف. راجع صاحب المحل.","bad");return}
+      if(S.shop.status==="expired"&&S.shop.until){close();showExpired(own);return}
+      if(S.shop.status!=="active"){close();showLocked("الدفتر موقوف",own?"اشتراك محلك موقوف حالياً، وبياناتك كلها محفوظة.":"المحل موقوف. راجع صاحب المحل.",own);return}
       clearTimeout(enterShop.endT);
-      if(shopExpired(S.shop)){close();showWaiting(own?(S.shop.trial?`انتهت الفترة التجريبية لمحلك بتاريخ ${dmyMs(S.shop.until)}. اشترك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وكل اللي سجلته محفوظ.`:`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}. جدّد الاشتراك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وبياناتك كلها محفوظة.`):"انتهى اشتراك المحل. راجع صاحب المحل.","bad");return}
+      if(shopExpired(S.shop)){close();showExpired(own);return}
       // Close the notebook the moment the subscription ends while it is open (setTimeout can't wait more than ~24 days).
-      if(S.shop.until){const ms=S.shop.until-Date.now();if(ms<20*864e5)enterShop.endT=setTimeout(()=>{if(SHOP===S.shop.id&&shopExpired(S.shop)){close();showWaiting(own?(S.shop.trial?`انتهت الفترة التجريبية لمحلك بتاريخ ${dmyMs(S.shop.until)}. اشترك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وكل اللي سجلته محفوظ.`:`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}. جدّد الاشتراك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وبياناتك كلها محفوظة.`):"انتهى اشتراك المحل. راجع صاحب المحل.","bad")}},ms+1000)}
+      if(S.shop.until){const ms=S.shop.until-Date.now();if(ms<20*864e5)enterShop.endT=setTimeout(()=>{if(SHOP===S.shop.id&&shopExpired(S.shop)){close();showExpired(own)}},ms+1000)}
       if(own){
         const first=!S.me;S.isOwner=true;
         S.me={id:u.uid,name:S.settings.ownerName||S.shop.ownerName||"المدير",role:"owner",username:S.shop.username||uname};
