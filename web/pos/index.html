@@ -1874,19 +1874,24 @@ function soldHtml(sale){
 }
 
 /* ---------- receipts ---------- */
+// The WhatsApp message to the customer: what matters first (how much, and how much is still owed), then the items.
 function receiptText(sale){
-  const L=[`*${shopName()}*`,`فاتورة #${sale.no} · ${sale.date} ${hm12(sale.at)}`,""];
-  for(const i of sale.items)L.push(`${itemName(i)} × ${itemQty(i)} = ${fmt(i.total)}${itemOffer(i)?` (${itemOffer(i)})`:""}`);
-  L.push("");
-  const saved=offerSaving(sale.items);if(saved)L.push(`وفّرت بالعروض: ${fmt(saved)}`);
-  if(sale.discount)L.push(`المجموع: ${fmt(sale.subtotal)}`,`الخصم: ${fmt(sale.discount)}`);
-  L.push(`*المطلوب: ${fmt(sale.total)} ${CUR}*`);
-  if(sale.debt>0){if(sale.cash>0)L.push(`واصل كاش: ${fmt(sale.cash)}`);L.push(`على الحساب (دين): ${fmt(sale.debt)}`);
-    const bal=sale.customerId?balanceOf(sale.customerId):null;if(bal!=null)L.push(`رصيدك الحالي: ${fmt(bal)} ${CUR}`)}
-  else L.push(sale.usd?`الدفع: ${usdPaidText(sale)}`:"الدفع: كاش");
-  if(sale.change>0)L.push(`الباقي: ${fmt(sale.change)} ${CUR}`);
-  if(sale.status==="void")L.push("","(هذه الفاتورة ملغية)");
-  L.push("",SLOGAN);
+  const c=sale.customerId&&S.customers.get(sale.customerId),who=(c&&c.name)||sale.customerName||"",debt=sale.debt>0,R=`${CUR}`;
+  const L=[who?`مرحبا ${who} 🌿`:"مرحبا 🌿",`*${shopName()}*`,""];
+  if(sale.status==="void")L.push("⚠️ *هذه الفاتورة ملغية*","");
+  if(debt){L.push(`🔴 *انكتب عليك دين: ${fmt(sale.debt)} ${R}*`);
+    const bal=sale.customerId?balanceOf(sale.customerId):null;if(bal!=null&&bal>0)L.push(`📒 *مجموع دينك الكلي: ${fmt(bal)} ${R}*`);
+    if(sale.cash>0)L.push(`💵 دفعت كاش: ${fmt(sale.cash)} ${R}`);}
+  else L.push(`✅ *المبلغ: ${fmt(sale.total)} ${R}* (مدفوع ${sale.usd?usdPaidText(sale):"كاش"})`);
+  if(sale.change>0)L.push(`↩️ الباقي إلك: ${fmt(sale.change)} ${R}`);
+  L.push("",`🧾 فاتورة رقم ${sale.no} · ${dayName(sale.date)} · ${hm12(sale.at)}`,"");
+  sale.items.forEach((i,k)=>L.push(`${k+1}. ${itemName(i)} × ${itemQty(i)} = ${fmt(i.total)}${itemOffer(i)?` (${itemOffer(i)})`:""}${i.note?` · ${i.note}`:""}`));
+  L.push("───────────");
+  const saved=offerSaving(sale.items);
+  if(sale.discount)L.push(`المجموع: ${fmt(sale.subtotal)} ${R}`,`الخصم: ${fmt(sale.discount)} ${R}`);
+  L.push(`*مجموع الفاتورة: ${fmt(sale.total)} ${R}*`);
+  if(saved)L.push(`🎁 وفّرت بالعروض: ${fmt(saved)} ${R}`);
+  L.push("","شكراً لأنك تتسوق ويانا 🤍",SLOGAN);
   return L.join("\n");
 }
 // After a debt sale WhatsApp opens with the invoice ready, as in the debt book: only for a customer with a WhatsApp number,
@@ -3292,26 +3297,33 @@ const onCard=p=>p.active!==false&&(isWeighed(p)||!p.barcode||/^0400\d{9}$/.test(
 const CARD_KEY="shahm-pos-card";
 function cardOpts(){let o={};try{o=JSON.parse(localStorage.getItem(CARD_KEY)||"null")||(S.pos&&S.pos.card)||{}}catch(e){o=(S.pos&&S.pos.card)||{}}
   return {title:o.title||"",sub:o.sub||"",cols:[2,3,4].includes(o.cols)?o.cols:3,price:o.price!==false,group:o.group!==false,page:o.page!==false,
-    extra:Array.isArray(o.extra)?o.extra:[],skip:Array.isArray(o.skip)?o.skip:[],np:Array.isArray(o.np)?o.np:[],names:o.names&&typeof o.names==="object"?{...o.names}:{},sec:o.sec&&typeof o.sec==="object"?{...o.sec}:{},off:Array.isArray(o.off)?o.off:[],at:o.at||0}}
+    extra:Array.isArray(o.extra)?o.extra:[],skip:Array.isArray(o.skip)?o.skip:[],np:Array.isArray(o.np)?o.np:[],names:o.names&&typeof o.names==="object"?{...o.names}:{},sec:o.sec&&typeof o.sec==="object"?{...o.sec}:{},usecs:Array.isArray(o.usecs)?o.usecs.filter(x=>x&&x.k&&x.t):[],secNames:o.secNames&&typeof o.secNames==="object"?{...o.secNames}:{},order:Array.isArray(o.order)?o.order:[],off:Array.isArray(o.off)?o.off:[],at:o.at||0}}
 function saveCardOpts(o){try{localStorage.setItem(CARD_KEY,JSON.stringify(o))}catch(e){}}
 function saveCardShop(o){o.at=Date.now();saveCardOpts(o);if(!isAdmin())return false;
   try{db.doc("settings/pos").set({card:o},{mergeFields:["card"]}).catch(writeFail)}catch(x){writeFail(x)}return true}
 // Weighed goods are split into the counter's own sections (each can be printed alone); other items go by their category.
 // The section comes from the name, or from the card's own choice for that item (o.sec, set in the edit row).
-const WSEC=[["veg","خضرة وفواكه"],["sweet","حلويات بالوزن",/بقلاو|زلابي|برمه|داطلي|كناف|بسبوس|زنود|هريس|حلاوه|مدقوق|كليج|ملبن|من السما|حلويات|شعر بنات/],
+const WSEC=[["fruit","فواكه"],["veg","خضرة"],["sweet","حلويات بالوزن",/بقلاو|زلابي|برمه|داطلي|كناف|بسبوس|زنود|هريس|حلاوه|مدقوق|كليج|ملبن|من السما|حلويات|شعر بنات/],
   ["dairy","ألبان وأجبان",/قيمر|كيمر|(^| )لور|جبن|لبن|روب|زبد|قشط|شنين|شنينه/],
   ["nuts","جبس ومكسرات وجكليت",/جبس|شيبس|فستق|كاجو|لوز|بندق|جوز|بزر|بزور|مكسر|جكليت|شوكول|سكاكر|ملبس|علك|كرزات|سوداني/],
   ["food","حليب فل ومواد غذائية"]];
+const FRUIT_RE=/تفاح|برتقال|موز|رمان|عنب|كيوي|مانك|منج|اناناس|فراول|كرز|خوخ|مشمش|بطيخ|رقي|ركي|لالنكي|يوسفي|نارنج|تمر|اجاص|عرموط|جوافه|افوكاد|تين|توت|بوملي|كريفون|سندي|شمام|بطيخ/;
+// A section's title: the owner's own name for it, a section they made (o.usecs), or the built-in name.
+function secTitle(k,o){const u=o&&o.usecs&&o.usecs.find(x=>x.k===k),w=WSEC.find(x=>x[0]===k);return (o&&o.secNames&&o.secNames[k])||(u&&u.t)||(w&&w[1])||String(k).replace(/^c:/,"")}
 function cardSec(p,o){
-  const f=o&&o.sec&&o.sec[p.id],own=f&&WSEC.find(w=>w[0]===f);if(own)return [own[0],own[1]];if(f&&f.startsWith("c:"))return [f,f.slice(2)];
-  if(!isWeighed(p)){const c=p.category||"مواد أخرى";return ["c:"+c,c]}
-  const n=foldAr(p.name);
-  if(/فواك|خضر/.test(foldAr(p.category||"")))return WSEC[0];
-  for(const w of WSEC)if(w[2]&&w[2].test(n))return [w[0],w[1]];
-  return stockPic({...p,pic:0})?[WSEC[0][0],WSEC[0][1]]:[WSEC[4][0],WSEC[4][1]]}
+  const f=o&&o.sec&&o.sec[p.id];
+  if(f&&(WSEC.some(w=>w[0]===f)||f.startsWith("c:")||(f.startsWith("u:")&&o.usecs&&o.usecs.some(x=>x.k===f))))return [f,secTitle(f,o)];
+  const k=(()=>{if(!isWeighed(p))return "c:"+(p.category||"مواد أخرى");
+    const n=foldAr(p.name),c=foldAr(p.category||"");
+    if(/فواك/.test(c))return "fruit";if(/خضر/.test(c))return FRUIT_RE.test(n)?"fruit":"veg";
+    for(const w of WSEC)if(w[2]&&w[2].test(n))return w[0];
+    return stockPic({...p,pic:0})?(FRUIT_RE.test(n)?"fruit":"veg"):"food"})();
+  return [k,secTitle(k,o)]}
 // Sections in print order: the weighed ones first, then the categories by name.
 function cardGroups(list,o){const by=new Map();for(const p of list){const [k,t]=cardSec(p,o);if(!by.has(k))by.set(k,[t,[]]);by.get(k)[1].push(p)}
-  const ord=k=>{const i=WSEC.findIndex(w=>w[0]===k);return i<0?99:i};
+  if(o&&o.edit)for(const u of o.usecs||[])if(!by.has(u.k)&&!(o.offSet&&o.offSet.has(u.k)))by.set(u.k,[u.t&&secTitle(u.k,o),[]]);
+  // The owner's order first (o.order), then the weighed sections, then the rest by name.
+  const ord=k=>{const j=(o&&o.order||[]).indexOf(k);if(j>=0)return j-1000;const i=WSEC.findIndex(w=>w[0]===k);return i<0?(String(k).startsWith("u:")?50:99):i};
   return [...by.entries()].sort((a,b)=>ord(a[0])-ord(b[0])||a[1][0].localeCompare(b[1][0],"ar")).map(([k,[t,a]])=>[k,t,a])}
 // Where everything sits on the A4 card (1240×1754 px). The PDF draws this layout and the editor shows the same pages,
 // so what the owner edits on screen is what prints. «add» places (the editor's «+») are skipped by the PDF.
@@ -3327,7 +3339,7 @@ function cardLayout(list,o){
     if(gi&&o.page!==false)page();else if(y+60+ch>H-M)page();
     if(title){pg.push({t:"sec",k,title,n:items.length,y});y+=56}
     items.forEach((p,i)=>{const col=i%C;if(col===0&&i)y+=ch+G;if(y+ch>H-M)page();pg.push({t:"card",p,k,x:X(col),y,w:cw,h:ch})});
-    const nc=items.length%C,py=nc?y:y+ch+G;
+    const nc=items.length%C,py=nc||!items.length?y:y+ch+G;
     if(py+ch<=H-M&&(nc||o.page!==false||gi===groups.length-1))pg.push({t:"add",k,x:X(nc),y:py,w:cw,h:ch});
     y+=ch+G+16;
   });
@@ -3344,12 +3356,12 @@ function counterCard(top){
   const skip=new Set(o.skip),off=new Set(o.off),np=new Set(o.np),extra=new Set(o.extra.filter(id=>S.products.has(id)));
   const all=()=>[...S.products.values()].filter(p=>onCard(p)||extra.has(p.id));
   const shown=()=>all().filter(p=>!skip.has(p.id)&&!off.has(cardSec(p,o)[0]));
-  const secs=()=>{const m=new Map(WSEC.map(w=>[w[0],w[1]]));for(const p of S.products.values())if(p.active!==false&&!isWeighed(p)){const c=p.category||"مواد أخرى";m.set("c:"+c,c)}return m};
+  const secs=()=>{const m=new Map(WSEC.map(w=>[w[0],secTitle(w[0],o)]));for(const u of o.usecs)m.set(u.k,secTitle(u.k,o));for(const p of S.products.values())if(p.active!==false&&!isWeighed(p)){const c="c:"+(p.category||"مواد أخرى");m.set(c,secTitle(c,o))}return m};
   openModal(`<h3>بطاقة الكاونتر</h3>
     <p class="hint">هذي نفس صفحات الملف. اضغط على أي مربع حتى تعدّل المادة (السعر، الرسم، الاسم…)، و${I.plus.replace("<svg",'<svg width="14" height="14"')} حتى تضيف مادة بهذا القسم، والعنوان أو اسم القسم حتى تعدّلهم.</p>
     <div class="tool-row" style="flex-wrap:wrap;gap:12px"><div class="seg" role="group" aria-label="عدد الأعمدة" style="flex:none">${[2,3,4].map(n=>`<button type="button" data-cols="${n}" aria-pressed="${o.cols===n}"><span class="num">${n}</span> بالسطر</button>`).join("")}</div>
       <label class="check"><input type="checkbox" id="ccP" ${o.price?"checked":""}> السعر</label><label class="check"><input type="checkbox" id="ccG" ${o.group?"checked":""}> حسب الأقسام</label>
-      <label class="check"><input type="checkbox" id="ccPg" ${o.page?"checked":""}> كل قسم بصفحة</label><b style="margin-inline-start:auto;font-family:var(--f-display)" id="ccN"></b></div>
+      <label class="check"><input type="checkbox" id="ccPg" ${o.page?"checked":""}> كل قسم بصفحة</label><button class="btn sm" type="button" id="ccNew">${I.plus}قسم جديد</button><b style="margin-inline-start:auto;font-family:var(--f-display)" id="ccN"></b></div>
     <div class="a4-list" id="ccPages"></div>
     <div class="foot"><button class="btn primary" type="button" id="ccGo">${I.pdf}طلّع الملف PDF</button><button class="btn" type="button" id="ccSave">${I.check}حفظ التعديلات</button><button class="btn" type="button" data-close>إغلاق</button></div>
     <div class="scrim cc-pop" id="ccPop" hidden><div class="modal" id="ccPopIn"></div></div>`,m=>{
@@ -3357,7 +3369,7 @@ function counterCard(top){
     const keep=()=>{o.price=m.querySelector("#ccP").checked;o.group=m.querySelector("#ccG").checked;o.page=m.querySelector("#ccPg").checked;o.skip=[...skip];o.off=[...off];o.np=[...np];o.extra=[...extra];saveCardOpts(o)};
     const nm=p=>o.names[p.id]||p.name;
     const bars=p=>{const b=eanBars(p.barcode);if(!b)return "";let r="";for(let j=0;j<b.length;j++)if(b[j]==="1")r+=`<rect x="${j}" width="1" height="1"/>`;return `<svg viewBox="0 0 ${b.length} 1" preserveAspectRatio="none" width="${b.length}" height="1">${r}</svg>`};
-    const draw=()=>{const L=cardLayout(shown(),o),C=L.C,mw=C===2?4:C===4?2:3,bh=C===4?60:68,head=`<div class="a4-h" data-cce="head"><b style="font-family:${PDF_BRAND};color:${PDFC.green}">${esc(o.title||shopName())}</b><span style="color:${PDFC.muted}">${esc(o.sub||"بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها")}</span></div><span class="a4-d num" style="color:${PDFC.muted}">${todayISO()}</span>`;
+    const draw=()=>{const L=cardLayout(shown(),{...o,edit:true,offSet:off}),C=L.C,mw=C===2?4:C===4?2:3,bh=C===4?60:68,head=`<div class="a4-h" data-cce="head"><b style="font-family:${PDF_BRAND};color:${PDFC.green}">${esc(o.title||shopName())}</b><span style="color:${PDFC.muted}">${esc(o.sub||"بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها")}</span></div><span class="a4-d num" style="color:${PDFC.muted}">${todayISO()}</span>`;
       N.innerHTML=`على البطاقة <span class="num">${shown().length}</span> مادة`;
       const hid=[...off].map(k=>[k,secs().get(k)||k.replace(/^c:/,"")]);
       PG.innerHTML=L.pages.map((pg,i)=>`<div class="a4"><div class="a4-in" style="background:#fff;color:${PDFC.ink}">${head}${pg.map(it=>{
@@ -3397,25 +3409,45 @@ function counterCard(top){
         <ul class="rows" id="cpL" style="max-height:46vh;overflow:auto"></ul><div class="foot"><button class="btn" type="button" data-pclose>تم</button></div>`);
       const Q=IN.querySelector("#cpQ"),UL=IN.querySelector("#cpL");
       const list=()=>{const q=Q.value.trim(),on=new Set(shown().map(p=>p.id));
-        const r=q?productList().filter(p=>p.active!==false&&!on.has(p.id)&&(matchScore(p.name,q,p.category)>0||normDigits(p.barcode||"").includes(normDigits(q)))).slice(0,30)
+        const r=q?productList().filter(p=>p.active!==false&&!(on.has(p.id)&&cardSec(p,o)[0]===k)&&(matchScore(p.name,q,p.category)>0||normDigits(p.barcode||"").includes(normDigits(q)))).slice(0,30)
           :all().filter(p=>skip.has(p.id));
-        UL.innerHTML=r.length?(q?"":`<li class="empty" style="padding:6px 14px;text-align:start">المواد اللي شلتها من البطاقة:</li>`)+r.map(p=>`<li class="crow"><div class="m"><b>${esc(p.name)}</b><span>${esc(p.category||"بدون صنف")} · <span class="num">${fmt(p.price)}</span>${isWeighed(p)?" للكيلو":""}</span></div><button class="btn sm" type="button" data-cpa="${esc(p.id)}">${I.plus}ضيف</button></li>`).join("")
-          :`<li class="empty">${q?"ماكو مادة بهذا الاسم، أو موجودة بالبطاقة.":"اكتب اسم المادة اللي تريد تضيفها."}</li>`};
+        UL.innerHTML=r.length?(q?"":`<li class="empty" style="padding:6px 14px;text-align:start">المواد اللي شلتها من البطاقة:</li>`)+r.map(p=>`<li class="crow"><div class="m"><b>${esc(p.name)}</b><span>${esc(p.category||"بدون صنف")} · <span class="num">${fmt(p.price)}</span>${isWeighed(p)?" للكيلو":""}</span></div><button class="btn sm" type="button" data-cpa="${esc(p.id)}">${on.has(p.id)?`انقلها هنا<small style="opacity:.7"> (من ${esc(cardSec(p,o)[1])})</small>`:`${I.plus}ضيف`}</button></li>`).join("")
+          :`<li class="empty">${q?"ماكو مادة بهذا الاسم، أو موجودة بهذا القسم.":"اكتب اسم المادة اللي تريد تضيفها."}</li>`};
       Q.oninput=list;list();
-      UL.onclick=e=>{const b=e.target.closest("[data-cpa]");if(!b)return;const p=S.products.get(b.dataset.cpa);if(!p)return;
+      UL.onclick=e=>{const b=e.target.closest("[data-cpa]");if(!b)return;const p=S.products.get(b.dataset.cpa);if(!p)return;const on0=new Set(shown().map(x=>x.id));
         if(!onCard(p))extra.add(p.id);skip.delete(p.id);delete o.sec[p.id];if(k&&cardSec(p,o)[0]!==k)o.sec[p.id]=k;
-        keep();draw();b.closest("li").remove();toast(`انضافت ${p.name}`)}};
+        keep();draw();b.closest("li").remove();toast(`${on0.has(p.id)?"انتقلت":"انضافت"} ${p.name}`)}};
     const editHead=()=>{pop(`<h3>عنوان البطاقة</h3><div class="field"><label for="cpT">العنوان</label><input id="cpT" maxlength="40" placeholder="${esc(shopName())}" value="${esc(o.title)}"></div>
         <div class="field"><label for="cpU">السطر الثاني</label><input id="cpU" maxlength="70" placeholder="بطاقة الكاونتر · امسح باركود المادة بدل البحث عنها" value="${esc(o.sub)}"></div>
         <div class="foot"><button class="btn primary" type="button" id="cpOk">${I.check}تم</button><button class="btn" type="button" data-pclose>رجوع</button></div>`);
       IN.querySelector("#cpOk").onclick=()=>{o.title=IN.querySelector("#cpT").value.trim();o.sub=IN.querySelector("#cpU").value.trim();POP.hidden=true;keep();draw()}};
-    const editSec=k=>{const t=secs().get(k)||k.replace(/^c:/,"");
-      pop(`<h3>${esc(t)}</h3><p class="hint">هذا القسم بصفحته. تكدر تطبعه لحاله أو تشيله من الملف.</p>
-        <div class="foot" style="flex-wrap:wrap"><button class="btn primary" type="button" id="cpOne">${I.pdf}اطبعه لحاله</button><button class="btn" type="button" id="cpAdd">${I.plus}ضيف مادة</button><label class="check" style="flex-basis:100%"><input type="checkbox" id="cpNps" ${np.has("sec:"+k)?"checked":""}> بدون أسعار بهذا القسم (تنطبع البطاقات بدون سعر)</label><button class="btn ghost danger-text" type="button" id="cpOff">شيل القسم من الملف</button><button class="btn" type="button" data-pclose>رجوع</button></div>`);
-      IN.querySelector("#cpOne").onclick=()=>{POP.hidden=true;print(m.querySelector("#ccGo"),p=>cardSec(p,o)[0]===k,true)};
-      IN.querySelector("#cpAdd").onclick=()=>addTo(k);
+    // A section: its name, its place among the sections, print it alone, no prices in it, take it off the file,
+    // or (a section the owner made) delete it, which sends its items back to where they were.
+    const secKeys=()=>cardGroups(shown(),{...o,edit:true,offSet:off}).map(g=>g[0]);
+    const editSec=k=>{const t=secTitle(k,o),own=k.startsWith("u:"),ks=secKeys(),i=ks.indexOf(k);
+      pop(`<h3>${esc(t)}</h3>
+        <div class="field"><label for="cpSn">اسم القسم</label><input id="cpSn" maxlength="40" value="${esc(t)}"></div>
+        <div class="tool-row" style="gap:6px"><span class="hint" style="margin:0">مكانه:</span><button class="btn sm" type="button" id="cpUp"${i>0?"":" disabled"}>${I.up||"↑"} قبل</button><button class="btn sm" type="button" id="cpDn"${i>=0&&i<ks.length-1?"":" disabled"}>${I.down||"↓"} بعد</button></div>
+        <label class="check"><input type="checkbox" id="cpNps" ${np.has("sec:"+k)?"checked":""}> بدون أسعار بهذا القسم (تنطبع البطاقات بدون سعر)</label>
+        <div class="foot" style="flex-wrap:wrap"><button class="btn primary" type="button" id="cpSok">${I.check}تم</button><button class="btn" type="button" id="cpOne">${I.pdf}اطبعه لحاله</button><button class="btn" type="button" id="cpAdd">${I.plus}ضيف مادة</button>
+          ${own?`<button class="btn ghost danger-text" type="button" id="cpRm">${I.trash}احذف القسم</button>`:`<button class="btn ghost danger-text" type="button" id="cpOff">شيل القسم من الملف</button>`}</div>`);
+      const name=()=>{const v=IN.querySelector("#cpSn").value.trim();if(own){const u=o.usecs.find(x=>x.k===k);if(u&&v)u.t=v;delete o.secNames[k]}else if(v&&v!==(WSEC.find(w=>w[0]===k)||[0,k.replace(/^c:/,"")])[1])o.secNames[k]=v;else delete o.secNames[k]};
+      const move=d=>{name();const a=secKeys(),j=a.indexOf(k);if(j<0||!a[j+d])return;[a[j],a[j+d]]=[a[j+d],a[j]];o.order=a;keep();draw();editSec(k)};
+      IN.querySelector("#cpUp").onclick=()=>move(-1);IN.querySelector("#cpDn").onclick=()=>move(1);
+      IN.querySelector("#cpSok").onclick=()=>{name();POP.hidden=true;keep();draw()};
+      IN.querySelector("#cpOne").onclick=()=>{name();POP.hidden=true;keep();print(m.querySelector("#ccGo"),p=>cardSec(p,o)[0]===k,true)};
+      IN.querySelector("#cpAdd").onclick=()=>{name();keep();addTo(k)};
       IN.querySelector("#cpNps").onchange=e=>{if(e.target.checked)np.add("sec:"+k);else np.delete("sec:"+k);keep();draw()};
-      IN.querySelector("#cpOff").onclick=()=>{off.add(k);POP.hidden=true;keep();draw()}};
+      const offB=IN.querySelector("#cpOff");if(offB)offB.onclick=()=>{off.add(k);POP.hidden=true;keep();draw()};
+      const rm=IN.querySelector("#cpRm");if(rm)rm.onclick=()=>{o.usecs=o.usecs.filter(x=>x.k!==k);for(const id in o.sec)if(o.sec[id]===k)delete o.sec[id];o.order=o.order.filter(x=>x!==k);np.delete("sec:"+k);POP.hidden=true;keep();draw();toast("انحذف القسم ورجعت مواده لأقسامها")}};
+    const newSec=()=>{pop(`<h3>قسم جديد</h3><p class="hint">بعد ما تسويه اضغط ${I.plus.replace("<svg",'<svg width="14" height="14"')} بالقسم حتى تضيف مواده، أو غيّر قسم أي مادة من مربعها.</p>
+        <div class="field"><label for="cpNs">اسم القسم</label><input id="cpNs" maxlength="40" placeholder="مثال: مخللات"></div><p class="err" id="cpNe"></p>
+        <div class="foot"><button class="btn primary" type="button" id="cpNok">${I.check}سوّي القسم</button><button class="btn" type="button" data-pclose>رجوع</button></div>`);
+      const go=()=>{const v=IN.querySelector("#cpNs").value.trim();if(!v){IN.querySelector("#cpNe").textContent="اكتب اسم القسم.";return}
+        if([...secs().values()].some(t=>foldAr(t)===foldAr(v))){IN.querySelector("#cpNe").textContent="هذا القسم موجود.";return}
+        const k="u:"+uid();o.usecs.push({k,t:v});keep();draw();addTo(k)};
+      IN.querySelector("#cpNok").onclick=go;IN.querySelector("#cpNs").onkeydown=e=>{if(e.key==="Enter")go()}};
+    m.querySelector("#ccNew").onclick=newSec;
     PG.addEventListener("click",e=>{const a=e.target.closest("[data-ccadd]");if(a)return addTo(a.dataset.ccadd);
       const s=e.target.closest("[data-ccsec]");if(s)return editSec(s.dataset.ccsec);
       const on=e.target.closest("[data-ccon]");if(on){off.delete(on.dataset.ccon);keep();draw();return}
