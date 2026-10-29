@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
+        working-directory: worker
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
