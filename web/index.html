@@ -1264,7 +1264,7 @@ try{flash=JSON.parse(sessionStorage.getItem(FLASH_KEY)||"null");sessionStorage.r
 
 /* ---------- live data ---------- */
 function stopData(){
-  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;clearTimeout(syncT);UT.clear();
+  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;clearTimeout(syncT);UT.clear();caught=new Set();clearTimeout(cloudT);cloudT=null;
   S.customers=new Map();S.txns=new Map();S.accounts=new Map();S.shops=new Map();S.activity=[];S.settings={};S.ready={c:false,t:false,a:false,s:false};S.selected=null;
 }
 /* Reads: the free plan allows 50,000 a day, and reading every account and transaction each time the app opened used them
@@ -1280,6 +1280,38 @@ function unpack(d){const x=d.data(),u=d.metadata.hasPendingWrites?Infinity:stamp
 function goneNote(coll,id){if(coll!=="customers"&&coll!=="txns")return;
   try{db.collection(P("gone")).doc(coll+"_"+id).set({c:coll,id,_u:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("gone note",e&&e.code))}catch(e){}}
 let syncT=null;
+/* Cloud copy: once a day, after this device's copy has caught up with the server (customers, transactions and deletes),
+   it sends the book to the worker (/backup), which keeps the day's first copy for a month and each month's first copy for
+   good, sealed. It reads nothing from Firebase. The book's owner gets them back in Settings > النسخ الاحتياطي. */
+const bkTenant=()=>SHOP||"main",bkUrl=()=>window.AI_URL.replace(/\/$/,"")+"/backup";
+let caught=new Set(),cloudT=null;
+function caughtUp(...ks){for(const k of ks)caught.add(k);
+  if(caught.has("customers")&&caught.has("txns")&&caught.has("gone")&&!cloudT&&window.AI_URL)cloudT=setTimeout(()=>{cloudT=null;cloudBackup()},20000)}
+async function cloudBackup(){
+  if(!S.me||!dataOn||!navigator.onLine||!S.ready.c||!S.ready.t||!auth.currentUser)return;
+  const flag="shahm-cloudbk:"+bkTenant()+":"+shopDay();try{if(localStorage.getItem(flag))return}catch(e){}
+  try{
+    const data={app:"shahm-debts",version:3,exportedAt:new Date().toISOString(),settings:S.settings,customers:[...S.customers.values()],txns:[...S.txns.values()],accounts:[],activity:S.activity};
+    const r=await fetch(bkUrl(),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body:JSON.stringify({tenant:bkTenant(),by:S.me.name,data})});
+    if(r.ok)try{localStorage.setItem(flag,"1")}catch(e){}
+  }catch(e){console.warn("cloud backup",e)}
+}
+async function cloudList(){
+  const box=$("#cloudBk");if(!box)return;box.innerHTML=`<span class="ro-note">جاري جلب النسخ…</span>`;
+  try{
+    const r=await fetch(bkUrl()+"?tenant="+encodeURIComponent(bkTenant()),{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});const j=await r.json().catch(()=>({}));
+    if(!r.ok){box.innerHTML=`<span class="ro-note">${esc(j.error||"تعذّر جلب النسخ.")}</span>`;return}
+    const it=j.items||[];if(!it.length){box.innerHTML=`<span class="ro-note">بعد ما انحفظت نسخة. أول نسخة تنحفظ وحدها اليوم من أحد الأجهزة.</span>`;return}
+    box.innerHTML=`<ul class="sub-hist">${it.map(x=>`<li><span class="num">${esc((x.day||"").split("-").reverse().join("/"))}</span><span>${x.kind==="m"?"نسخة الشهر (دائمية)":"نسخة يومية"}</span><span class="num">${fmt(x.c||0)} حساب · ${fmt(x.t||0)} حركة</span><button class="btn sm" type="button" data-cloudget="${esc(x.key)}">استرجاع</button></li>`).join("")}</ul>`;
+  }catch(e){box.innerHTML=`<span class="ro-note">تعذّر الاتصال. تأكد من الإنترنت.</span>`}
+}
+async function cloudGet(key){
+  toast("جاري تنزيل النسخة…");
+  try{const r=await fetch(bkUrl()+"?tenant="+encodeURIComponent(bkTenant())+"&key="+encodeURIComponent(key),{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
+    if(!r.ok){const j=await r.json().catch(()=>({}));toast(j.error||"تعذّر تنزيل النسخة.");return}
+    restorePreview(await r.text());
+  }catch(e){toast("تعذّر الاتصال. تأكد من الإنترنت.")}
+}
 async function syncData(fail){
   const run=syncData.run=(syncData.run||0)+1,key=SHOP||"root",live=()=>run===syncData.run&&dataOn;
   const ready=()=>{S.ready.c=S.ready.t=true;render()};
@@ -1287,8 +1319,8 @@ async function syncData(fail){
   if(!live())return;
   const mine=saved&&saved.v===SYNC_V&&saved.key===key?saved:null;
   if(v3===false||(v3===null&&!mine)){
-    unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.c=true;render()},fail));
-    unsubs.push(db.collection(P("txns")).onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.t=true;render()},fail));
+    unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.c=true;render();if(!s.metadata.fromCache)caughtUp("customers","gone")},fail));
+    unsubs.push(db.collection(P("txns")).onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.t=true;render();if(!s.metadata.fromCache)caughtUp("txns")},fail));
     return;
   }
   const M={customers:new Map(),txns:new Map()},st={mark:0,full:0};
@@ -1319,6 +1351,7 @@ async function syncData(fail){
     for(const c of s.docChanges({includeMetadataChanges:true})){if(c.type==="removed")continue; // deletes come from gone
       const [x,u]=unpack(c.doc);m.set(c.doc.id,x);UT.set(c.doc.id,u);seen(u);ch=true}
     if(ch){render();save()}
+    if(!s.metadata.fromCache)caughtUp(k);
   },fail));
   unsubs.push(db.collection(P("gone")).where("_u",">",since).onSnapshot({includeMetadataChanges:true},s=>{
     let ch=false;
@@ -1327,6 +1360,7 @@ async function syncData(fail){
       // Gone only if the copy here is older than the delete: an undo (written again after) stays.
       const have=UT.get(g.id)||0;if(m&&m.has(g.id)&&have!==Infinity&&have<=u){m.delete(g.id);UT.delete(g.id);ch=true}}
     if(ch)render();save();
+    if(!s.metadata.fromCache)caughtUp("gone");
   },fail));
 }
 /* Notifications (Settings > الإشعارات, per device): the owner hears about what someone else records while the app is open
@@ -2400,6 +2434,9 @@ function setPage(k){
       <span class="ro-note">تحفظ ملفين سوا: النسخة الاحتياطية، وتقرير شامل لليوم (حركات اليوم بأوقاتها، والمجاميع، وكل زبون وشكد عليه). اليوم يحسب من 2 الفجر لـ 2 الفجر، فإذا حفظت بعد نص الليل يبقى نفس يوم الشغل. وإذا عبرت 2 الفجر وما لحكت تحفظ، اضغط «نسخة أمس» وتنحفظ نسخة اليوم اللي فات بمجلده وتقريره.</span>
       ${FOLDER_OK?`<span class="ro-note">بالفلاش: إذا عندك مجلدات السنة الجاهزة (السنة ثم الشهر ثم اليوم)، أول مرة اختار مجلد <b>Shahm-Backups</b>، وبعدها كل يوم ينحفظ بمجلد يومه وحده بدون ما يسألك. البرنامج ما يسوي مجلدات.</span>`:""}
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button><button class="btn" type="button" data-act="daybackup" data-prev="1">${I.save}نسخة أمس (${prevShopDay().split("-").slice(1).reverse().join("/")})</button>${FOLDER_OK?`<button class="btn ghost sm" type="button" data-act="bkrootreset">تغيير مجلد الفلاش</button>`:""}</div></div>
+    ${window.AI_URL?`<div class="tpl"><h3>${I.save}النسخ على السحابة (تلقائي)</h3>
+      <span class="ro-note">كل يوم أول ما ينفتح البرنامج على أي جهاز ويتزامن، تنحفظ نسخة كاملة على سحابة البرنامج بدون ما تسوي شي. تبقى نسخة كل يوم لمدة شهر، ونسخة أول كل شهر بلا نهاية. الاسترجاع يدمج المحذوف وما يمسح شي موجود.</span>
+      <div id="cloudBk"><button class="btn" type="button" data-act="cloudlist">${I.back}عرض النسخ واسترجاعها</button></div></div>`:""}
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
       <span class="ro-note">${lb?"آخر نسخة: "+esc(timeAgo(lb)):"لم تحفظ أي نسخة بعد"}</span>
       <p class="ro-note" style="margin:0">الملف يحتوي: <span class="num">${S.customers.size-sups}</span> زبون، <span class="num">${sups}</span> مورد، <span class="num">${S.txns.size}</span> حركة، مع معلومات المتجر وقوالب الرسائل وسجل النشاط.</p>
@@ -3811,6 +3848,7 @@ document.addEventListener("click",e=>{
   const rpp=t.closest("[data-repper]");if(rpp){S.rep.per=rpp.dataset.repper;if(S.rep.per==="custom"&&!S.rep.from){S.rep.to=todayISO();S.rep.from=addDays(todayISO(),-29)}render();return}
   const htf=t.closest("[data-htf]");if(htf){S.ht.f=htf.dataset.htf;document.querySelectorAll("[data-htf]").forEach(b=>b.setAttribute("aria-pressed",b===htf));renderHomeTable();return}
   const wf=t.closest("[data-wf]");if(wf){S.rep.wf=wf.dataset.wf;S.rep.wlimit=40;render();return}
+  const cg=t.closest("[data-cloudget]");if(cg){if(isAdmin())cloudGet(cg.dataset.cloudget);return}
   const fw=t.closest("[data-follow]");if(fw){const fc=S.customers.get(fw.dataset.follow);if(fc&&canWrite())followForm(fc);return}
   const b=t.closest("[data-act]");if(!b)return;
   const c=S.customers.get(S.selected);
@@ -3821,6 +3859,7 @@ document.addEventListener("click",e=>{
     case "listsall":if(c){S.listsAll=c.id;render()}break;
     case "newcustq":{const nm=($("#hq")||{}).value||"";S.kind="customer";customerForm(null,id=>openCustomer(id));setTimeout(()=>{const i=$("#cName");if(i&&!i.value)i.value=nm.trim()},0);break}
     case "monthrep":if(can("totals"))monthReport();break;
+    case "cloudlist":if(isAdmin())cloudList();break;
     case "voice":if(canWrite())voiceEntry();break;
     case "gowarn":S.rep.tab="warn";S.rep.wf="all";go("reports");break;
     case "reppdf":repExport("pdf");break;
