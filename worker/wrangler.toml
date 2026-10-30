@@ -35,5 +35,11 @@ name = "BK_LIMIT"
 namespace_id = "1003"
 simple = { limit = 20, period = 60 }
 
+# At most 120 saves a minute per person to the new database (see src/db.js); a big save sends up to 400 records.
+[[ratelimits]]
+name = "DB_LIMIT"
+namespace_id = "1004"
+simple = { limit = 120, period = 60 }
+
 [triggers]
 crons = ["7 4,9,14,19 * * *"]

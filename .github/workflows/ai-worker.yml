@@ -50,6 +50,17 @@ jobs:
           fi
           if [ -n "$id" ]; then printf '\n[[kv_namespaces]]\nbinding = "BK"\nid = "%s"\n' "$id" >> wrangler.toml; echo "Backups storage: $id"
           else echo "::warning::Could not make the Workers KV storage for cloud backups (the Cloudflare token may need the «Workers KV Storage: Edit» permission). Cloud backups stay off."; fi
+      - name: The new database for the books (made once)
+        # Cloudflare D1 database "shahm-db", bound as DB (see worker/src/db.js). If the Cloudflare token can't manage D1,
+        # the worker deploys without it and the app keeps using Firestore alone, so nothing else breaks.
+        run: |
+          id=$(npx wrangler d1 list --json 2>/dev/null | jq -r '.[] | select(.name == "shahm-db") | .uuid' | head -n1) || id=""
+          if [ -z "$id" ]; then
+            npx wrangler d1 create shahm-db >/dev/null 2>&1 || true
+            id=$(npx wrangler d1 list --json 2>/dev/null | jq -r '.[] | select(.name == "shahm-db") | .uuid' | head -n1) || id=""
+          fi
+          if [ -n "$id" ]; then printf '\n[[d1_databases]]\nbinding = "DB"\ndatabase_name = "shahm-db"\ndatabase_id = "%s"\n' "$id" >> wrangler.toml; echo "Database: $id"
+          else echo "::warning::Could not make the D1 database (the Cloudflare token may need the «D1: Edit» permission). The app keeps using Firestore alone."; fi
       - name: Deploy
         run: npx wrangler deploy
       - name: Store the AI key on the worker
