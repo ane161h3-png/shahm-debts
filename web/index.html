@@ -574,6 +574,40 @@ td.x{width:64px;white-space:nowrap}
   .settings:not(.open) .set-body-pane{display:none}
   .set-body{padding:14px}
 }
+.sec-sum{gap:0}.sec-row{display:flex;align-items:center;gap:10px;padding:8px 0}.sec-row+.sec-row{border-top:1px solid var(--line)}
+.sec-row .meta{flex:1;min-width:0;display:flex;flex-direction:column}.sec-row .meta b{overflow-wrap:anywhere}
+.sec-ic{width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}.sec-ic svg{width:18px;height:18px}
+.sub-now{display:flex;flex-direction:column;gap:6px}
+.sub-bar{height:8px;border-radius:99px;background:var(--paper-2);overflow:hidden}.sub-bar i{display:block;height:100%;background:currentColor;border-radius:99px}
+.plan{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.plan-p{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.plan-p span{background:var(--paper-2);border-radius:9px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;text-align:center;min-width:0}
+.plan-p small{font-size:12px;color:var(--muted)}.plan-p b{font-size:14px;overflow-wrap:anywhere}
+@media (max-width:420px){.plan-p{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.plan-notes{margin:6px 0 0;padding-inline-start:20px;display:flex;flex-direction:column;gap:6px;line-height:1.6}
+/* Small phones, and phones set to big text (Android scales every font up to 2x): nothing may be wider than the screen.
+   Grid tracks use minmax(0,1fr) so a long label wraps instead of pushing the column out, and buttons may wrap. */
+@media (max-width:760px){
+  .brand h1{font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brand small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sum-mini .k{white-space:normal;line-height:1.3}
+  .sum-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sum-actions .btn{white-space:normal;min-width:0;line-height:1.25;text-align:center}
+  .btn{min-width:0;max-width:100%}
+  .two,.mr-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .seg button,.chips button{min-width:0}
+  .rep-tabs button{flex-direction:column;gap:2px;padding-inline:4px;text-align:center;line-height:1.25}
+  .calc-keys{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .rep-over{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rep-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .toast{width:max-content}
+  .bottom-nav button:not(.plus){min-width:0;flex:1 1 0;padding-inline:2px}
+  .bottom-nav button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media (max-width:420px){
+  header.top{gap:8px}
+  .me{padding:3px}.me .role{display:none}
+}
 /* Laptop pointer: what the mouse is over grows a little, with a short ease. Off for touch screens and reduced motion. */
 @media (hover:hover) and (prefers-reduced-motion:no-preference){
   .btn,.icon-btn,.chips button,.seg button,.tabs button,.act.tap,.top-list li,.rem-row,.search .s-mic{transition:transform .16s ease,box-shadow .16s ease,background-color .16s ease}
@@ -1189,6 +1223,7 @@ function showRegister(){
       <p class="err" id="rErr"></p>
       <button class="btn primary block" type="submit" id="rGo">${MULTI?"تسجيل المحل":"إنشاء الحساب"}</button>
     </form>
+    ${MULTI?`<div class="banner info">🎁 تبدي بفترة تجريبية مجانية بكل الخصائص. بعدها تختار الاشتراك اللي يناسبك (شهري، 6 أشهر، سنوي أو دائمي)، وبياناتك تبقى مثل ما هي. تشوف الأسعار والعروض من الإعدادات ← اشتراكي والعروض.</div>`:""}
     ${MULTI?`<p class="ro-note">عامل بمحل؟ لا تسجّل محل: صاحب المحل يسويلك حساب من الإعدادات ← المستخدمين.</p>`:""}
     <div class="gate-foot">عندك حساب؟ <button class="linkish" type="button" id="toLogin">تسجيل الدخول</button></div>`,
   mount:g=>{
@@ -2484,15 +2519,15 @@ function pushBlock(){
     :note("فعّله حتى يوصلك الإشعار مثل إشعارات البرامج، حتى لو البرنامج مسكّر.")+`<div><button class="btn primary sm" type="button" data-act="pushon">${I.bell}تفعيل الإشعار على الموبايل</button></div>`;
   return `<div class="tpl" style="margin-top:12px"><h3>${I.bell}إشعار على الموبايل</h3>${body}</div>`;
 }
-const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
+const SET_PAGES=[["sub","اشتراكي والعروض",I.wallet,true],["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["security","الأمان والخصوصية",I.lock,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 function settingsView(){
-  const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner));
+  const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner)&&(p[0]!=="sub"||(SHOP&&S.shop)));
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
   const cur=S.setPage||(window.innerWidth>820?pages[0][0]:null);
   const pending=[...S.accounts.values()].filter(a=>a.status==="pending").length;
   return `<div class="settings ${S.setPage?"open":""}">
     <nav class="pane set-menu-pane"><div class="set-menu">
-      ${pages.map(([k,l,ic])=>`<button type="button" data-set="${k}" aria-current="${cur===k}">${ic}${l}${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}${k==="shops"&&shopsPending()?`<span class="badge">${shopsPending()}</span>`:""}</button>`).join("")}
+      ${pages.map(([k,l,ic])=>`<button type="button" data-set="${k}" aria-current="${cur===k}">${ic}${l}${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}${k==="shops"&&shopsPending()?`<span class="badge">${shopsPending()}</span>`:""}${k==="sub"&&S.shop.trial?`<span class="chip warn" style="margin-inline-start:auto">تجريبي</span>`:""}</button>`).join("")}
       <button type="button" data-act="logout" style="color:var(--debt)">${I.out}تسجيل الخروج</button>
     </div></nav>
     <section class="pane set-body-pane"><div class="set-body">${cur?`<button class="btn ghost set-back" type="button" data-set="">${I.back}رجوع</button>`+setPage(cur):""}</div></section>
@@ -2592,17 +2627,10 @@ function setPage(k){
       <button class="btn ghost" type="button" data-act="pastebackup">لصق نص النسخة</button></div></div>`;}
   if(k==="account")return `<h2>حسابي</h2>
     <div class="user-row"><span class="avatar">${initial(S.me.name)}</span><div class="meta"><b>${esc(S.me.name)}</b><span class="num">@${esc(S.me.username||"")}</span></div><span class="role">${ROLE_LABEL[S.me.role]}</span></div>
-    ${phoneCard()}
-    ${emailCard()}
-    <div class="tpl"><h3>${I.edit}تغيير كلمة المرور</h3>
-      <form id="pwForm" class="field" style="gap:10px" novalidate>
-        <div class="field"><label for="pCur">كلمة المرور الحالية</label><div class="pw"><input id="pCur" type="password" autocomplete="current-password"><button type="button" data-showpw="pCur">إظهار</button></div></div>
-        <div class="field"><label for="pNew">كلمة المرور الجديدة</label><div class="pw"><input id="pNew" type="password" autocomplete="new-password"><button type="button" data-showpw="pNew">إظهار</button></div><span class="help">8 أحرف على الأقل.</span></div>
-        <p class="err" id="pErr"></p>
-        <div><button class="btn primary" type="submit">حفظ كلمة المرور</button></div>
-      </form></div>
-    <div><button class="btn" type="button" data-act="logout" style="color:var(--debt)">${I.out}تسجيل الخروج</button></div>
-    ${delAccountCard()}`;
+    <div><button class="btn" type="button" data-set="security">${I.lock}الأمان والخصوصية: رقمك، إيميلك وكلمة المرور</button></div>
+    <div><button class="btn" type="button" data-act="logout" style="color:var(--debt)">${I.out}تسجيل الخروج</button></div>`;
+  if(k==="security")return securityPage();
+  if(k==="sub")return subPage();
   if(k==="install"){
     const introBtn=`<div style="margin-top:12px"><button class="btn" type="button" data-act="intro">${I.book}شرح البرنامج</button></div>`;
     const shareTxt="برنامج دفتر ديون "+shopName()+":\nللأندرويد (APK): "+APK_URL+"\nللابتوب والآيفون: "+WEB_URL;
@@ -3191,6 +3219,56 @@ function emailCard(){
       <p class="err" id="mErr"></p>
       <div><button class="btn primary" type="submit">دز رابط التأكيد</button></div>
     </form><span class="ro-note">يوصلك رابط على الإيميل. بعد ما تفتحه يصير دخولك بالإيميل، واسم المستخدم يبقى يشتغل على هذا الجهاز.</span></div>`;
+}
+/* Settings > الأمان والخصوصية: what the person signs in with (number, e-mail, password) at a glance, and where to change each. */
+const pwCard=()=>`
+    <div class="tpl"><h3>${I.edit}تغيير كلمة المرور</h3>
+      <form id="pwForm" class="field" style="gap:10px" novalidate>
+        <div class="field"><label for="pCur">كلمة المرور الحالية</label><div class="pw"><input id="pCur" type="password" autocomplete="current-password"><button type="button" data-showpw="pCur">إظهار</button></div></div>
+        <div class="field"><label for="pNew">كلمة المرور الجديدة</label><div class="pw"><input id="pNew" type="password" autocomplete="new-password"><button type="button" data-showpw="pNew">إظهار</button></div><span class="help">8 أحرف على الأقل.</span></div>
+        <p class="err" id="pErr"></p>
+        <div><button class="btn primary" type="submit">حفظ كلمة المرور</button></div>
+      </form></div>`;
+function securityPage(){
+  const u=auth.currentUser,real=u&&!isFakeEmail(u.email),login=S.me.username||"";
+  const row=(ic,k,v,ok)=>`<div class="sec-row"><span class="sec-ic">${ic}</span><div class="meta"><span class="ro-note">${k}</span><b>${v}</b></div>${ok===undefined?"":`<span class="chip ${ok?"paid":"warn"}">${ok?"مضبوط":"ناقص"}</span>`}</div>`;
+  return `<h2>الأمان والخصوصية</h2><p class="lead">معلومات دخولك لحسابك، ومنها تغيّرها.</p>
+    <div class="tpl sec-sum">
+      ${row(I.call,/^\d{10,15}$/.test(login)?"رقم الهاتف (تدخل بيه)":"اسم الدخول",`<span class="num">${esc(login)}</span>`)}
+      ${row(I.at,"الإيميل",real?`<span class="num">${esc(u.email)}</span>`:"ما مربوط",real)}
+      ${row(I.lock,"كلمة المرور","••••••••")}
+    </div>
+    <div class="banner info"><span>🔒 بياناتك محفوظة على سيرفرات Google بشكل مشفّر، ومحد يشوف دفترك غيرك وغير اللي تضيفهم. لا تعطي كلمة المرور لأحد، وإذا ربطت إيميلك تكدر ترجعها إذا نسيتها. <a href="https://shahm-debts.app/privacy.html" target="_blank" rel="noopener">سياسة الخصوصية</a></span></div>
+    ${phoneCard()}
+    ${emailCard()}
+    ${pwCard()}
+    ${delAccountCard()}`;
+}
+/* Settings > اشتراكي والعروض (shop owners): where the subscription stands, above all the free trial's days left, and the offers in
+   plain words. Prices are the ones in the sales guide (project files, sales/): change both together. */
+const PLANS=[["دفتر الديون","10,000","50,000","90,000","350,000"],["الكاشير","15,000","75,000","135,000","400,000"],["الدفتر + الكاشير","20,000","100,000","180,000","600,000"]];
+function subPage(){
+  const x=S.shop,n=subLeft(x),end=x.until?dmyMs(x.until):"";
+  let st;
+  if(x.trial){const all=Math.max(1,Math.round((x.until-(x.createdAt||x.until))/864e5)),pct=Math.max(0,Math.min(100,Math.round(100*(all-Math.max(0,n))/all)));
+    st=`<div class="banner ${n<=2?"bad":"warn"} sub-now"><b>🎁 أنت هسه بالفترة التجريبية المجانية</b>
+      <span>${n<=0?"تنتهي اليوم":n===1?"باقي يوم واحد":`باقي <b class="num">${n}</b> يوم`} من أصل <span class="num">${all}</span>، وتنتهي <span class="num">${end}</span>.</span>
+      <div class="sub-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+      <span>لما تخلص، الدفتر يتوقف لحد ما تشترك. كل ديونك وبياناتك تبقى محفوظة، وترجع تشتغل أول ما تشترك.</span></div>`}
+  else st=`<div class="banner ok sub-now"><b>✅ اشتراكك فعّال</b><span>${x.until?`لحد <span class="num">${end}</span> (باقي <b class="num">${Math.max(0,n)}</b> يوم).`:"اشتراك دائمي."}</span></div>`;
+  const wa="https://wa.me/"+SUPPORT.wa+"?text="+encodeURIComponent("السلام عليكم، أريد أشترك بديون الشهم لمحل «"+(x.name||shopName())+"».");
+  return `<h2>اشتراكي والعروض</h2>${st}
+    <div class="tpl"><h3>${I.wallet}الأسعار</h3><p class="ro-note" style="margin:0">بالدينار العراقي، لمحل واحد، والعمال والأجهزة بدون حد.</p>
+      ${PLANS.map(([nm,...v])=>`<div class="plan"><b>${nm}</b><div class="plan-p">${v.map((p,i)=>`<span><small>${["شهر","6 أشهر","سنة","دائمي"][i]}</small><b class="num">${p}</b></span>`).join("")}</div></div>`).join("")}
+      <ul class="plan-notes"><li><b>6 أشهر</b> = شهر ببلاش، و<b>السنة</b> = 3 أشهر ببلاش.</li><li><b>الدائمي</b> تدفعه مرة وحدة ويبقى شغّال.</li><li>الدفتر والكاشير سوا أرخص من كل واحد بروحه.</li></ul></div>
+    <div class="tpl"><h3>🎉 عروض الافتتاح (لفترة محدودة)</h3>
+      <ul class="plan-notes"><li>أول شهر من الدفتر بـ <b class="num">5,000</b> بدل 10,000.</li>
+        <li>الدفتر دائمي بـ <b class="num">300,000</b> بدل 350,000، لأول 10 محلات.</li>
+        <li>الدفتر + الكاشير دائمي بـ <b class="num">500,000</b> بدل 600,000، لأول 10 محلات، ويا تنصيب وتدريب بالمحل.</li>
+        <li>جيب محل صديق: كل محل يشترك من طرفك ينضافلك <b>شهر ببلاش</b>.</li>
+        <li>بالسنوي أو الدائمي ندخّل أسماء زبائنك وأرصدتهم من الدفتر الورقي ببلاش.</li></ul></div>
+    <div class="tpl"><h3>${I.check}طريقة الاشتراك</h3><p class="ro-note" style="margin:0">تواصل ويانا وختار باقتك، تدفع نقداً أو بالتحويل، ونفعّل اشتراكك على نفس حسابك. بياناتك تبقى مثل ما هي.</p>
+      <div class="lockd-ways"><a class="btn wa" href="${esc(wa)}" target="_blank" rel="noopener">${I.wa}واتساب</a><a class="btn" href="tel:${SUPPORT.tel}">${I.call}اتصال</a></div></div>`;
 }
 /* Settings > حسابي > رقم الهاتف: when the number is lost or changes, the new one becomes the login (the password and every
    debt stay as they are). The main notebook's owner signs in with admin or the e-mail, so it isn't shown there. */
