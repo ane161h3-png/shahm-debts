@@ -1,8 +1,12 @@
-// Each book's accounts and transactions in Cloudflare D1 (binding DB): step one of moving off Firestore's daily limit.
-// For now Firestore stays the real copy. The app also sends every account/transaction write here, and once a day it
-// compares this copy with its own and sends what differs, so D1 holds the same book. The app reads from here in step two.
+// Each book's accounts and transactions in Cloudflare D1 (binding DB), to move off Firestore's daily limit.
+// Every account/transaction write goes to Firestore and here. Books listed in D1_READ (wrangler.toml: "all", or book ids
+// separated by commas) are read from here; the rest still read Firestore. Firestore stays the reference: once a day the
+// owner's device compares it with this copy and sends what differs.
 //   POST /db/push?tenant=X  body {ops: [[coll, id, data | null], ...]}  the book's writers: saves each record (null = deleted)
-//   GET  /db/pull?tenant=X&since=U  the book's members: records saved after U, oldest first, a page at a time (more: true)
+//   GET  /db/pull?tenant=X&since=U  the book's members: records saved after U, oldest first, a page at a time (more: true);
+//                                   read: whether the app should show this book from here
+//   GET  /db/live?tenant=X  (WebSocket, login sent as the protocol "bearer, <token>") the book's members: a message {u}
+//                           after every save, so the app pulls what changed straight away (see Live below)
 // tenant is a shop's id (its owner's uid) or "main" for the root book. Who may read or write follows firestore.rules
 // (owner, active editors, active viewers read only), read from Firestore with the person's own login and kept a few
 // minutes. Each record keeps u, a number from the book's own counter (ctr) that only goes up (and is at least the
@@ -37,7 +41,9 @@ const field = (doc, k) => doc && doc.fields ? val(doc.fields[k]) : null;
 // Who is asking and what they may do in this book: {uid, role: "owner" | "editor" | "viewer" | ""}.
 const roles = new Map();
 async function access(request, env, tenant) {
-  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  // A browser can't set headers on a WebSocket, so the live link sends the login as its second protocol.
+  const proto = (request.headers.get("Sec-WebSocket-Protocol") || "").split(",").map(x => x.trim());
+  const token = proto[0] === "bearer" && proto[1] ? proto[1] : (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return { error: "سجّل دخولك أولاً.", status: 401 };
   const key = tenant + "|" + token, hit = roles.get(key);
   if (hit && Date.now() - hit.at < ROLE_TTL) return hit.a;
@@ -81,6 +87,26 @@ function shapeOk(c, id, d) {
     && typeof d.amount === "number" && d.amount > 0 && d.amount < 1e10;
 }
 
+const readOn = (env, tenant) => { const l = String(env.D1_READ || "").split(",").map(x => x.trim()); return l.includes("all") || l.includes(tenant); };
+
+// One per book: holds the open live links of its devices and tells them when something was saved. Idle links hibernate
+// (no cost), and the keep-alive ping is answered without waking it.
+export class Live {
+  constructor(ctx) { this.ctx = ctx; ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong")); }
+  async fetch(request) {
+    if (request.headers.get("Upgrade") === "websocket") {
+      const [client, server] = Object.values(new WebSocketPair());
+      this.ctx.acceptWebSocket(server);
+      return new Response(null, { status: 101, webSocket: client, headers: { "Sec-WebSocket-Protocol": "bearer" } });
+    }
+    const msg = JSON.stringify(await request.json());
+    for (const ws of this.ctx.getWebSockets()) try { ws.send(msg); } catch (e) {}
+    return new Response("ok");
+  }
+  webSocketClose(ws, code) { try { ws.close(code === 1005 ? 1000 : code, "bye"); } catch (e) {} }
+}
+const liveOf = (env, tenant) => env.LIVE.get(env.LIVE.idFromName(tenant));
+
 export async function handleDb(request, env, json, cors) {
   if (!env.DB) return json({ error: "قاعدة البيانات الجديدة بعدها ما مفعّلة على السيرفر.", off: true }, 503, cors);
   const url = new URL(request.url), what = url.pathname.slice(4), tenant = url.searchParams.get("tenant");
@@ -88,13 +114,17 @@ export async function handleDb(request, env, json, cors) {
   const a = await access(request, env, tenant);
   if (a.error) return json({ error: a.error }, a.status, cors);
   if (!a.role) return json({ error: "ما عندك صلاحية على هذا الدفتر." }, 403, cors);
+  if (what === "live") {
+    if (!env.LIVE || request.headers.get("Upgrade") !== "websocket") return json({ error: "طلب غير صحيح." }, 400, cors);
+    return liveOf(env, tenant).fetch(request);
+  }
   await schema(env);
 
   if (what === "pull" && request.method === "GET") {
     const since = Math.max(0, Math.floor(Number(url.searchParams.get("since")) || 0));
     const { results } = await env.DB.prepare("SELECT c, id, d, u, del FROM docs WHERE t = ? AND u > ? ORDER BY u LIMIT ?").bind(tenant, since, PAGE + 1).all();
     const more = results.length > PAGE, rows = results.slice(0, PAGE).map(x => [x.c, x.id, x.del ? null : JSON.parse(x.d), x.u]);
-    return json({ rows, more, u: rows.length ? rows[rows.length - 1][3] : since }, 200, cors);
+    return json({ rows, more, u: rows.length ? rows[rows.length - 1][3] : since, read: readOn(env, tenant) }, 200, cors);
   }
 
   if (what === "push" && request.method === "POST") {
@@ -134,6 +164,7 @@ export async function handleDb(request, env, json, cors) {
     }
     await env.DB.batch(stmts);
     const u = await env.DB.prepare("SELECT u FROM ctr WHERE t = ?").bind(tenant).first("u");
+    if (env.LIVE) try { await liveOf(env, tenant).fetch("https://live/notify", { method: "POST", body: JSON.stringify({ u }) }); } catch (e) { console.warn("live", e); }
     return json({ ok: true, n, u }, 200, cors);
   }
   return json({ error: "Not found" }, 404, cors);

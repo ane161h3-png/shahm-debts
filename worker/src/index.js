@@ -6,7 +6,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { handlePush, vapidPublic } from "./push.js";
 import { handleBackup } from "./backup.js";
-import { handleDb } from "./db.js";
+import { handleDb, Live } from "./db.js";
+export { Live };
 
 const MAX_IMAGES = 4;
 const MAX_IMAGE_CHARS = 7_000_000; // ~5 MB of base64 per photo
