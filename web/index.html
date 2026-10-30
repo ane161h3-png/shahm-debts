@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Where the page may load from and talk to: itself, Firebase (Google) and the photo-reading worker. Anything else, such as a
      script planted in a customer name sending the data elsewhere, is blocked by the browser. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://shahm-ai.hydrzyd83.workers.dev; frame-src https://*.firebaseapp.com https://*.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://shahm-ai.hydrzyd83.workers.dev wss://shahm-ai.hydrzyd83.workers.dev; frame-src https://*.firebaseapp.com https://*.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>دفتر ديون ماركت الشهم</title>
 <meta name="description" content="دفتر ديون ماركت الشهم: ديون الزبائن والموردين، كشوف حساب PDF، وتذكير واتساب.">
@@ -1264,7 +1264,7 @@ try{flash=JSON.parse(sessionStorage.getItem(FLASH_KEY)||"null");sessionStorage.r
 
 /* ---------- live data ---------- */
 function stopData(){
-  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;clearTimeout(syncT);UT.clear();caught=new Set();clearTimeout(cloudT);cloudT=null;clearTimeout(d1T);d1T=null;d1Out=new Map();d1Loaded="";
+  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;clearTimeout(syncT);UT.clear();caught=new Set();clearTimeout(cloudT);cloudT=null;clearTimeout(d1T);d1T=null;d1Out=new Map();d1Loaded="";S.d1Read=false;
   S.customers=new Map();S.txns=new Map();S.accounts=new Map();S.shops=new Map();S.activity=[];S.settings={};S.ready={c:false,t:false,a:false,s:false};S.selected=null;
 }
 /* Reads: the free plan allows 50,000 a day, and reading every account and transaction each time the app opened used them
@@ -1320,22 +1320,22 @@ async function cloudGet(key){
     restorePreview(await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).text());
   }catch(e){toast("تعذّر الاتصال. تأكد من الإنترنت.")}
 }
-/* New database (Cloudflare D1, step one of moving off Firestore's daily limit): every account/transaction write also goes
-   to the worker (/db/push), kept in an outbox on this device until it arrives. Once a day, after this device has caught up
-   with Firestore, a writer's device reads the D1 copy and sends whatever differs from its own (the first time, that is the
-   whole book), so D1 keeps the same book. Firestore stays the real copy: nothing shown is read from D1 yet. */
+/* New database (Cloudflare D1, to move off Firestore's daily limit): every account/transaction write also goes to the
+   worker (/db/push), kept in an outbox on this device until it arrives. Books the worker lists in D1_READ are read from
+   D1 (d1Read below); the rest still read Firestore. Firestore stays the reference: once a day a device that caught up
+   with it (when reading from D1, only the owner's, reading Firestore once) compares it with D1 and sends what differs. */
 const d1Url=()=>window.AI_URL.replace(/\/$/,"")+"/db/",d1Key=()=>"d1out:"+bkTenant();
 let d1Out=new Map(),d1T=null,d1Off=false,d1Loaded="";
 const D1_LAST="shahm-d1-last",d1Last=v=>{try{if(v)localStorage.setItem(D1_LAST,JSON.stringify(v));else return JSON.parse(localStorage.getItem(D1_LAST)||"null")}catch(e){return null}};
 const plainRec=o=>{const x=JSON.parse(JSON.stringify(o));delete x._u;return x};
 function d1Queue(coll,id,data){
   if((coll!=="customers"&&coll!=="txns")||!window.AI_URL||d1Off)return;
-  d1Out.set(coll+"|"+id,[coll,id,data?plainRec(data):null]);d1Save();d1Kick(1500)}
+  d1Out.set(coll+"|"+id,[coll,id,data?plainRec(data):null]);d1Save();d1Kick(400)}
 function d1Save(){const k=d1Key(),ops=[...d1Out.values()];kv.set(k,ops).catch(()=>{})}
 async function d1Load(){const k=d1Key();if(d1Loaded===k)return;d1Loaded=k;
   try{const ops=await kv.get(k);if(Array.isArray(ops))for(const o of ops){const key=o[0]+"|"+o[1];if(!d1Out.has(key))d1Out.set(key,o)}}catch(e){}
   if(d1Out.size)d1Kick(3000)}
-function d1Kick(ms){if(d1T)return;d1T=setTimeout(d1Flush,ms)}
+function d1Kick(ms){const at=Date.now()+ms;if(d1T&&d1Kick.at<=at)return;clearTimeout(d1T);d1Kick.at=at;d1T=setTimeout(d1Flush,ms)} // the sooner of two asks wins
 async function d1Send(ops){
   const r=await fetch(d1Url()+"push?tenant="+encodeURIComponent(bkTenant()),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body:JSON.stringify({ops})});
   const j=await r.json().catch(()=>({}));if(j.off)d1Off=true;return {ok:r.ok,status:r.status,j}}
@@ -1359,27 +1359,83 @@ async function d1Pull(){const all=new Map();let since=0;
     for(const [c,id,d,u] of j.rows)all.set(c+"|"+id,{d,u});since=j.u;if(!j.more)return all}}
 async function d1Check(force){
   if(!window.AI_URL||d1Off||!canWrite()||!dataOn||!S.ready.c||!S.ready.t||!navigator.onLine||!auth.currentUser)return;
+  if(S.d1Read&&S.me.role!=="owner")return; // what this device shows came from D1, so only a fresh read of Firestore can check it
   const flag="shahm-d1chk:"+bkTenant()+":"+shopDay();
   if(!force){try{if(localStorage.getItem(flag))return}catch(e){}if(Date.now()-(d1Check.tried||0)<30*60e3)return}
   d1Check.tried=Date.now();
   try{
     if(d1Out.size){await d1Flush();if(d1Out.size)return} // our own unsent saves go first
+    let src={customers:S.customers,txns:S.txns};
+    if(S.d1Read){const got=await Promise.all(["customers","txns"].map(k=>db.collection(P(k)).get({source:"server"})));
+      src={customers:new Map(got[0].docs.map(d=>[d.id,unpack(d)[0]])),txns:new Map(got[1].docs.map(d=>[d.id,unpack(d)[0]]))}}
     const remote=await d1Pull(),ops=[],recent=Date.now()-10*60e3;
-    for(const [k,m] of [["customers",S.customers],["txns",S.txns]])for(const [id,x] of m){
-      if(UT.get(id)===Infinity)continue; // still on its way; the outbox has it
-      const r=remote.get(k+"|"+id);if(!r||!r.d||stableJson(r.d)!==stableJson(plainRec(x)))ops.push([k,id,plainRec(x)])}
+    for(const [k,m] of [["customers",src.customers],["txns",src.txns]])for(const [id,x] of m){
+      if(UT.get(id)===Infinity||d1Out.has(k+"|"+id))continue; // still on its way; the outbox has it
+      // Saved to D1 in the last minutes: Firestore may not have that save yet, so leave it for tomorrow's check.
+      const r=remote.get(k+"|"+id);if(r&&r.u>recent)continue;
+      if(!r||!r.d||stableJson(r.d)!==stableJson(plainRec(x)))ops.push([k,id,plainRec(x)])}
     // In D1 but gone from Firestore: mark it deleted there too (kept, not erased), unless it was saved in the last minutes
     // by another device and hasn't reached this one yet.
-    for(const [key,r] of remote){if(!r.d||r.u>recent)continue;const [k,id]=key.split("|");if(!(k==="customers"?S.customers:S.txns).has(id))ops.push([k,id,null])}
+    for(const [key,r] of remote){if(!r.d||r.u>recent||d1Out.has(key))continue;const [k,id]=key.split("|");if(!src[k].has(id))ops.push([k,id,null])}
     for(let i=0;i<ops.length;i+=400){const r=await d1Send(ops.slice(i,i+400));if(!r.ok)throw new Error(r.j.error||"خطأ "+r.status)}
-    d1Last({at:Date.now(),ok:true,c:S.customers.size,t:S.txns.size,fixed:ops.length});
+    d1Last({at:Date.now(),ok:true,c:src.customers.size,t:src.txns.size,fixed:ops.length});
     try{localStorage.setItem(flag,"1")}catch(e){}
   }catch(e){console.warn("d1 check",e);d1Last({...(d1Last()||{}),at:Date.now(),ok:false,msg:e.message||"تعذّر الاتصال"})}
   if(S.view==="settings")render();
 }
+/* Reading a book from D1 (when the worker lists it in D1_READ): this device keeps its copy (IndexedDB) and asks /db/pull
+   only for what was saved after its mark. A live link (/db/live) says when any device saved, so changes show straight away;
+   it also asks every few minutes and when the app comes back to the screen, in case the link dropped. A record still in
+   this device's outbox isn't replaced by the server's older copy. Returns false, and the Firestore path runs instead,
+   when the worker doesn't read this book from D1, or can't be reached and this device has no copy from D1 yet. If the
+   worker stops reading it from D1 while open, the app starts over on Firestore. */
+const D1_V=2;
+async function d1Read(live,key,ready){
+  await d1Load();
+  const saved=await kv.get("sync"),mine=saved&&saved.v===D1_V&&saved.key===key?saved:null;
+  if(!live())return true;
+  const st={mark:mine?mine.mark:0},M={customers:new Map(),txns:new Map()};
+  if(mine)for(const k of ["customers","txns"])for(const [id,x] of mine[k])M[k].set(id,x);
+  const pullFrom=async since=>{const rows=[];
+    for(;;){const r=await fetch(d1Url()+"pull?tenant="+encodeURIComponent(bkTenant())+"&since="+since,{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
+      const j=await r.json().catch(()=>({}));if(!r.ok){if(j.off)d1Off=true;throw new Error(j.error||"خطأ "+r.status)}
+      if(!j.read)return null;rows.push(...j.rows);since=j.u;if(!j.more)return rows}};
+  const apply=(maps,rows)=>{for(const [c,id,d,u] of rows){if(u>st.mark)st.mark=u;if(d1Out.has(c+"|"+id))continue;
+    const m=maps[c];if(!m)continue;if(d)m.set(id,d),UT.set(id,u);else m.delete(id),UT.delete(id)}};
+  let rows,offline=false;
+  try{rows=await pullFrom(st.mark)}catch(e){if(!live())return true;if(!mine)return false;rows=[];offline=true}
+  if(!live())return true;
+  // Not read from D1, or nothing there yet for this book (its first daily check, on the Firestore path, fills it).
+  if(rows===null||(!mine&&!rows.length))return false;
+  apply(M,rows);
+  for(const [c,id,d] of d1Out.values()){const m=M[c];if(m){if(d)m.set(id,d);else m.delete(id)}} // saved here, not sent yet
+  S.customers=M.customers;S.txns=M.txns;S.d1Read=true;ready();
+  const save=()=>{clearTimeout(syncT);syncT=setTimeout(()=>{if(live())kv.set("sync",{v:D1_V,key,mark:st.mark,customers:[...S.customers],txns:[...S.txns]})},1500)};
+  save();if(!offline)caughtUp("customers","txns","gone");
+  let busy=false,again=false,ws=null,closed=false,wait=1000;
+  const sync=async()=>{if(busy){again=true;return}busy=true;
+    try{const r=await pullFrom(st.mark);if(!live())return;
+      if(r===null){stopData();startData();return}
+      if(r.length){apply(S,r);render();save()}caughtUp("customers","txns","gone");
+    }catch(e){}finally{busy=false;if(again&&live()){again=false;sync()}}};
+  const open=async()=>{if(closed||!live())return;
+    try{ws=new WebSocket(d1Url().replace(/^http/,"ws")+"live?tenant="+encodeURIComponent(bkTenant()),["bearer",await auth.currentUser.getIdToken()]);
+      ws.onopen=()=>{wait=1000;sync()};
+      ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m&&m.u>st.mark)sync()}catch(x){}};
+      ws.onclose=()=>{ws=null;if(!closed)setTimeout(open,wait=Math.min(wait*2,60e3))};
+    }catch(e){ws=null;setTimeout(open,wait=Math.min(wait*2,60e3))}};
+  open();
+  let tick=0;const timer=setInterval(()=>{if(ws&&ws.readyState===1)ws.send("ping");if(!ws||ws.readyState!==1||++tick%5===0)sync()},60e3);
+  const back=()=>{if(document.visibilityState==="visible")sync()};
+  document.addEventListener("visibilitychange",back);addEventListener("online",back);
+  unsubs.push(()=>{closed=true;clearInterval(timer);document.removeEventListener("visibilitychange",back);removeEventListener("online",back);try{if(ws)ws.close()}catch(e){}});
+  return true;
+}
 async function syncData(fail){
   const run=syncData.run=(syncData.run||0)+1,key=SHOP||"root",live=()=>run===syncData.run&&dataOn;
   const ready=()=>{S.ready.c=S.ready.t=true;render()};
+  if(window.AI_URL&&!d1Off&&auth.currentUser&&await d1Read(live,key,ready))return;
+  if(!live())return;
   const [v3,saved]=await Promise.all([db.doc("meta/rules-v3").get().then(()=>true,e=>e&&e.code==="permission-denied"?false:null),kv.get("sync")]);
   if(!live())return;
   const mine=saved&&saved.v===SYNC_V&&saved.key===key?saved:null;

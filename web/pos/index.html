@@ -859,7 +859,7 @@ function startData(){
   if(isAdmin())unsubs.push(db.collection("approvals").where("status","==","pending").onSnapshot(s=>{
     S.approvals=new Map(s.docs.map(d=>[d.id,d.data()]));renderApprovals()},readFail));
   watchToday();
-  renderUnsent();setTimeout(()=>unsentRetry(false),3000);
+  renderUnsent();setTimeout(()=>unsentRetry(false),3000);d1Later(4000);
 }
 /* Customers load only when needed (a sale on credit, suppliers, a receipt), and debt records only for the customer in hand.
    Reading every customer and every record on each open was most of the daily free Firestore reads. */
@@ -895,7 +895,7 @@ let lockTries=0,lockWait=0;
 function custLock(c){const cc=S.customers.get(c.id)||c;if(cc.lockNow)return lockOf(cc,[],0);const n=lockDaysOf(cc);if(!n)return null;if(balanceOf(c.id)==null)return undefined;
   return lockOf(S.customers.get(c.id)||c,[...S.txns.values()].filter(t=>t.customerId===c.id).sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:(a.createdAt||0)-(b.createdAt||0))),n)}
 function unlockCust(c,how){
-  const day=todayISO(),{lockNow,...rest}=S.customers.get(c.id)||c;S.customers.set(c.id,{...rest,lockReset:day});
+  const day=todayISO(),{lockNow,...rest}=S.customers.get(c.id)||c;S.customers.set(c.id,{...rest,lockReset:day});d1Queue("customers",c.id,{...rest,lockReset:day});
   try{db.collection("customers").doc(c.id).set(stamped({lockReset:day,lockNow:firebase.firestore.FieldValue.delete()}),{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
   log("edit","lock",{customerName:c.name,detail:`فتح قفل حساب ${c.name}${how?" "+how:""}`});toast("انفتح حساب "+c.name);
 }
@@ -1760,7 +1760,7 @@ function newCustomer(name,st){
       const nm=m.querySelector("#ncName").value.trim();if(!nm){m.querySelector("#ncErr").textContent="اكتب اسم الزبون.";return}
       if([...S.customers.values()].some(c=>!isSup(c)&&foldAr(c.name)===foldAr(nm))){m.querySelector("#ncErr").textContent="هذا الاسم موجود. ارجع واختاره من القائمة.";return}
       const c={id:uid(),name:nm,phone:normDigits(m.querySelector("#ncPhone").value).trim(),kind:"customer",limit:0,note:"",createdAt:Date.now(),by:S.me.name};
-      S.customers.set(c.id,c);
+      S.customers.set(c.id,c);d1Queue("customers",c.id,c);
       try{db.collection("customers").doc(c.id).set(stamped(c)).catch(writeFail)}catch(x){writeFail(x)}
       log("add","customer",{customerName:nm});
       checkout({mode:st.mode,cashPart:st.cashPart,cust:c});
@@ -1818,7 +1818,26 @@ const UNSENT_KEY="shahm-pos-unsent";
 // Accounts and transactions carry _u (server time): the debt book reads only what changed since (see syncData there).
 const stamped=o=>({...o,_u:firebase.firestore.FieldValue.serverTimestamp()});
 function goneNote(coll,id){try{db.collection("gone").doc(coll+"_"+id).set({c:coll,id,_u:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("gone note",e&&e.code))}catch(e){}}
-function addOp(b,[coll,id,data,kind]){const ref=db.collection(coll).doc(id);const d=coll==="txns"||coll==="customers"?stamped(data):data;if(kind==="update")b.update(ref,d);else b.set(ref,d)}
+function addOp(b,[coll,id,data,kind]){const ref=db.collection(coll).doc(id);const d=coll==="txns"||coll==="customers"?stamped(data):data;if(kind==="update")b.update(ref,d);else{b.set(ref,d);d1Queue(coll,id,data)}}
+/* The debt book's new database (Cloudflare D1, see d1Queue in ../index.html): the accounts and transactions saved here go
+   there too, through an outbox kept on this device (localStorage) until they arrive. */
+const D1_KEY="shahm-pos-d1out";
+const d1Box=()=>{try{return JSON.parse(localStorage.getItem(D1_KEY)||"{}")||{}}catch(e){return {}}};
+const d1Keep=o=>{try{if(Object.keys(o).length)localStorage.setItem(D1_KEY,JSON.stringify(o));else localStorage.removeItem(D1_KEY)}catch(e){}};
+function d1Later(ms){clearTimeout(d1Later.t);d1Later.t=setTimeout(d1Flush,ms)}
+function d1Queue(coll,id,data){
+  if((coll!=="txns"&&coll!=="customers")||!window.AI_URL)return;
+  let d=null;if(data){d=JSON.parse(JSON.stringify(data));delete d._u}
+  const o=d1Box();o[coll+"|"+id]=[coll,id,d];d1Keep(o);d1Later(1500)}
+async function d1Flush(){
+  const o=d1Box(),keys=Object.keys(o).slice(0,400);if(!keys.length||!window.AI_URL||!auth.currentUser||!canSell())return;
+  if(!navigator.onLine){d1Later(60e3);return}
+  try{const r=await fetch(window.AI_URL.replace(/\/$/,"")+"/db/push?tenant=main",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body:JSON.stringify({ops:keys.map(k=>o[k])})});
+    // Sent, or never going to be taken (turned off, refused): drop it; the debt book's daily check catches anything missed.
+    if(r.ok||[400,403,413,503].includes(r.status)){const n=d1Box();for(const k of keys)if(JSON.stringify(n[k])===JSON.stringify(o[k]))delete n[k];d1Keep(n);if(Object.keys(n).length)d1Later(300)}
+    else d1Later(60e3);
+  }catch(e){d1Later(60e3)}
+}
 function unsentList(){try{const l=JSON.parse(localStorage.getItem(UNSENT_KEY)||"[]");return Array.isArray(l)?l:[]}catch(e){return []}}
 function unsentKeep(l){try{if(l.length)localStorage.setItem(UNSENT_KEY,JSON.stringify(l));else localStorage.removeItem(UNSENT_KEY)}catch(e){}renderUnsent()}
 function unsentAdd(x){unsentKeep([...unsentList(),x]);toast(`فاتورة #${x.no} ما انحفظت بالسيرفر. بقت محفوظة على هذا الجهاز وتنرسل لما يصير ممكن.`,7000)}
@@ -1842,7 +1861,7 @@ async function unsentRetry(manual){
   const sent=l.length-left.length;
   if(sent)toast(`انرسلت ${sent===1?"الفاتورة":sent+" فواتير"} اللي ما انحفظت.`,4000);else if(manual)toast("بعدها ما انرسلت. تحقق من الإنترنت أو راجع المدير.",4500);
 }
-addEventListener("online",()=>unsentRetry(false));
+addEventListener("online",()=>{unsentRetry(false);d1Later(2000)});
 function stockMoves(items){
   const m=new Map();
   for(const i of items){const p=i.pid&&S.products.get(i.pid);if(!tracked(p))continue;m.set(i.pid,round3((m.get(i.pid)||0)+Number(i.qty)*(Number(i.n)||1)))}
@@ -2458,7 +2477,7 @@ function voidSale(sale){
       const b=db.batch(),now=Date.now();
       const upd={status:"void",voidAt:now,voidBy:S.me.name};
       b.update(db.collection("sales").doc(sale.id),upd);
-      if(sale.txnId){b.delete(db.collection("txns").doc(sale.txnId));goneNote("txns",sale.txnId);
+      if(sale.txnId){b.delete(db.collection("txns").doc(sale.txnId));goneNote("txns",sale.txnId);d1Queue("txns",sale.txnId,null);
         const a=activityDoc("delete","debt",{customerName:sale.customerName||"",amount:sale.debt,detail:`إلغاء فاتورة كاشير #${sale.no}`});b.set(db.collection("activity").doc(a.id),a)}
       for(const [pid,q] of stockMoves(sale.items||[]))b.update(db.collection("products").doc(pid),{stock:firebase.firestore.FieldValue.increment(q)});
       b.commit().catch(writeFail);
@@ -4088,7 +4107,7 @@ function supForm(s){
       if(same){m.querySelector("#spErr").textContent=`أكو مجهّز بنفس الاسم «${same.name}».`;return}
       // The same shape the debt book saves for a supplier.
       const obj=isNew?{id:uid(),name,kind:"supplier",visit:[],limit:0,phone,note,createdAt:Date.now(),by:S.me.name}:{...s,name,phone,note};
-      S.customers.set(obj.id,obj);
+      S.customers.set(obj.id,obj);d1Queue("customers",obj.id,obj);
       try{db.collection("customers").doc(obj.id).set(stamped(obj)).catch(writeFail)}catch(x){writeFail(x)}
       log(isNew?"add":"edit","customer",{customerName:name});
       if(isNew||(S.rv&&S.rv.supId===obj.id)){rvSetSup(obj.id);closeModal();toast(isNew?`انضاف المجهّز «${name}»`:"انحفظ",2000)}else supPicker();
