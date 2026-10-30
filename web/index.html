@@ -4205,14 +4205,16 @@ function shopsPage(){
     return `<div class="user-row"><span class="avatar">${esc(markLetter(x.name))}</span><div class="meta"><b>${esc(x.name)}</b>
       <span>${esc(x.ownerName||"")} · <span class="num">@${esc(x.username||"")}</span>${x.phone?` · <span class="num">${esc(x.phone)}</span>`:""}</span>
       <span class="ro-note">سجّل ${esc(timeAgo(x.createdAt||0))}${x.activatedAt?` · انفعّل ${esc(shortDate(new Date(x.activatedAt).toISOString().slice(0,10)))}`:""}${subLine(x)?" · ":""}</span>${subLine(x)}</div>
-      <div class="ops"><span class="chip ${cls}">${lbl}</span>
+      <div class="ops"><span class="chip ${cls}">${lbl}</span>${x.pos?`<span class="chip paid">كاشير</span>`:""}
         <button class="btn ${x.status==="active"&&!shopExpired(x)&&!x.trial?"":"paid "}sm" type="button" data-shopact="sub" data-id="${esc(x.id)}">${x.status==="active"&&!shopExpired(x)&&!x.trial?"تمديد":"تفعيل"}</button>
+        ${x.status!=="pending"?`<button class="btn sm" type="button" data-shopact="pos" data-id="${esc(x.id)}" aria-pressed="${!!x.pos}">${x.pos?"إيقاف الكاشير":"تشغيل الكاشير"}</button>`:""}
         ${x.status==="active"?`<button class="btn sm" type="button" data-shopact="disable" data-id="${esc(x.id)}">إيقاف</button>`:""}
         ${x.status==="pending"?`<button class="btn ghost sm danger-text" type="button" data-shopact="reject" data-id="${esc(x.id)}">رفض</button>`:""}</div></div>`};
   const by=st=>all.filter(x=>shopState(x)===st);
   const sec=(t,l)=>l.length?`<h3 style="margin:8px 0 0;font-size:15px">${t} (${l.length})</h3>${l.map(row).join("")}`:"";
   return `<h2>المحلات</h2><p class="lead">المشتري ينزّل نفس التطبيق (أو يفتح الموقع)، يضغط «سجّل محلك»، ويظهر هنا. فعّله بعد ما يدفع، ويصير إله دفتر منفصل: ما يشوف بياناتك ولا تشوف بياناته من هنا. الموقوف ما يكدر يفتح دفتره، وبياناته تبقى لحد ما ترجع تفعّله.</p>
     <p class="ro-note">«تفعيل» و«تمديد»: تختار المدة (تجربة، شهر، 3 أشهر، 6 أشهر، سنة أو تاريخ)، والمحل ينقفل وحده بنهايتها لحد ما تجدّد له. بياناته تبقى محفوظة.</p>
+    <p class="ro-note">«تشغيل الكاشير»: للمحل اللي اشترى الكاشير. صاحبه وعماله يفتحون الكاشير (shahm-debts.app/pos أو تطبيق الكاشير) بنفس حساباتهم، والبيع بالدين ينكتب بدفتره. ينقفل ويا اشتراك المحل.</p>
     <div class="card" style="margin:10px 0;padding:12px 14px"><b style="font-size:15px">الفترة التجريبية</b>
       <p class="ro-note" style="margin:4px 0 8px">المحل الجديد ينفتح وحده بعد ما يسجّل، لهذي المدة، وبنهايتها ينقفل لحد ما يدفع. «بدون» = ينتظر تفعيلك مثل قبل.</p>
       <div class="chips" role="group" aria-label="الفترة التجريبية">${TRIAL_DAYS.map(n=>`<button type="button" data-trialdays="${n}" aria-pressed="${(S.trialDays||0)===n}">${n?n+" يوم":"بدون"}</button>`).join("")}</div></div>
@@ -4222,6 +4224,13 @@ function shopAction(act,id){
   const x=S.shops.get(id);if(!x||!S.superOwner)return;
   const set=patch=>db.doc("shops/"+id).update(patch).catch(writeFail);
   if(act==="activate"||act==="sub"){subForm(id);return}
+  // The shop's cashier (web/pos/): on only after the rules that hold it are published (meta/rules-v4).
+  if(act==="pos"){
+    if(x.pos){confirmBox("إيقاف الكاشير",`كاشير ${x.name} ينقفل ودفتر ديونه يبقى شغّال. مواده ومبيعاته ما تنحذف، وترجع إذا شغّلته.`,"إيقاف",()=>{set({pos:false});log("edit","account",{detail:`أوقف كاشير محل ${x.name}`});toast("انوقف الكاشير")});return}
+    db.doc("meta/rules-v4").get().then(()=>{set({pos:true});log("edit","account",{detail:`شغّل كاشير محل ${x.name}`});toast(`انفتح الكاشير لـ ${x.name}`)},
+      e=>{if(e&&e.code==="permission-denied")toast("انشر قواعد firestore.rules الجديدة من Firebase أول، وبعدها شغّل الكاشير.",7000);else writeFail(e)});
+    return;
+  }
   else if(act==="disable")confirmBox("إيقاف المحل",`محل ${x.name} وعماله ما يكدرون يفتحون الدفتر لحد ما ترجع تفعّله. بياناتهم ما تنحذف.`,"إيقاف",()=>{set({status:"disabled"});toast("انوقف المحل")});
   else if(act==="reject")confirmBox("رفض المحل",`ينحذف طلب ${x.name}. إذا صاحبه دخل بعدين يكدر يسجّل محله من جديد.`,"رفض",()=>{db.doc("shops/"+id).delete().catch(writeFail);toast("انرفض الطلب")});
 }

@@ -610,6 +610,14 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 "use strict";
 const CUR="د.ع";
 const BRAND_MARK=document.querySelector("header.top .logo svg").outerHTML;
+/* Shops: a shop that bought the cashier uses it with its own login, like its debt book (../index.html). SHOP is the
+   signed-in person's shop (null = this shop's own data at the root, as it always was); P() puts a path inside it, and TK()
+   keeps what this device holds for a shop (cart, unsent invoices...) apart from another shop's. memberOf/{uid} says which
+   shop an account belongs to; the root owner turns the cashier on for a shop (shops/{id}.pos). */
+let SHOP=null;
+const P=p=>SHOP?"shops/"+SHOP+"/"+p:p;
+const TK=k=>SHOP?k+":"+SHOP:k;
+const SHOP_KEY="shahm-shop";
 const THEME_KEY="shahm-theme",CART_KEY="shahm-pos-cart",COUNT_KEY="shahm-pos-count";
 const ROLE_LABEL={owner:"المدير",editor:"محرر",viewer:"مشاهد"};
 const DOMAIN="shahm-debts.app",OWNER_USER="admin";
@@ -671,7 +679,7 @@ const normDigits=s=>String(s||"").replace(/[٠-٩]/g,d=>"٠١٢٣٤٥٦٧٨٩".i
 const parseAmt=s=>{const t=normDigits(s).replace(/[,،\s]/g,"");if(!t)return NaN;const n=Number(t);return isFinite(n)?n:NaN};
 const dayName=iso=>{try{return new Date(iso+"T12:00:00").toLocaleDateString("ar-IQ",{weekday:"long",day:"numeric",month:"long",numberingSystem:"latn"})}catch(e){return iso}};
 const hm12=ms=>{const d=new Date(ms);let h=d.getHours();const ap=h<12?"ص":"م";h=h%12||12;return h+":"+String(d.getMinutes()).padStart(2,"0")+" "+ap};
-const shopName=()=>S.settings.shopName||"ماركت الشهم";
+const shopName=()=>S.settings.shopName||(S.shop&&S.shop.name)||"ماركت الشهم";
 // Dollar rate set by the owner (dinars per dollar); 0 when not set.
 const usdRate=()=>Number(S.pos.usdRate)>0?Number(S.pos.usdRate):0;
 const usdFmt=n=>"$"+(Math.round((Number(n)||0)*100)/100).toLocaleString("en-US",{maximumFractionDigits:2});
@@ -777,7 +785,7 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(modalOpen())clos
 /* ---------- writes ---------- */
 function writeFail(e){console.warn(e);toast(e&&e.code==="permission-denied"?"ما عندك صلاحية لهذا العمل، أو قواعد قاعدة البيانات ما انشرت بعد.":"تعذّر الحفظ. تحقق من الإنترنت وحاول مرة ثانية.",4500)}
 function activityDoc(kind,what,info){return {id:uid(),at:Date.now(),kind,what,by:S.me?S.me.name:"",byRole:S.me?S.me.role:"",source:"pos",...info}}
-function log(kind,what,info){const a=activityDoc(kind,what,info);try{db.collection("activity").doc(a.id).set(a).catch(()=>{})}catch(e){}}
+function log(kind,what,info){const a=activityDoc(kind,what,info);try{db.collection(P("activity")).doc(a.id).set(a).catch(()=>{})}catch(e){}}
 
 /* ---------- gate ---------- */
 function gateCard(inner){$("#gate").hidden=false;$("#app").hidden=true;
@@ -833,7 +841,7 @@ async function wipeLocal(){
 function signOut(){
   stopData();S.me=null;
   // Day totals kept for the home page belong to this shop's data too. Invoices not yet sent stay (they would be lost).
-  try{localStorage.removeItem(DAYS_KEY)}catch(e){}
+  try{localStorage.removeItem(TK(DAYS_KEY))}catch(e){}
   gateCard({sub:"جارِ تسجيل الخروج…",body:`<div class="spinner" aria-hidden="true"></div>`});
   wipeLocal().then(async wiped=>{try{await auth.signOut()}catch(e){}if(wiped)location.reload()});
 }
@@ -841,22 +849,22 @@ function signOut(){
 /* ---------- live data ---------- */
 function readFail(e){console.warn(e);if(e&&e.code==="resource-exhausted"&&!quotaShown){quotaShown=true;toast(readErrMsg(e),7000)}
   if(e&&e.code==="permission-denied"&&!deniedShown){deniedShown=true;
-  toast(isAdmin()?"قاعدة البيانات رفضت القراءة. انشر قواعد firestore.rules الجديدة من Firebase console.":"ما عندك صلاحية لقراءة بيانات الكاشير. راجع المدير.",7000)}}
+  toast(SHOP?"الكاشير مو جاهز لمحلك بعد. تواصل ويا صاحب البرنامج.":isAdmin()?"قاعدة البيانات رفضت القراءة. انشر قواعد firestore.rules الجديدة من Firebase console.":"ما عندك صلاحية لقراءة بيانات الكاشير. راجع المدير.",7000)}}
 function stopData(){
   unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];if(salesUnsub){salesUnsub();salesUnsub=null}dataOn=false;custOn=custReady=false;txnWatch.clear();txnLoaded.clear();
   S.products=new Map();S.customers=new Map();S.txns=new Map();S.sales=new Map();S.settings={};S.repCache=new Map();S.shift=null;S.shiftLog=null;S.approvals=new Map();S.ready={p:false,s:false,sh:false};S.pos={};S.takes=null;S.recvs=null;S.prices=null;PW.clear();deniedShown=false;renderApprovals();
 }
 function startData(){
   if(dataOn)return;dataOn=true;
-  unsubs.push(db.collection("products").onSnapshot(s=>{priceWatch(s);S.products=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.p=true;refresh()},readFail));
-  unsubs.push(db.doc("settings/main").onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};if(S.me&&S.isOwner)S.me.name=S.settings.ownerName||"المدير";refresh()},readFail));
+  unsubs.push(db.collection(P("products")).onSnapshot(s=>{priceWatch(s);S.products=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.p=true;refresh()},readFail));
+  unsubs.push(db.doc(P("settings/main")).onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};if(S.me&&S.isOwner)S.me.name=S.settings.ownerName||"المدير";refresh()},readFail));
   // Cashier settings (the dollar rate) live next to the debt book's settings, in their own document.
   watchPrices();
-  unsubs.push(db.doc("settings/pos").onSnapshot(s=>{S.pos=s.exists?{...s.data()}:{};refresh()},readFail));
+  unsubs.push(db.doc(P("settings/pos")).onSnapshot(s=>{S.pos=s.exists?{...s.data()}:{};refresh()},readFail));
   // The open shift (if any), for everyone; pending discount requests, for the owner.
-  unsubs.push(db.collection("shifts").where("status","==","open").onSnapshot(s=>{
+  unsubs.push(db.collection(P("shifts")).where("status","==","open").onSnapshot(s=>{
     S.shift=s.docs.map(d=>d.data()).sort((a,b)=>b.openedAt-a.openedAt)[0]||null;S.ready.sh=true;refresh()},e=>{S.ready.sh=true;readFail(e)}));
-  if(isAdmin())unsubs.push(db.collection("approvals").where("status","==","pending").onSnapshot(s=>{
+  if(isAdmin())unsubs.push(db.collection(P("approvals")).where("status","==","pending").onSnapshot(s=>{
     S.approvals=new Map(s.docs.map(d=>[d.id,d.data()]));renderApprovals()},readFail));
   watchToday();
   renderUnsent();setTimeout(()=>unsentRetry(false),3000);d1Later(4000);
@@ -866,7 +874,7 @@ function startData(){
 let custOn=false,custReady=false;const txnWatch=new Set(),txnLoaded=new Set();
 function needCust(){
   if(custOn||!dataOn)return;custOn=true;
-  unsubs.push(db.collection("customers").onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));custReady=true;refresh("cust")},e=>{custOn=false;readFail(e)}));
+  unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));custReady=true;refresh("cust")},e=>{custOn=false;readFail(e)}));
 }
 /* Account lock, set in the debt book (Settings > قفل الحسابات); same rule as there. A customer who still owes lockDays after the
    debt that opened the current balance takes no credit sale until it is paid off, or the owner (or the unlock code) opens it. */
@@ -896,12 +904,12 @@ function custLock(c){const cc=S.customers.get(c.id)||c;if(cc.lockNow)return lock
   return lockOf(S.customers.get(c.id)||c,[...S.txns.values()].filter(t=>t.customerId===c.id).sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:(a.createdAt||0)-(b.createdAt||0))),n)}
 function unlockCust(c,how){
   const day=todayISO(),{lockNow,...rest}=S.customers.get(c.id)||c;S.customers.set(c.id,{...rest,lockReset:day});d1Queue("customers",c.id,{...rest,lockReset:day});
-  try{db.collection("customers").doc(c.id).set(stamped({lockReset:day,lockNow:firebase.firestore.FieldValue.delete()}),{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
+  try{db.collection(P("customers")).doc(c.id).set(stamped({lockReset:day,lockNow:firebase.firestore.FieldValue.delete()}),{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
   log("edit","lock",{customerName:c.name,detail:`فتح قفل حساب ${c.name}${how?" "+how:""}`});toast("انفتح حساب "+c.name);
 }
 function watchTxns(id){
   if(!id||txnWatch.has(id)||!dataOn)return;txnWatch.add(id);
-  unsubs.push(db.collection("txns").where("customerId","==",id).onSnapshot(s=>{
+  unsubs.push(db.collection(P("txns")).where("customerId","==",id).onSnapshot(s=>{
     for(const [k,t] of S.txns)if(t.customerId===id)S.txns.delete(k);
     for(const d of s.docs)S.txns.set(d.id,d.data());
     txnLoaded.add(id);refresh("cust")},e=>{txnWatch.delete(id);readFail(e)}));
@@ -910,7 +918,7 @@ function watchTxns(id){
 function watchToday(){
   const day=todayISO();if(salesUnsub&&S.day===day)return;
   if(salesUnsub)salesUnsub();S.day=day;S.sales=new Map();S.ready.s=false;
-  salesUnsub=db.collection("sales").where("date","==",day).onSnapshot(s=>{S.sales=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.s=true;refresh("sales")},readFail);
+  salesUnsub=db.collection(P("sales")).where("date","==",day).onSnapshot(s=>{S.sales=new Map(s.docs.map(d=>[d.id,d.data()]));S.ready.s=true;refresh("sales")},readFail);
 }
 setInterval(()=>{if(dataOn&&todayISO()!==S.day){watchToday();refresh()}},60000);
 
@@ -995,10 +1003,10 @@ function saveCart(){
   // An approved discount belongs to the invoice it was asked for; any change to the invoice drops it.
   if(S.approval&&(S.cart.reduce((a,l)=>a+lineTotal(l),0)!==S.approval.subtotal||S.discount>S.approval.amount||!S.discount)){
     if(S.discount&&S.cart.length)toast("انشال الخصم لأن الفاتورة تغيّرت. اطلب موافقة جديدة.",3500);S.approval=null;S.discount=0}
-  try{localStorage.setItem(CART_KEY,JSON.stringify({cart:S.cart,discount:S.discount,whole:S.whole,approval:S.approval,cur:S.cur,slots:S.slots.map(x=>x&&{cart:x.cart,discount:x.discount,whole:x.whole,approval:x.approval})}))}catch(e){}
+  try{localStorage.setItem(TK(CART_KEY),JSON.stringify({cart:S.cart,discount:S.discount,whole:S.whole,approval:S.approval,cur:S.cur,slots:S.slots.map(x=>x&&{cart:x.cart,discount:x.discount,whole:x.whole,approval:x.approval})}))}catch(e){}
 }
 const cleanLines=a=>(Array.isArray(a)?a:[]).filter(l=>l&&l.name&&l.price>=0&&l.qty>0).map(l=>({n:1,...l,key:l.pid&&!String(l.key).includes("|")?l.pid+"|":l.key}));
-function loadCart(){try{const d=JSON.parse(localStorage.getItem(CART_KEY)||"null");if(d&&Array.isArray(d.cart)){S.cart=cleanLines(d.cart);S.discount=Number(d.discount)||0;S.whole=!!d.whole;S.approval=d.approval&&d.approval.id?d.approval:null;
+function loadCart(){try{const d=JSON.parse(localStorage.getItem(TK(CART_KEY))||"null");if(d&&Array.isArray(d.cart)){S.cart=cleanLines(d.cart);S.discount=Number(d.discount)||0;S.whole=!!d.whole;S.approval=d.approval&&d.approval.id?d.approval:null;
   if(Array.isArray(d.slots)&&d.slots.length>1&&d.slots.length<=MAX_INV&&Number.isInteger(d.cur)&&d.cur>=0&&d.cur<d.slots.length){
     S.slots=d.slots.map((x,k)=>k===d.cur?null:{cart:cleanLines(x&&x.cart),discount:Number(x&&x.discount)||0,whole:!!(x&&x.whole),approval:x&&x.approval&&x.approval.id?x.approval:null});S.cur=d.cur}}}catch(e){}}
 /* ---------- several open invoices: the customer in front is the active one (S.cart…); the others wait with their own lines,
@@ -1761,7 +1769,7 @@ function newCustomer(name,st){
       if([...S.customers.values()].some(c=>!isSup(c)&&foldAr(c.name)===foldAr(nm))){m.querySelector("#ncErr").textContent="هذا الاسم موجود. ارجع واختاره من القائمة.";return}
       const c={id:uid(),name:nm,phone:normDigits(m.querySelector("#ncPhone").value).trim(),kind:"customer",limit:0,note:"",createdAt:Date.now(),by:S.me.name};
       S.customers.set(c.id,c);d1Queue("customers",c.id,c);
-      try{db.collection("customers").doc(c.id).set(stamped(c)).catch(writeFail)}catch(x){writeFail(x)}
+      try{db.collection(P("customers")).doc(c.id).set(stamped(c)).catch(writeFail)}catch(x){writeFail(x)}
       log("add","customer",{customerName:nm});
       checkout({mode:st.mode,cashPart:st.cashPart,cust:c});
     });
@@ -1797,7 +1805,7 @@ function saveSale(pay){
     S.txns.set(txn.id,txn);
   }
   // Stock: each tracked item goes down by what was sold, in base units (a carton of 24 = 24).
-  for(const [pid,q] of stockMoves(items))b.update(db.collection("products").doc(pid),{stock:firebase.firestore.FieldValue.increment(-q)});
+  for(const [pid,q] of stockMoves(items))b.update(db.collection(P("products")).doc(pid),{stock:firebase.firestore.FieldValue.increment(-q)});
   if(sale.approvalId)core.push(["approvals",sale.approvalId,{status:"used",saleId:id,usedAt:now},"update"]);
   core.push(["sales",id,sale]);
   for(const op of core)addOp(b,op);
@@ -1817,13 +1825,13 @@ function saveSale(pay){
 const UNSENT_KEY="shahm-pos-unsent";
 // Accounts and transactions carry _u (server time): the debt book reads only what changed since (see syncData there).
 const stamped=o=>({...o,_u:firebase.firestore.FieldValue.serverTimestamp()});
-function goneNote(coll,id){try{db.collection("gone").doc(coll+"_"+id).set({c:coll,id,_u:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("gone note",e&&e.code))}catch(e){}}
-function addOp(b,[coll,id,data,kind]){const ref=db.collection(coll).doc(id);const d=coll==="txns"||coll==="customers"?stamped(data):data;if(kind==="update")b.update(ref,d);else{b.set(ref,d);d1Queue(coll,id,data)}}
+function goneNote(coll,id){try{db.collection(P("gone")).doc(coll+"_"+id).set({c:coll,id,_u:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("gone note",e&&e.code))}catch(e){}}
+function addOp(b,[coll,id,data,kind]){const ref=db.collection(P(coll)).doc(id);const d=coll==="txns"||coll==="customers"?stamped(data):data;if(kind==="update")b.update(ref,d);else{b.set(ref,d);d1Queue(coll,id,data)}}
 /* The debt book's new database (Cloudflare D1, see d1Queue in ../index.html): the accounts and transactions saved here go
    there too, through an outbox kept on this device (localStorage) until they arrive. */
 const D1_KEY="shahm-pos-d1out";
-const d1Box=()=>{try{return JSON.parse(localStorage.getItem(D1_KEY)||"{}")||{}}catch(e){return {}}};
-const d1Keep=o=>{try{if(Object.keys(o).length)localStorage.setItem(D1_KEY,JSON.stringify(o));else localStorage.removeItem(D1_KEY)}catch(e){}};
+const d1Box=()=>{try{return JSON.parse(localStorage.getItem(TK(D1_KEY))||"{}")||{}}catch(e){return {}}};
+const d1Keep=o=>{try{if(Object.keys(o).length)localStorage.setItem(TK(D1_KEY),JSON.stringify(o));else localStorage.removeItem(TK(D1_KEY))}catch(e){}};
 function d1Later(ms){clearTimeout(d1Later.t);d1Later.t=setTimeout(d1Flush,ms)}
 function d1Queue(coll,id,data){
   if((coll!=="txns"&&coll!=="customers")||!window.AI_URL)return;
@@ -1832,14 +1840,14 @@ function d1Queue(coll,id,data){
 async function d1Flush(){
   const o=d1Box(),keys=Object.keys(o).slice(0,400);if(!keys.length||!window.AI_URL||!auth.currentUser||!canSell())return;
   if(!navigator.onLine){d1Later(60e3);return}
-  try{const r=await fetch(window.AI_URL.replace(/\/$/,"")+"/db/push?tenant=main",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body:JSON.stringify({ops:keys.map(k=>o[k])})});
+  try{const r=await fetch(window.AI_URL.replace(/\/$/,"")+"/db/push?tenant="+encodeURIComponent(SHOP||"main"),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body:JSON.stringify({ops:keys.map(k=>o[k])})});
     // Sent, or never going to be taken (turned off, refused): drop it; the debt book's daily check catches anything missed.
     if(r.ok||[400,403,413,503].includes(r.status)){const n=d1Box();for(const k of keys)if(JSON.stringify(n[k])===JSON.stringify(o[k]))delete n[k];d1Keep(n);if(Object.keys(n).length)d1Later(300)}
     else d1Later(60e3);
   }catch(e){d1Later(60e3)}
 }
-function unsentList(){try{const l=JSON.parse(localStorage.getItem(UNSENT_KEY)||"[]");return Array.isArray(l)?l:[]}catch(e){return []}}
-function unsentKeep(l){try{if(l.length)localStorage.setItem(UNSENT_KEY,JSON.stringify(l));else localStorage.removeItem(UNSENT_KEY)}catch(e){}renderUnsent()}
+function unsentList(){try{const l=JSON.parse(localStorage.getItem(TK(UNSENT_KEY))||"[]");return Array.isArray(l)?l:[]}catch(e){return []}}
+function unsentKeep(l){try{if(l.length)localStorage.setItem(TK(UNSENT_KEY),JSON.stringify(l));else localStorage.removeItem(TK(UNSENT_KEY))}catch(e){}renderUnsent()}
 function unsentAdd(x){unsentKeep([...unsentList(),x]);toast(`فاتورة #${x.no} ما انحفظت بالسيرفر. بقت محفوظة على هذا الجهاز وتنرسل لما يصير ممكن.`,7000)}
 function renderUnsent(){
   const box=$("#unsent");if(!box)return;const l=unsentList();box.hidden=!l.length;if(!l.length){box.innerHTML="";return}
@@ -2143,7 +2151,7 @@ function openDrawerNoSale(){
   kickDrawer(true).then(()=>{
     toast("انفتح الدرج",1500);
     log("edit","drawer",{detail:`فتح درج الفلوس بدون بيع${S.shift?"":" (ماكو وردية مفتوحة)"}`});
-    if(S.shift){S.shift.noSale=(Number(S.shift.noSale)||0)+1;try{db.collection("shifts").doc(S.shift.id).update({noSale:firebase.firestore.FieldValue.increment(1)}).catch(writeFail)}catch(e){writeFail(e)}
+    if(S.shift){S.shift.noSale=(Number(S.shift.noSale)||0)+1;try{db.collection(P("shifts")).doc(S.shift.id).update({noSale:firebase.firestore.FieldValue.increment(1)}).catch(writeFail)}catch(e){writeFail(e)}
       if(S.view==="sales"&&S.repMode==="shift")renderSales()}
   }).catch(hwFail);
 }
@@ -2271,7 +2279,7 @@ function hwForm(){
         if(on&&!pre.split(/[\s,،]+/).filter(Boolean).every(x=>/^2\d?$/.test(x))){q("#hwErr").textContent="أول باركود الميزان يبدي بـ 2 (مثلاً 2 أو 21).";return}
         const nv={on,pre,len:sd.len,kind:sd.kind},ov=S.pos.scale||{};
         if(nv.on!==!!ov.on||(on&&(nv.pre!==String(ov.pre||"2")||nv.len!==sc.len||nv.kind!==sc.kind))){S.pos={...S.pos,scale:nv};
-          try{db.doc("settings/pos").set({scale:nv},{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
+          try{db.doc(P("settings/pos")).set({scale:nv},{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
           log("edit","settings",{detail:on?`باركود الميزان: يبدي بـ ${pre}، رقم المادة ${nv.len} أرقام، يحمل ${nv.kind==="p"?"السعر":"الوزن"}`:"طفّى باركود الميزان"})}}
       saved=true;saveHw();closeModal();toast("انحفظت الإعدادات",1500);render()});
     draw();
@@ -2301,10 +2309,10 @@ function fetchSales(key,query){
 }
 function daySalesSync(day){
   if(day===S.day)return S.ready.s?[...S.sales.values()]:null;
-  return fetchSales(day,db.collection("sales").where("date","==",day));
+  return fetchSales(day,db.collection(P("sales")).where("date","==",day));
 }
 function monthSalesSync(ym){
-  const list=fetchSales("m:"+ym,db.collection("sales").where("date",">=",ym+"-01").where("date","<=",ym+"-31"));
+  const list=fetchSales("m:"+ym,db.collection(P("sales")).where("date",">=",ym+"-01").where("date","<=",ym+"-31"));
   if(!list)return null;
   if(monthOf(S.day)!==ym)return list;
   if(!S.ready.s)return null;
@@ -2320,8 +2328,8 @@ const HOME_DAYS=30;
    3 hours after it ended (late offline sales have synced by then); voiding an old invoice here, or «تحديث», reads it again. */
 const DAYS_KEY="shahm-pos-days",DAY_FINAL=27*3600e3;
 let dayStore=null,daysBusy=false;
-function dayTotals(){if(!dayStore){try{dayStore=JSON.parse(localStorage.getItem(DAYS_KEY)||"{}")||{}}catch(e){dayStore={}}}return dayStore}
-function daysSave(){try{localStorage.setItem(DAYS_KEY,JSON.stringify(dayStore||{}))}catch(e){}}
+function dayTotals(){if(!dayStore){try{dayStore=JSON.parse(localStorage.getItem(TK(DAYS_KEY))||"{}")||{}}catch(e){dayStore={}}}return dayStore}
+function daysSave(){try{localStorage.setItem(TK(DAYS_KEY),JSON.stringify(dayStore||{}))}catch(e){}}
 function dayForget(iso){const m=dayTotals();if(iso){delete m[iso]}else for(const k of Object.keys(m))delete m[k];daysSave()}
 const dayDone=(iso,x)=>!!x&&x.at>=new Date(iso+"T00:00:00").getTime()+DAY_FINAL;
 const homeFrom=today=>{const d=new Date(today+"T12:00:00");d.setDate(d.getDate()-(HOME_DAYS-1));const a=isoOf(d),b=shiftMonth(monthOf(today),-1)+"-01";return a<b?a:b};
@@ -2332,7 +2340,7 @@ function pastDays(){
   const miss=all.filter(iso=>!dayDone(iso,m[iso]));
   if(!miss.length)return m;
   if(!daysBusy){daysBusy=true;const a=miss[0],b=all[all.length-1],at=Date.now();
-    db.collection("sales").where("date",">=",a).where("date","<=",b).get().then(snap=>{
+    db.collection(P("sales")).where("date",">=",a).where("date","<=",b).get().then(snap=>{
       const got={};for(const d of snap.docs){const x=d.data();const g=got[x.date]||(got[x.date]={n:0,total:0,debt:0,voids:0});
         if(x.status==="void")g.voids++;else{g.n++;g.total+=Number(x.total)||0;g.debt+=Number(x.debt)||0}}
       for(const iso of all)if(iso>=a)m[iso]={...(got[iso]||{n:0,total:0,debt:0,voids:0}),at};
@@ -2476,10 +2484,10 @@ function voidSale(sale){
     m.querySelector("#vGo").onclick=()=>{
       const b=db.batch(),now=Date.now();
       const upd={status:"void",voidAt:now,voidBy:S.me.name};
-      b.update(db.collection("sales").doc(sale.id),upd);
-      if(sale.txnId){b.delete(db.collection("txns").doc(sale.txnId));goneNote("txns",sale.txnId);d1Queue("txns",sale.txnId,null);
-        const a=activityDoc("delete","debt",{customerName:sale.customerName||"",amount:sale.debt,detail:`إلغاء فاتورة كاشير #${sale.no}`});b.set(db.collection("activity").doc(a.id),a)}
-      for(const [pid,q] of stockMoves(sale.items||[]))b.update(db.collection("products").doc(pid),{stock:firebase.firestore.FieldValue.increment(q)});
+      b.update(db.collection(P("sales")).doc(sale.id),upd);
+      if(sale.txnId){b.delete(db.collection(P("txns")).doc(sale.txnId));goneNote("txns",sale.txnId);d1Queue("txns",sale.txnId,null);
+        const a=activityDoc("delete","debt",{customerName:sale.customerName||"",amount:sale.debt,detail:`إلغاء فاتورة كاشير #${sale.no}`});b.set(db.collection(P("activity")).doc(a.id),a)}
+      for(const [pid,q] of stockMoves(sale.items||[]))b.update(db.collection(P("products")).doc(pid),{stock:firebase.firestore.FieldValue.increment(q)});
       b.commit().catch(writeFail);
       Object.assign(sale,upd);
       for(const cached of S.repCache.values()){if(!cached)continue;const i=cached.findIndex(s=>s.id===sale.id);if(i>=0)cached[i]={...cached[i],...upd}}
@@ -2549,7 +2557,7 @@ function shiftSales(sh){
   const from=Number(sh.openedAt)||0,od=isoOf(new Date(from));
   if(!S.ready.s)return null;
   let list=[...S.sales.values()];
-  if(od<S.day){const old=fetchSales("sh:"+sh.id,db.collection("sales").where("date",">=",od));if(!old)return null;list=[...old.filter(s=>s.date!==S.day),...list]}
+  if(od<S.day){const old=fetchSales("sh:"+sh.id,db.collection(P("sales")).where("date",">=",od));if(!old)return null;list=[...old.filter(s=>s.date!==S.day),...list]}
   return list.filter(s=>(Number(s.at)||0)>=from);
 }
 function zOf(sh,list){
@@ -2564,7 +2572,7 @@ const usdDiffText=d=>d===0?"مضبوط":d>0?`زايد ${usdFmt(d)}`:`ناقص ${
 const drawerHtml=z=>`بداية <span class="num">${fmt(z.float)}</span> + كاش <span class="num">${fmt(z.cash)}</span>${z.usdIqd?` − بالدولار <span class="num">${fmt(z.usdIqd)}</span>`:""}`;
 function fetchShiftLog(){
   if(S.shiftLog)return;S.shiftLog=[];
-  db.collection("shifts").orderBy("openedAt","desc").limit(30).get()
+  db.collection(P("shifts")).orderBy("openedAt","desc").limit(30).get()
     .then(s=>{S.shiftLog=s.docs.map(d=>d.data()).filter(x=>x.status==="closed");if(S.view==="sales"&&S.repMode==="shift")renderSales()})
     .catch(e=>{S.shiftLog=null;readFail(e)});
 }
@@ -2614,7 +2622,7 @@ function openShift(m){
   if(!(fl>=0)){m.querySelector("#shErr").textContent="اكتب مبلغ صحيح، أو خليه فارغ إذا الدرج فارغ.";return}
   if(S.shift){toast("أكو وردية مفتوحة.");renderSales();return}
   const sh={id:uid(),status:"open",openedAt:Date.now(),openedBy:S.me.name,openedById:S.me.id,float:fl};
-  S.shift=sh;try{db.collection("shifts").doc(sh.id).set(sh).catch(e=>{writeFail(e);if(S.shift&&S.shift.id===sh.id)S.shift=null;refresh()})}catch(e){writeFail(e)}
+  S.shift=sh;try{db.collection(P("shifts")).doc(sh.id).set(sh).catch(e=>{writeFail(e);if(S.shift&&S.shift.id===sh.id)S.shift=null;refresh()})}catch(e){writeFail(e)}
   log("add","shift",{amount:fl,detail:`فتح وردية بكاش ${fmt(fl)}`});
   refresh();toast("انفتحت الوردية");
 }
@@ -2642,7 +2650,7 @@ function closeShiftForm(){
       const cu=m.querySelector("#czU");
       if(z2.usd||cu){const u=cu?Math.round((parseAmt(cu.value)||0)*100)/100:0;if(cu&&!(parseAmt(cu.value)>=0)){m.querySelector("#czErr").textContent="اكتب الدولار المعدود.";return}
         Object.assign(upd,{usdExpected:z2.usd,usdCounted:u,usdDiff:Math.round((u-z2.usd)*100)/100})}
-      try{db.collection("shifts").doc(sh.id).update(upd).catch(writeFail)}catch(x){writeFail(x)}
+      try{db.collection(P("shifts")).doc(sh.id).update(upd).catch(writeFail)}catch(x){writeFail(x)}
       log("edit","shift",{amount:z2.total,detail:`قفّل الوردية: مبيعات ${fmt(z2.total)}، المفروض بالدرج ${fmt(z2.expected)}، المعدود ${fmt(counted)} (${diffText(counted-z2.expected)})${"usdCounted" in upd?`، الدولار ${usdFmt(upd.usdCounted)} (${usdDiffText(upd.usdDiff)})`:""}`});
       const done={...sh,...upd};S.shift=null;if(S.shiftLog)S.shiftLog.unshift(done);
       closeModal();refresh();zModal(done);if(canPrint()&&HW.auto)printZ(done);
@@ -2701,11 +2709,11 @@ async function zPdf(x){
    The approval is tied to the invoice total it was asked for; changing the invoice drops it. The rules enforce the same. */
 function requestApproval(amount,sub){
   const a={id:uid(),kind:"discount",amount,subtotal:sub,items:itemsText(S.cart,120),by:S.me.name,byId:S.me.id,at:Date.now(),status:"pending"};
-  try{db.collection("approvals").doc(a.id).set(a).catch(writeFail)}catch(e){writeFail(e);return}
+  try{db.collection(P("approvals")).doc(a.id).set(a).catch(writeFail)}catch(e){writeFail(e);return}
   openModal(`<h3>بانتظار موافقة المدير</h3><p class="hint">طلبت خصم <b class="num">${fmt(amount)}</b> على فاتورة <b class="num">${fmt(sub)}</b>. أول ما يوافق المدير من جهازه ينطبق الخصم هنا.</p>
     <div class="spinner" aria-hidden="true"></div>
     <div class="foot"><button class="btn" type="button" data-close>إلغاء الطلب</button></div>`,()=>{
-    const ref=db.collection("approvals").doc(a.id);
+    const ref=db.collection(P("approvals")).doc(a.id);
     const un=ref.onSnapshot(s=>{const d=s.data();if(!d)return;
       if(d.status==="approved"){un();modalCleanup=null;closeModal();
         if(totals().sub!==sub){toast("الفاتورة تغيّرت. اطلب الخصم مرة ثانية.",3500);return}
@@ -2728,7 +2736,7 @@ function decideApproval(id,ok){
   const a=S.approvals.get(id);if(!a||!isAdmin())return;
   const upd={status:ok?"approved":"denied",decidedBy:S.me.name,decidedAt:Date.now()};
   S.approvals.set(id,{...a,...upd});renderApprovals();
-  try{db.collection("approvals").doc(id).update(upd).catch(writeFail)}catch(e){writeFail(e)}
+  try{db.collection(P("approvals")).doc(id).update(upd).catch(writeFail)}catch(e){writeFail(e)}
   log(ok?"add":"delete","discount",{amount:a.amount,detail:`${ok?"وافق على":"رفض"} خصم ${fmt(a.amount)} على فاتورة ${fmt(a.subtotal)} طلبه ${a.by}`});
 }
 
@@ -2913,7 +2921,7 @@ function productForm(p,ex){
       scanBarcode(code=>productForm({...p,...draft,barcode:code,__new:isNew,__picSt:pic},ex))};
     const d=m.querySelector("#pDel");
     if(d)d.onclick=()=>{if(!confirm(`حذف «${p.name}» من القائمة؟ الفواتير القديمة تبقى مثل ما هي.`))return;
-      S.products.delete(p.id);try{db.collection("products").doc(p.id).delete().catch(writeFail)}catch(e){writeFail(e)}
+      S.products.delete(p.id);try{db.collection(P("products")).doc(p.id).delete().catch(writeFail)}catch(e){writeFail(e)}
       if(p.pic)commitPic(p.id,{url:"",changed:true});
       log("delete","product",{detail:`حذف المادة ${p.name}`});closeModal();renderProducts();toast("انحذفت المادة");if(ex)ex.back()};
     m.querySelector("#pf").addEventListener("submit",e=>{e.preventDefault();const err=m.querySelector("#pErr");
@@ -2922,7 +2930,7 @@ function productForm(p,ex){
       if(isNew){
         const obj={id:uid(),createdAt:now,by:S.me.name,...o,...meta};
         const pa=commitPic(obj.id,pic);if(pa)obj.pic=pa;if(pic.noStock)obj.noStock=true;if(pic.art)obj.art=pic.art;
-        S.products.set(obj.id,obj);try{db.collection("products").doc(obj.id).set(obj).catch(writeFail)}catch(x){writeFail(x)}
+        S.products.set(obj.id,obj);try{db.collection(P("products")).doc(obj.id).set(obj).catch(writeFail)}catch(x){writeFail(x)}
         log("add","product",{detail:`أضاف المادة ${o.name} بسعر ${fmt(o.price)}${o.track?`، الكمية ${qtyText(o.stock)}`:""}${o.offer?`، ${o.offer.type==="qty"?`عرض ${o.offer.n} بـ ${fmt(o.offer.price)}`:`سعر عرض ${fmt(o.offer.price)}`}`:""}`});
       }else{
         // Stock is written only when the owner changed it here, so sales made meanwhile are not overwritten.
@@ -2933,7 +2941,7 @@ function productForm(p,ex){
         const pa=commitPic(p.id,pic);if(pa)patch.pic=pa;else if(pa===null)patch.pic=firebase.firestore.FieldValue.delete();if(pic.noStock)patch.noStock=true;
         if(pic.artChanged)patch.art=pic.art||firebase.firestore.FieldValue.delete();
         const {__new,__picSt,...base}=p;
-        S.products.set(p.id,{...base,...o,est:false,...(pa!==undefined?{pic:pa||0}:{}),...(pic.noStock?{noStock:true}:{})});try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
+        S.products.set(p.id,{...base,...o,est:false,...(pa!==undefined?{pic:pa||0}:{}),...(pic.noStock?{noStock:true}:{})});try{db.collection(P("products")).doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
         const ch=[];
         if(Number(p.price)!==o.price)ch.push(`سعر المفرد من ${fmt(p.price)} إلى ${fmt(o.price)}`);
         if((Number(p.wprice)||0)!==o.wprice)ch.push(`سعر الجملة إلى ${fmt(o.wprice)}`);
@@ -2962,7 +2970,7 @@ const picKey=p=>p.id+":"+p.pic;
 const picUrl=p=>p&&p.pic?PICS.get(picKey(p))||"":"";
 function loadPic(p){
   const k=picKey(p);if(PICS.has(k))return Promise.resolve(PICS.get(k));if(picWait.has(k))return picWait.get(k);
-  const ref=db.collection("itemPhotos").doc(p.id);
+  const ref=db.collection(P("itemPhotos")).doc(p.id);
   const pr=ref.get({source:"cache"}).catch(()=>null).then(d=>d&&d.exists&&Number(d.data().at)===Number(p.pic)?d:ref.get())
     .then(d=>{const u=d.exists?safeImg(d.data().data):"";PICS.set(k,u);return u}).finally(()=>picWait.delete(k));
   picWait.set(k,pr);return pr;
@@ -3082,9 +3090,9 @@ function picField(m,x,p,init){
 // Saves a changed photo. Returns the item's new pic: a time, null when the photo was removed, undefined when unchanged.
 function commitPic(id,st){
   if(!st||!st.changed)return undefined;
-  if(!st.url){try{db.collection("itemPhotos").doc(id).delete().catch(()=>{})}catch(e){}return null}
+  if(!st.url){try{db.collection(P("itemPhotos")).doc(id).delete().catch(()=>{})}catch(e){}return null}
   const at=Date.now();PICS.set(id+":"+at,st.url);
-  try{db.collection("itemPhotos").doc(id).set({id,data:st.url,at,by:S.me.name}).catch(writeFail)}catch(e){writeFail(e)}
+  try{db.collection(P("itemPhotos")).doc(id).set({id,data:st.url,at,by:S.me.name}).catch(writeFail)}catch(e){writeFail(e)}
   return at;
 }
 /* ---------- photos from the internet ----------
@@ -3111,7 +3119,7 @@ function webPicsForm(){
     go.onclick=async()=>{go.disabled=true;ln.hidden=false;let done=0,found=0,fail=0;const q=list.slice();
       const tick=()=>{ln.innerHTML=`<span>${done<list.length?"جارِ البحث…":"خلص"}</span><span><span class="num">${done}</span>/<span class="num">${list.length}</span> · لكيت <span class="num">${found}</span></span>`};tick();
       const work=async()=>{for(let p;(p=q.shift());){try{const u=await webPic(p.barcode);
-          if(u){const at=commitPic(p.id,{url:u,changed:true});await db.collection("products").doc(p.id).update({pic:at,updatedAt:Date.now(),updatedBy:S.me.name});found++}}
+          if(u){const at=commitPic(p.id,{url:u,changed:true});await db.collection(P("products")).doc(p.id).update({pic:at,updatedAt:Date.now(),updatedBy:S.me.name});found++}}
         catch(e){console.warn(e);fail++}done++;tick()}};
       await Promise.all([work(),work(),work()]);
       toast(found?`انضافت ${found} صورة`:fail===list.length?"تعذّر الاتصال. تأكد من الإنترنت.":"ما لكيت صور لهالمواد.",3500)};
@@ -3293,7 +3301,7 @@ function codesForm(){
     m.querySelector("#bcNone").onclick=()=>{st.pick.clear();draw()};
     m.querySelector("#bcGen").onclick=async e=>{const b=e.currentTarget;b.disabled=true;
       const codes=newCodes(miss.length),now=Date.now();
-      for(let i=0;i<miss.length;i+=450){const bt=db.batch();miss.slice(i,i+450).forEach((p,j)=>{bt.update(db.collection("products").doc(p.id),{barcode:codes[i+j],updatedAt:now,updatedBy:S.me.name});st.pick.set(p.id,1)});
+      for(let i=0;i<miss.length;i+=450){const bt=db.batch();miss.slice(i,i+450).forEach((p,j)=>{bt.update(db.collection(P("products")).doc(p.id),{barcode:codes[i+j],updatedAt:now,updatedBy:S.me.name});st.pick.set(p.id,1)});
         try{await bt.commit()}catch(err){writeFail(err);return}}
       // Local copy so the list shows the new codes before the listener catches up.
       miss.forEach((p,i)=>{p.barcode=codes[i]});
@@ -3309,12 +3317,12 @@ const onCard=p=>p.active!==false&&(isWeighed(p)||!p.barcode||/^0400\d{9}$/.test(
 // The card's choices (title, layout, items added or left out, names shown on the card). Every change is kept on this device;
 // «حفظ» also saves them for the shop (settings/pos.card, owner), so the card can be reopened and edited later on any device.
 const CARD_KEY="shahm-pos-card";
-function cardOpts(){let o={};try{o=JSON.parse(localStorage.getItem(CARD_KEY)||"null")||(S.pos&&S.pos.card)||{}}catch(e){o=(S.pos&&S.pos.card)||{}}
+function cardOpts(){let o={};try{o=JSON.parse(localStorage.getItem(TK(CARD_KEY))||"null")||(S.pos&&S.pos.card)||{}}catch(e){o=(S.pos&&S.pos.card)||{}}
   return {title:o.title||"",sub:o.sub||"",cols:[2,3,4].includes(o.cols)?o.cols:3,price:o.price!==false,group:o.group!==false,page:o.page!==false,
     extra:Array.isArray(o.extra)?o.extra:[],skip:Array.isArray(o.skip)?o.skip:[],np:Array.isArray(o.np)?o.np:[],names:o.names&&typeof o.names==="object"?{...o.names}:{},sec:o.sec&&typeof o.sec==="object"?{...o.sec}:{},off:Array.isArray(o.off)?o.off:[],at:o.at||0}}
-function saveCardOpts(o){try{localStorage.setItem(CARD_KEY,JSON.stringify(o))}catch(e){}}
+function saveCardOpts(o){try{localStorage.setItem(TK(CARD_KEY),JSON.stringify(o))}catch(e){}}
 function saveCardShop(o){o.at=Date.now();saveCardOpts(o);if(!isAdmin())return false;
-  try{db.doc("settings/pos").set({card:o},{mergeFields:["card"]}).catch(writeFail)}catch(x){writeFail(x)}return true}
+  try{db.doc(P("settings/pos")).set({card:o},{mergeFields:["card"]}).catch(writeFail)}catch(x){writeFail(x)}return true}
 // Weighed goods are split into the counter's own sections (each can be printed alone); other items go by their category.
 // The section comes from the name, or from the card's own choice for that item (o.sec, set in the edit row).
 const WSEC=[["veg","خضرة وفواكه"],["sweet","حلويات بالوزن",/بقلاو|زلابي|برمه|داطلي|كناف|بسبوس|زنود|هريس|حلاوه|مدقوق|كليج|ملبن|من السما|حلويات|شعر بنات/],
@@ -3359,7 +3367,7 @@ function cardLayout(list,o){
 const cardNoPrice=(p,o)=>o.price===false||(o.np||[]).includes(p.id)||(o.np||[]).includes("sec:"+cardSec(p,o)[0]);
 function counterCard(top){
   // The shop's saved card wins over this device's copy when it is newer (saved from another device).
-  const sh=S.pos&&S.pos.card;let o=cardOpts();if(sh&&(sh.at||0)>(o.at||0)){try{localStorage.removeItem(CARD_KEY)}catch(e){}o=cardOpts()}
+  const sh=S.pos&&S.pos.card;let o=cardOpts();if(sh&&(sh.at||0)>(o.at||0)){try{localStorage.removeItem(TK(CARD_KEY))}catch(e){}o=cardOpts()}
   const skip=new Set(o.skip),off=new Set(o.off),np=new Set(o.np),extra=new Set(o.extra.filter(id=>S.products.has(id)));
   const all=()=>[...S.products.values()].filter(p=>onCard(p)||extra.has(p.id));
   const shown=()=>all().filter(p=>!skip.has(p.id)&&!off.has(cardSec(p,o)[0]));
@@ -3447,7 +3455,7 @@ function counterCard(top){
       if(!list.length){toast("ماكو مواد بالبطاقة.");return}
       btn.disabled=true;
       try{const miss=list.filter(p=>!p.barcode),codes=newCodes(miss.length),now=Date.now();
-        for(let i=0;i<miss.length;i+=450){const bt=db.batch();miss.slice(i,i+450).forEach((p,j)=>bt.update(db.collection("products").doc(p.id),{barcode:codes[i+j],updatedAt:now,updatedBy:S.me.name}));await bt.commit()}
+        for(let i=0;i<miss.length;i+=450){const bt=db.batch();miss.slice(i,i+450).forEach((p,j)=>bt.update(db.collection(P("products")).doc(p.id),{barcode:codes[i+j],updatedAt:now,updatedBy:S.me.name}));await bt.commit()}
         miss.forEach((p,i)=>{p.barcode=codes[i]});if(miss.length)toast(`انولّد ${miss.length} باركود جديد`,2500);
         saveCardShop(o);await counterPdf(list.filter(p=>eanBars(p.barcode)),one?{...o,page:true}:o);draw()}
       catch(err){writeFail(err)}finally{btn.disabled=false}};
@@ -3532,7 +3540,7 @@ function linkCodeForm(code,after){
 }
 function setCode(p,code){
   const meta={barcode:code,updatedAt:Date.now(),updatedBy:S.me.name};
-  S.products.set(p.id,{...p,...meta});try{db.collection("products").doc(p.id).set(meta,{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
+  S.products.set(p.id,{...p,...meta});try{db.collection(P("products")).doc(p.id).set(meta,{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
   log("edit","product",{detail:`ربط الباركود ${code} بـ ${p.name}`});
   if(S.view==="products")renderProducts();
 }
@@ -3578,7 +3586,7 @@ function priceForm(p){
       if(cur.est)patch.est=firebase.firestore.FieldValue.delete();
       const pa=commitPic(p.id,pic);if(pa)patch.pic=pa;else if(pa===null)patch.pic=firebase.firestore.FieldValue.delete();if(pa!==undefined)ch.push(pa?"الصورة":"شال الصورة");if(pic.noStock)patch.noStock=true;if(pic.artChanged){patch.art=pic.art||firebase.firestore.FieldValue.delete();ch.push("الرسمة")}
       S.products.set(p.id,{...cur,price:v,barcode:c,cost,updatedAt:now,updatedBy:S.me.name,est:false,...(pa!==undefined?{pic:pa||0}:{}),...(pic.noStock?{noStock:true}:{})});
-      try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
+      try{db.collection(P("products")).doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
       if(ch.length)log("edit","product",{detail:`عدّل ${cur.name}: ${ch.join("، ")}`});
       closeModal();renderProducts();toast(`انحفظت «${cur.name}»`,1500);
       if(next)scanBarcode(codeOnItems);
@@ -3613,7 +3621,7 @@ function restockForm(p){
       if(c>0)patch.cost=Math.round(c/n()*100)/100;
       // The nearest expiry date is the one that matters for the warning.
       if(exp&&(!p.expiry||exp<p.expiry||daysTo(p.expiry)<0))patch.expiry=exp;
-      try{db.collection("products").doc(p.id).update(patch).catch(writeFail)}catch(x){writeFail(x)}
+      try{db.collection(P("products")).doc(p.id).update(patch).catch(writeFail)}catch(x){writeFail(x)}
       log("add","product",{detail:`استلم ${qtyText(v)} ${unit?unit.name:baseUnit(p)} ${p.name}${c>0?` بسعر ${fmt(c)}`:""}`});
       closeModal();toast("انضافت الكمية للمخزن");
     });
@@ -3624,8 +3632,8 @@ function restockForm(p){
    The owner counts what is on the shelves, by typing the number or scanning each piece. Every count remembers the stock
    the app showed at that moment, so sales made while counting are kept: saving adds (counted − shown) to the stock.
    The count in progress stays on this device until it is saved; the saved stocktake is kept as a record. */
-function loadCount(){try{const d=JSON.parse(localStorage.getItem(COUNT_KEY)||"null");S.count=d&&d.items&&typeof d.items==="object"?d:null}catch(e){S.count=null}}
-function saveCount(){try{if(S.count)localStorage.setItem(COUNT_KEY,JSON.stringify(S.count));else localStorage.removeItem(COUNT_KEY)}catch(e){}}
+function loadCount(){try{const d=JSON.parse(localStorage.getItem(TK(COUNT_KEY))||"null");S.count=d&&d.items&&typeof d.items==="object"?d:null}catch(e){S.count=null}}
+function saveCount(){try{if(S.count)localStorage.setItem(TK(COUNT_KEY),JSON.stringify(S.count));else localStorage.removeItem(TK(COUNT_KEY))}catch(e){}}
 // Untracked items have no stock to compare with: counting one starts tracking it at the counted quantity.
 const countDiff=(p,e)=>e&&e.tr?round3(e.q-e.sys):null;
 function countRows(){
@@ -3747,18 +3755,18 @@ function saveStocktake(note){
     shortValue:t.shortValue,extraValue:t.extraValue,note,items,...(S.count.kind?{kind:S.count.kind}:{})};
   // Counted items that differ get the difference added; items counted for the first time get the counted stock.
   const meta={updatedAt:now,updatedBy:S.me.name};
-  const writes=t.rows.filter(r=>r.diff!==0||!tracked(r.p)).map(({p,e,diff})=>[db.collection("products").doc(p.id),diff!==null&&tracked(p)?{stock:FV.increment(diff),...meta}:{stock:e.q,track:true,...meta}]);
+  const writes=t.rows.filter(r=>r.diff!==0||!tracked(r.p)).map(({p,e,diff})=>[db.collection(P("products")).doc(p.id),diff!==null&&tracked(p)?{stock:FV.increment(diff),...meta}:{stock:e.q,track:true,...meta}]);
   const a=activityDoc("edit","stock",{detail:`جرد المخزن: ${t.n} مادة، ناقص ${t.short}${t.shortValue?` (${fmt(t.shortValue)})`:""}، زايد ${t.extra}${t.extraValue?` (${fmt(t.extraValue)})`:""}`});
   const chunks=[];for(let i=0;i<writes.length;i+=450)chunks.push(writes.slice(i,i+450));if(!chunks.length)chunks.push([]);
   chunks.forEach((ch,ci)=>{const b=db.batch();for(const [ref,patch] of ch)b.update(ref,patch);
-    if(ci===chunks.length-1){b.set(db.collection("stocktakes").doc(id),take);b.set(db.collection("activity").doc(a.id),a)}
+    if(ci===chunks.length-1){b.set(db.collection(P("stocktakes")).doc(id),take);b.set(db.collection(P("activity")).doc(a.id),a)}
     b.commit().catch(writeFail)});
   S.count=null;saveCount();if(S.takes)S.takes.unshift(take);
   closeModal();renderCount();takeModal(take);toast("انحفظ الجرد وتعدّلت الكميات");
 }
 function fetchTakes(){
   if(S.takes)return;S.takes=[];
-  db.collection("stocktakes").orderBy("at","desc").limit(20).get()
+  db.collection(P("stocktakes")).orderBy("at","desc").limit(20).get()
     .then(s=>{S.takes=s.docs.map(d=>d.data());if(S.view==="count"&&!S.count)renderCount()})
     .catch(e=>{S.takes=null;readFail(e)});
 }
@@ -3811,7 +3819,7 @@ async function takePdf(x){
 const PRSEEN_KEY="shahm-pos-prseen",DEV_KEY="shahm-pos-dev";
 const PW=new Map();let prSince=0;
 function devId(){try{let d=localStorage.getItem(DEV_KEY);if(!d){d=uid();localStorage.setItem(DEV_KEY,d)}return d}catch(e){return "-"}}
-function prSeen(){try{const v=Number(localStorage.getItem(PRSEEN_KEY));if(v>0)return v;const now=Date.now();localStorage.setItem(PRSEEN_KEY,String(now));return now}catch(e){return 0}}
+function prSeen(){try{const v=Number(localStorage.getItem(TK(PRSEEN_KEY)));if(v>0)return v;const now=Date.now();localStorage.setItem(TK(PRSEEN_KEY),String(now));return now}catch(e){return 0}}
 const prOf=d=>({price:Math.round(Number(d.price)||0),wprice:Math.round(Number(d.wprice)||0),est:!!d.est});
 function priceWatch(s){
   for(const ch of s.docChanges()){
@@ -3827,11 +3835,11 @@ function logPrice(pid,d,o,n){
   const x={id:uid(),pid,name:String(d.name||"").slice(0,80),from:o.price,to:n.price,...(n.wprice!==o.wprice?{wfrom:o.wprice,wto:n.wprice}:{}),
     by:S.me.name,byId:S.me.id,byRole:S.me.role,dev:devId(),at:Date.now()};
   if(S.prices&&!S.prices.some(y=>y.id===x.id))S.prices.unshift(x);
-  try{db.collection("prices").doc(x.id).set(x).catch(e=>{console.warn(e);if(e&&e.code==="permission-denied"&&!S.prDenied){S.prDenied=true;toast("سجل الأسعار ما انحفظ: لازم تنشر قواعد Firestore الجديدة.",6000)}})}catch(e){console.warn(e)}
+  try{db.collection(P("prices")).doc(x.id).set(x).catch(e=>{console.warn(e);if(e&&e.code==="permission-denied"&&!S.prDenied){S.prDenied=true;toast("سجل الأسعار ما انحفظ: لازم تنشر قواعد Firestore الجديدة.",6000)}})}catch(e){console.warn(e)}
 }
 function watchPrices(){
   prSince=Date.now();prSeen();  // a device's first start counts from now, not from old changes
-  unsubs.push(db.collection("prices").orderBy("at","desc").limit(60).onSnapshot(s=>{
+  unsubs.push(db.collection(P("prices")).orderBy("at","desc").limit(60).onSnapshot(s=>{
     const fresh=[];
     for(const ch of s.docChanges())if(ch.type==="added"){const x=ch.doc.data();if(x.at>=prSince-5000&&x.dev!==devId())fresh.push(x)}
     S.prices=s.docs.map(d=>d.data());
@@ -3862,13 +3870,13 @@ function pricesModal(){
   openModal(`<h3>تغييرات الأسعار</h3><p class="hint">آخر تغييرات أسعار البيع، ومنو غيّرها ووكت.</p>
     ${list.length?`<ul class="rows">${list.map(x=>prRow(x,x.at>seen&&x.dev!==me)).join("")}</ul>`:`<div class="empty">ما تغيّر أي سعر بعد.</div>`}
     <div class="foot"><button class="btn primary" type="button" data-close>تمام</button></div>`,null,"wide");
-  try{localStorage.setItem(PRSEEN_KEY,String(Date.now()))}catch(e){}
+  try{localStorage.setItem(TK(PRSEEN_KEY),String(Date.now()))}catch(e){}
   refresh("prices");
 }
 // The item form shows its own price history.
 function priceHist(pid,el){
   if(!el)return;
-  db.collection("prices").where("pid","==",pid).limit(30).get().then(s=>{
+  db.collection(P("prices")).where("pid","==",pid).limit(30).get().then(s=>{
     const list=s.docs.map(d=>d.data()).sort((a,b)=>b.at-a.at).slice(0,8);
     el.innerHTML=list.length?`<details class="pr-hist"><summary>آخر تغيير للسعر: ${priceMove(list[0])} · ${esc(list[0].by||"")} · ${esc(whenText(list[0].at))}</summary><ul class="rows">${list.map(x=>prRow(x,false)).join("")}</ul></details>`:"";
   }).catch(e=>console.warn(e));
@@ -3879,8 +3887,8 @@ function priceHist(pid,el){
    came and, if it changed, the purchase price. Saving adds every quantity to the stock in one go and keeps the list as a
    record with its supplier. The list in progress stays on this device until it is saved. */
 const RECV_KEY="shahm-pos-recv";
-function loadRecv(){try{const d=JSON.parse(localStorage.getItem(RECV_KEY)||"null");S.rv=d&&Array.isArray(d.lines)?d:null}catch(e){S.rv=null}}
-function saveRecv(){try{if(S.rv&&(S.rv.lines.length||S.rv.supId||S.rv.guess||(S.rv.unk&&S.rv.unk.length)))localStorage.setItem(RECV_KEY,JSON.stringify(S.rv));else localStorage.removeItem(RECV_KEY)}catch(e){}}
+function loadRecv(){try{const d=JSON.parse(localStorage.getItem(TK(RECV_KEY))||"null");S.rv=d&&Array.isArray(d.lines)?d:null}catch(e){S.rv=null}}
+function saveRecv(){try{if(S.rv&&(S.rv.lines.length||S.rv.supId||S.rv.guess||(S.rv.unk&&S.rv.unk.length)))localStorage.setItem(TK(RECV_KEY),JSON.stringify(S.rv));else localStorage.removeItem(TK(RECV_KEY))}catch(e){}}
 const rvOpen=()=>!!(S.rv&&(S.rv.lines.length||(S.rv.unk&&S.rv.unk.length)));
 const rvKey=l=>l.pid+"|"+(l.u||"");
 // The line's unit: the item's own unit (n = 1) or one of its packs (n pieces), so the stock grows by q × n.
@@ -4020,23 +4028,23 @@ function saveReceipt(note){
   // Lines of one item (pieces and cartons) make one write; a new purchase price is kept per piece.
   const per=new Map();
   for(const r of t.rows){const x=per.get(r.p.id)||{p:r.p,add:0,cost:0};x.add=round3(x.add+r.add);if(r.l.c>0)x.cost=Math.round(r.l.c/r.u.n*100)/100;per.set(r.p.id,x)}
-  const writes=[...per.values()].map(({p,add,cost})=>[db.collection("products").doc(p.id),{...(tracked(p)?{stock:FV.increment(add)}:{stock:add,track:true}),...(cost>0?{cost}:{}),...meta}]);
+  const writes=[...per.values()].map(({p,add,cost})=>[db.collection(P("products")).doc(p.id),{...(tracked(p)?{stock:FV.increment(add)}:{stock:add,track:true}),...(cost>0?{cost}:{}),...meta}]);
   const rec={id,at:now,date:todayISO(),by:S.me.name,byId:S.me.id,supId:s?s.id:"",sup:s?s.name:"",supPhone:s?s.phone||"":"",note,n:t.n,cost:t.cost,
     ...(S.rv.inv?{inv:S.rv.inv}:{}),...(S.rv.invTotal?{invTotal:S.rv.invTotal}:{}),
     items:t.rows.map(r=>({pid:r.p.id,name:r.p.name,unit:r.u.name||baseUnit(r.p),n:r.u.n,q:r.l.q,add:r.add,base:baseUnit(r.p),c:r.l.c>0?r.l.c:null}))};
   const a=activityDoc("add","stock",{detail:`استلام ${t.n} مادة${s?` من ${s.name}`:""}${t.cost?` بشراء ${fmt(t.cost)}`:""}`});
   const chunks=[];for(let i=0;i<writes.length;i+=450)chunks.push(writes.slice(i,i+450));
   chunks.forEach((ch,ci)=>{const b=db.batch();for(const [ref,patch] of ch)b.update(ref,patch);
-    if(ci===chunks.length-1)b.set(db.collection("activity").doc(a.id),a);b.commit().catch(writeFail)});
+    if(ci===chunks.length-1)b.set(db.collection(P("activity")).doc(a.id),a);b.commit().catch(writeFail)});
   // The record is written on its own, so the stock is never held back by it.
-  try{db.collection("receipts").doc(id).set(rec).catch(e=>{console.warn(e);toast("الكميات انضافت للمخزن، بس سجل الاستلام ما انحفظ.",5000)})}catch(e){console.warn(e)}
+  try{db.collection(P("receipts")).doc(id).set(rec).catch(e=>{console.warn(e);toast("الكميات انضافت للمخزن، بس سجل الاستلام ما انحفظ.",5000)})}catch(e){console.warn(e)}
   S.rv=null;saveRecv();
   if(S.recvs)S.recvs.unshift(rec);
   closeModal();renderRecv();recvModal(rec);toast("انحفظ الاستلام وانضافت الكميات للمخزن");
 }
 function fetchRecvs(){
   if(S.recvs)return;S.recvs=[];
-  db.collection("receipts").orderBy("at","desc").limit(20).get()
+  db.collection(P("receipts")).orderBy("at","desc").limit(20).get()
     .then(s=>{S.recvs=s.docs.map(d=>d.data());if(S.view==="recv")renderRecvSide()})
     .catch(e=>{console.warn(e);if(S.view==="recv")renderRecvSide()});
 }
@@ -4108,7 +4116,7 @@ function supForm(s){
       // The same shape the debt book saves for a supplier.
       const obj=isNew?{id:uid(),name,kind:"supplier",visit:[],limit:0,phone,note,createdAt:Date.now(),by:S.me.name}:{...s,name,phone,note};
       S.customers.set(obj.id,obj);d1Queue("customers",obj.id,obj);
-      try{db.collection("customers").doc(obj.id).set(stamped(obj)).catch(writeFail)}catch(x){writeFail(x)}
+      try{db.collection(P("customers")).doc(obj.id).set(stamped(obj)).catch(writeFail)}catch(x){writeFail(x)}
       log(isNew?"add":"edit","customer",{customerName:name});
       if(isNew||(S.rv&&S.rv.supId===obj.id)){rvSetSup(obj.id);closeModal();toast(isNew?`انضاف المجهّز «${name}»`:"انحفظ",2000)}else supPicker();
     });
@@ -4118,6 +4126,8 @@ function supForm(s){
    and prices, and the invoice header (supplier, number, total). Items the shop has go straight on the list; the others wait
    under «ما موجودة بالمواد» to be linked to an item or added as a new one. */
 function rvPhoto(){
+  // The photo reader on the server knows only this shop's owner for now.
+  if(SHOP){openModal(`<h3>صورة الفاتورة</h3><p class="hint">قراءة المواد من الصور بعدها ما متوفرة بكاشير المحلات. أضف المواد بالباركود، أو من «قائمة مواد جاهزة» أو Excel.</p><div class="foot"><button class="btn" type="button" data-close>تمام</button></div>`);return}
   if(!window.AI_URL){openModal(`<h3>صورة الفاتورة</h3><p class="hint">هذي الخاصية بعدها ما مفعّلة. تحتاج ربط خدمة الذكاء الاصطناعي أول مرة.</p><div class="foot"><button class="btn" type="button" data-close>تمام</button></div>`);return}
   openModal(`<h3>صورة الفاتورة</h3>
     <p class="hint">صوّر فاتورة المجهّز كاملة وواضحة. البرنامج يقرا المواد وعددها وسعر شرائها، واسم المحل ورقمه، ويملي قائمة الاستلام. بعدها تراجعها وتحفظ.</p>
@@ -4489,14 +4499,14 @@ function xlPreview(fname,rows,head){
 }
 function xlApply(plan,fname){
   const now=Date.now(),FV=firebase.firestore.FieldValue,meta={updatedAt:now,updatedBy:S.me.name},writes=[];
-  for(const a of plan.adds){const obj={id:uid(),createdAt:now,by:S.me.name,...a,...meta};S.products.set(obj.id,obj);writes.push(b=>b.set(db.collection("products").doc(obj.id),obj))}
+  for(const a of plan.adds){const obj={id:uid(),createdAt:now,by:S.me.name,...a,...meta};S.products.set(obj.id,obj);writes.push(b=>b.set(db.collection(P("products")).doc(obj.id),obj))}
   for(const u of plan.updates){const {__stock,...fields}=u.patch,patch={...fields,...meta};
     // Stock from the file is applied as a difference, so a sale made meanwhile still counts.
     if(__stock!==undefined){if(tracked(u.p))patch.stock=FV.increment(round3(__stock-stockOf(u.p)));else{patch.stock=__stock;patch.track=true}}
     if("price" in fields&&u.p.est){patch.est=FV.delete();fields.est=false}
-    S.products.set(u.p.id,{...u.p,...fields,...(__stock!==undefined?{stock:__stock,track:true}:{})});writes.push(b=>b.update(db.collection("products").doc(u.p.id),patch))}
+    S.products.set(u.p.id,{...u.p,...fields,...(__stock!==undefined?{stock:__stock,track:true}:{})});writes.push(b=>b.update(db.collection(P("products")).doc(u.p.id),patch))}
   const a=activityDoc("add","product",{detail:`استيراد Excel (${fname}): ${plan.adds.length} مادة جديدة، ${plan.updates.length} تحدّثت`});
-  writes.push(b=>b.set(db.collection("activity").doc(a.id),a));
+  writes.push(b=>b.set(db.collection(P("activity")).doc(a.id),a));
   for(let i=0;i<writes.length;i+=450){const b=db.batch();writes.slice(i,i+450).forEach(w=>w(b));b.commit().catch(writeFail)}
   closeModal();S.pcat="all";S.pq="";render();
   toast(`انضافت ${plan.adds.length} مادة وتحدّثت ${plan.updates.length}`,3500);
@@ -4508,15 +4518,15 @@ function xlApply(plan,fname){
    clear-out can be undone from the items tab. */
 const TRASH_KEY="shahm-pos-trash";
 const delAble=p=>noCode(p)&&!inWeigh(p);
-function trashOf(){try{const t=JSON.parse(localStorage.getItem(TRASH_KEY)||"null");return t&&Array.isArray(t.items)&&t.items.length&&Date.now()-t.at<3*864e5?t:null}catch(e){return null}}
+function trashOf(){try{const t=JSON.parse(localStorage.getItem(TK(TRASH_KEY))||"null");return t&&Array.isArray(t.items)&&t.items.length&&Date.now()-t.at<3*864e5?t:null}catch(e){return null}}
 function delNoCode(){
   if(!canItems())return;
   const list=[...S.products.values()].filter(delAble);if(!list.length)return;
   if(!confirm(`تنحذف ${list.length} مادة ما عليها باركود (مواد الوزن تبقى). الفواتير القديمة تبقى مثل ما هي.\n\nمتأكد؟`))return;
-  try{localStorage.setItem(TRASH_KEY,JSON.stringify({at:Date.now(),items:list.map(p=>({...p,pic:null}))}))}catch(e){}
-  const writes=list.map(p=>b=>b.delete(db.collection("products").doc(p.id)));
-  list.filter(p=>p.pic).forEach(p=>writes.push(b=>b.delete(db.collection("itemPhotos").doc(p.id))));
-  const a=activityDoc("delete","product",{detail:`حذف ${list.length} مادة بلا باركود`});writes.push(b=>b.set(db.collection("activity").doc(a.id),a));
+  try{localStorage.setItem(TK(TRASH_KEY),JSON.stringify({at:Date.now(),items:list.map(p=>({...p,pic:null}))}))}catch(e){}
+  const writes=list.map(p=>b=>b.delete(db.collection(P("products")).doc(p.id)));
+  list.filter(p=>p.pic).forEach(p=>writes.push(b=>b.delete(db.collection(P("itemPhotos")).doc(p.id))));
+  const a=activityDoc("delete","product",{detail:`حذف ${list.length} مادة بلا باركود`});writes.push(b=>b.set(db.collection(P("activity")).doc(a.id),a));
   for(let i=0;i<writes.length;i+=450){const b=db.batch();writes.slice(i,i+450).forEach(w=>w(b));b.commit().catch(writeFail)}
   list.forEach(p=>S.products.delete(p.id));
   S.pcat="all";render();toast(`انحذفت ${list.length} مادة. إذا غلطت تكدر تسترجعها من فوك القائمة.`,5000);
@@ -4525,11 +4535,11 @@ function undoNoCode(){
   const t=trashOf();if(!canItems()||!t)return;
   if(!confirm(`ترجع ${t.items.length} مادة اللي انحذفت؟`))return;
   const back=t.items.filter(p=>!S.products.has(p.id)).map(p=>{const o={...p};delete o.pic;return o});
-  const writes=back.map(o=>b=>b.set(db.collection("products").doc(o.id),o));
-  const a=activityDoc("add","product",{detail:`رجّع ${back.length} مادة محذوفة`});writes.push(b=>b.set(db.collection("activity").doc(a.id),a));
+  const writes=back.map(o=>b=>b.set(db.collection(P("products")).doc(o.id),o));
+  const a=activityDoc("add","product",{detail:`رجّع ${back.length} مادة محذوفة`});writes.push(b=>b.set(db.collection(P("activity")).doc(a.id),a));
   for(let i=0;i<writes.length;i+=450){const b=db.batch();writes.slice(i,i+450).forEach(w=>w(b));b.commit().catch(writeFail)}
   back.forEach(o=>S.products.set(o.id,o));
-  try{localStorage.removeItem(TRASH_KEY)}catch(e){}
+  try{localStorage.removeItem(TK(TRASH_KEY))}catch(e){}
   render();toast(`رجعت ${back.length} مادة`,3000);
 }
 
@@ -4567,8 +4577,8 @@ function weighListForm(){
       const now=Date.now(),meta={updatedAt:now,updatedBy:S.me.name};
       const objs=picked().map(({r,v})=>({id:uid(),createdAt:now,by:S.me.name,name:r.n,price:v,category:r.c,barcode:"",unit:r.bag?"كيس":"كغم",weighed:!r.bag,plu:"",
         wprice:0,cost:0,packs:[],track:false,min:0,expiry:"",offer:null,active:true,src:"weigh",...meta}));
-      const writes=objs.map(o=>b=>b.set(db.collection("products").doc(o.id),o));
-      const a=activityDoc("add","product",{detail:`أضاف ${objs.length} مادة وزن`});writes.push(b=>b.set(db.collection("activity").doc(a.id),a));
+      const writes=objs.map(o=>b=>b.set(db.collection(P("products")).doc(o.id),o));
+      const a=activityDoc("add","product",{detail:`أضاف ${objs.length} مادة وزن`});writes.push(b=>b.set(db.collection(P("activity")).doc(a.id),a));
       for(let i=0;i<writes.length;i+=450){const b=db.batch();writes.slice(i,i+450).forEach(w=>w(b));b.commit().catch(writeFail)}
       objs.forEach(o=>S.products.set(o.id,o));
       closeModal();render();toast(`انضافت ${objs.length} مادة${fresh-objs.length>0?`، وباقي ${fresh-objs.length} بدون سعر`:""}`,4000);
@@ -4606,9 +4616,9 @@ function catalogApply(items){
   for(const x of items){const k=foldAr(x.n);if(seen.has(k)||!(x.p>=0))continue;seen.add(k);
     objs.push({id:uid(),createdAt:now,by:S.me.name,name:x.n,price:Math.round(x.p),category:x.c||"مشكل",barcode:"",unit:x.w?"كغم":x.u||"حبة",weighed:!!x.w,plu:"",wprice:0,cost:0,
       packs:x.k&&x.k.q>0?[{name:x.k.n||"كارتون",n:x.k.q,price:Math.round(x.k.p)||0,wprice:0,barcode:""}]:[],track:false,min:0,expiry:"",offer:null,active:true,est:true,src:"catalog",...meta})}
-  const writes=objs.map(o=>b=>b.set(db.collection("products").doc(o.id),o));
+  const writes=objs.map(o=>b=>b.set(db.collection(P("products")).doc(o.id),o));
   const a=activityDoc("add","product",{detail:`أضاف ${objs.length} مادة من القائمة الجاهزة`});
-  writes.push(b=>b.set(db.collection("activity").doc(a.id),a));
+  writes.push(b=>b.set(db.collection(P("activity")).doc(a.id),a));
   for(let i=0;i<writes.length;i+=450){const b=db.batch();writes.slice(i,i+450).forEach(w=>w(b));b.commit().catch(writeFail)}
   objs.forEach(o=>S.products.set(o.id,o));
   closeModal();S.pcat="all";S.pq="";render();
@@ -4622,8 +4632,8 @@ function catalogApply(items){
    The list stays on this device (PLIST_KEY) until it is finished, so closing the window or the app loses nothing. */
 const PLIST_KEY="shahm-pos-plist";
 let PL=null;
-function loadPl(){try{const d=JSON.parse(localStorage.getItem(PLIST_KEY)||"null");PL=d&&Array.isArray(d.items)&&d.items.length?d:null}catch(e){PL=null}}
-function savePl(){try{if(PL)localStorage.setItem(PLIST_KEY,JSON.stringify(PL));else localStorage.removeItem(PLIST_KEY)}catch(e){}}
+function loadPl(){try{const d=JSON.parse(localStorage.getItem(TK(PLIST_KEY))||"null");PL=d&&Array.isArray(d.items)&&d.items.length?d:null}catch(e){PL=null}}
+function savePl(){try{if(PL)localStorage.setItem(TK(PLIST_KEY),JSON.stringify(PL));else localStorage.removeItem(TK(PLIST_KEY))}catch(e){}}
 const plLeft=()=>PL?PL.items.filter(x=>x.on&&!x.done&&!x.skip).length:0;
 const plBtn=()=>`${I.camera}قائمة من صورة${plLeft()?` <span class="chip warn">باقي <span class="num">${plLeft()}</span></span>`:""}`;
 const plPer=x=>x.pack_n>1?x.pack_n:1;
@@ -4652,6 +4662,8 @@ function plOpen(){
   });
 }
 function plStart(){
+  // The photo reader on the server knows only this shop's owner for now.
+  if(SHOP){openModal(`<h3>قائمة من صورة</h3><p class="hint">قراءة المواد من الصور بعدها ما متوفرة بكاشير المحلات. أضف المواد بالباركود، أو من «قائمة مواد جاهزة» أو Excel.</p><div class="foot"><button class="btn" type="button" data-close>تمام</button></div>`);return}
   if(!window.AI_URL){openModal(`<h3>قائمة من صورة</h3><p class="hint">هذي الخاصية بعدها ما مفعّلة. تحتاج ربط خدمة الذكاء الاصطناعي أول مرة.</p><div class="foot"><button class="btn" type="button" data-close>تمام</button></div>`);return}
   openModal(`<h3>قائمة من صورة</h3>
     <p class="hint">صوّر فاتورة المورّد أو ورقة مواد أو حتى الرف. البرنامج يقرا أسماء المواد وكمياتها وسعر شرائها، وبعدين تمر عليها وحدة وحدة: تمسح الباركود وتكتب سعر البيع بس.</p>
@@ -4781,7 +4793,7 @@ function plCreate(x,name,category,code,price,add){
   const packs=!weighed&&x.pack_n>1?[{name:"كارتون",n:x.pack_n,price:price*x.pack_n,wprice:0,barcode:""}]:[];
   const obj={id:uid(),createdAt:now,by:S.me.name,name,price,category,barcode:code,unit,weighed,plu:"",wprice:0,cost,packs,track:add>0,...(add>0?{stock:add}:{}),
     min:0,expiry:"",offer:null,active:true,src:"photo",updatedAt:now,updatedBy:S.me.name};
-  S.products.set(obj.id,obj);try{db.collection("products").doc(obj.id).set(obj).catch(writeFail)}catch(e){writeFail(e)}
+  S.products.set(obj.id,obj);try{db.collection(P("products")).doc(obj.id).set(obj).catch(writeFail)}catch(e){writeFail(e)}
   x.pid=obj.id;x.made=true;
   log("add","product",{detail:`أضاف المادة ${name} بسعر ${fmt(price)} من صورة قائمة${add>0?`، الكمية ${qtyText(add)}`:""}`});
 }
@@ -4793,7 +4805,7 @@ function plUpdate(p,x,code,price,add){
   const cost=plCost(x);if(cost>0&&cost!==Number(p.cost)){patch.cost=local.cost=cost;ch.push(`سعر الشراء ${fmt(cost)}`)}
   if(p.est)patch.est=firebase.firestore.FieldValue.delete();
   if(add>0){patch.track=local.track=true;patch.stock=tracked(p)?firebase.firestore.FieldValue.increment(add):add;local.stock=round3((tracked(p)?stockOf(p):0)+add);ch.push(`استلم ${qtyText(add)}`)}
-  S.products.set(p.id,{...p,...local});try{db.collection("products").doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
+  S.products.set(p.id,{...p,...local});try{db.collection(P("products")).doc(p.id).set(patch,{merge:true}).catch(writeFail)}catch(e){writeFail(e)}
   log("edit","product",{detail:`عدّل ${p.name} من صورة قائمة: ${ch.join("، ")||"بدون تغيير"}`});
 }
 function plFinish(){
@@ -4817,7 +4829,7 @@ function rateForm(after){
       const v=Math.round(parseAmt(m.querySelector("#rateV").value));
       if(!(v>=10000&&v<=10000000)){m.querySelector("#rateErr").textContent="اكتب سعر 100 دولار، مثلاً 150,000.";return}
       const upd={usdRate:v/100,usdAt:Date.now(),usdBy:S.me.name};S.pos={...S.pos,...upd};
-      try{db.doc("settings/pos").set(upd,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
+      try{db.doc(P("settings/pos")).set(upd,{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
       if(v!==Math.round(r*100))log("edit","settings",{detail:`سعر الدولار: $100 = ${fmt(v)}`});
       closeModal();toast("انحفظ سعر الدولار");if(after)after()});
   });
@@ -4858,10 +4870,10 @@ function itemsPermForm(){
         return `<li class="ip-row"><span class="avatar">${initial(u.name||u.username||"?")}</span><div class="m"><b>${esc(u.name||u.username||"")}</b><small>${ed?(on?"يدير المواد":"بيع بس"):"مشاهد: غيّره لمحرر من دفتر الديون أول"}</small></div>
           ${ed?`<button class="btn sm${on?" primary":""}" type="button" data-ip="${esc(u.id)}" aria-pressed="${on}">${on?"شغّالة":"مطفية"}</button>`:""}</li>`}).join("")
         :`<li class="empty"><b>ماكو مستخدمين بعد</b>الحسابات تنسجل وتنقبل من دفتر الديون.</li>`};
-    db.collection("users").get().then(s=>{users=s.docs.map(d=>({...d.data(),id:d.id}));draw()}).catch(e=>{console.warn(e);el.innerHTML=`<li class="empty">تعذّر قراءة المستخدمين. تحقق من الإنترنت.</li>`});
+    db.collection(P("users")).get().then(s=>{users=s.docs.map(d=>({...d.data(),id:d.id}));draw()}).catch(e=>{console.warn(e);el.innerHTML=`<li class="empty">تعذّر قراءة المستخدمين. تحقق من الإنترنت.</li>`});
     el.addEventListener("click",e=>{const b=e.target.closest("[data-ip]");if(!b)return;const u=users.find(x=>x.id===b.dataset.ip);if(!u)return;
       const v=!(u.items===true);u.items=v;draw();
-      try{db.collection("users").doc(u.id).set({items:v},{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
+      try{db.collection(P("users")).doc(u.id).set({items:v},{merge:true}).catch(writeFail)}catch(x){writeFail(x)}
       log("edit","account",{detail:`${v?"شغّل":"طفّى"} صلاحية المواد لـ ${u.name||u.username}`});toast(v?`${u.name||""} يكدر هسه يدير المواد`:`انشالت صلاحية المواد من ${u.name||""}`)});
   });
 }
@@ -5049,6 +5061,75 @@ window.addEventListener("online",()=>updCheck(true));
 setInterval(()=>{if(document.visibilityState==="visible")updCheck(true)},30*60000);
 try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm-updated");setTimeout(()=>toast("انحدّث البرنامج لآخر نسخة"),1500)}}catch(e){}
 
+/* ---------- shops ---------- */
+// Same as the debt book: its owner switches this on in «المحلات» (const MULTI there); a copy built for one shop has it off.
+const MULTI=true;
+// What this device holds for a shop (cart, count...) is kept per shop, so it is read again when the shop is known.
+function setShop(sh){if(sh===SHOP)return;SHOP=sh||null;dayStore=null;loadCart();loadCount();loadRecv();loadPl()}
+// Which shop this account belongs to (memberOf), or null for this shop's own accounts. Offline: what this device saw last.
+async function shopOf(u){
+  let cached=null;try{const c=JSON.parse(localStorage.getItem(SHOP_KEY)||"null");if(c&&c.uid===u.uid)cached=c.shop}catch(e){}
+  try{
+    const s=await db.doc("memberOf/"+u.uid).get();
+    if(s.exists){const sh=s.data().shop;try{localStorage.setItem(SHOP_KEY,JSON.stringify({uid:u.uid,shop:sh}))}catch(e){}return sh}
+    if(!s.metadata.fromCache){try{localStorage.removeItem(SHOP_KEY)}catch(e){}return null}
+  }catch(e){if(e&&e.code==="permission-denied")return null}
+  return cached;
+}
+// Shown when the shop or its cashier is closed: the shop's owner gets a way to reach the app's owner.
+const SUPPORT_WA="9647768987668";
+function posLocked(title,msg,own){
+  gateCard({sub:esc(title),body:`<div class="banner warn">${esc(msg)}</div>${own?`<button class="btn primary block" type="button" id="wWa">تواصل ويانا على واتساب</button>`:""}<button class="btn block" type="button" id="wOut">تسجيل الخروج</button>`,
+    mount:g=>{g.querySelector("#wOut").onclick=()=>signOut();const w=g.querySelector("#wWa");if(w)w.onclick=()=>openExternal("https://wa.me/"+SUPPORT_WA+"?text="+encodeURIComponent("أريد أشغّل الكاشير لمحل "+((S.shop&&S.shop.name)||"")))}});
+}
+// Opens a shop's cashier while the shop is active and its cashier is on (shops/{id}.pos, set by the app's owner); closes it
+// the moment either ends. The shop's owner is the account whose uid is the shop id; its workers have a profile in the shop.
+function enterShop(u,uname){
+  const own=SHOP===u.uid;let profOff=null;
+  const close=()=>{stopData();S.me=null};
+  const shopOff=db.doc("shops/"+SHOP).onSnapshot({includeMetadataChanges:true},s=>{
+    if(!s.exists){if(s.metadata.fromCache)return;close();showWaiting(own?"طلب محلك انرفض أو انحذف. تواصل ويا صاحب البرنامج.":"هذا المحل انحذف. راجع صاحب المحل.","bad");return}
+    const x=S.shop={...s.data(),id:s.id};
+    clearTimeout(enterShop.endT);
+    if(x.status==="pending"){close();showWaiting(own?"محلك بعده بانتظار التفعيل من صاحب البرنامج.":"المحل بعده ما متفعّل. راجع صاحب المحل.","warn");return}
+    const ended=x.status==="active"&&x.until&&x.until<=Date.now();
+    if(x.status!=="active"||ended){close();posLocked(ended?(x.trial?"انتهت الفترة التجريبية":"انتهى الاشتراك"):"المحل موقوف",own?"اشتراك محلك منتهي أو موقوف، وبياناتك كلها محفوظة.":"المحل موقوف. راجع صاحب المحل.",own);return}
+    if(x.pos!==true){close();posLocked("الكاشير مو مفعّل",own?"الكاشير مو ضمن اشتراك محلك. دفتر الديون يشتغل عادي، ولتشغيل الكاشير تواصل ويانا.":"الكاشير مو مفعّل لهذا المحل. راجع صاحب المحل.",own);return}
+    // Close the cashier the moment the subscription ends while it is open (setTimeout can't wait more than ~24 days).
+    if(x.until){const ms=x.until-Date.now();if(ms<20*864e5)enterShop.endT=setTimeout(()=>{if(S.shop&&S.shop.id===x.id&&S.shop.until===x.until){close();posLocked("انتهى الاشتراك",own?"اشتراك محلك منتهي، وبياناتك كلها محفوظة.":"المحل موقوف. راجع صاحب المحل.",own)}},ms+1000)}
+    if(own){
+      const first=!S.me;S.isOwner=true;
+      S.me={id:u.uid,name:S.settings.ownerName||x.ownerName||"المدير",role:"owner",username:x.username||uname};
+      rememberLogin(S.me.username,u.email);
+      if(!S.homeSeen){S.homeSeen=true;S.view="home"}
+      startData();if(first||$("#app").hidden)showApp();else render();
+      return;
+    }
+    S.isOwner=false;
+    if(!profOff)profOff=watchProfile(u,uname);
+  },e=>{console.warn(e);
+    if(S.me&&!$("#app").hidden){toast(readErrMsg(e),7000);return}
+    if(e&&e.code==="permission-denied"&&!own){showWaiting("حسابك مو مضاف لهذا المحل. راجع صاحب المحل.","bad");return}
+    showWaiting(readErrMsg(e),"bad",true)});
+  return ()=>{clearTimeout(enterShop.endT);shopOff();if(profOff)profOff()};
+}
+// A worker's account: opens while the owner keeps it active (users/{uid} in this shop, or at the root).
+function watchProfile(u,uname){
+  return db.collection(P("users")).doc(u.uid).onSnapshot({includeMetadataChanges:true},s=>{
+    if(!s.exists){if(s.metadata.fromCache)return;showWaiting("هذا الحساب ما مسجل. سجّل من دفتر الديون أول.","bad");return}
+    const p=s.data();
+    if(p.status==="pending"){stopData();S.me=null;showWaiting("حسابك بانتظار موافقة المدير.","warn");return}
+    if(p.status==="disabled"){stopData();S.me=null;showWaiting("تم إيقاف هذا الحساب. راجع المدير.","bad");return}
+    const first=!S.me;
+    S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:p.username||uname,items:p.role==="editor"&&p.items===true};
+    rememberLogin(S.me.username,u.email);
+    startData();if(first||$("#app").hidden)showApp();else render();
+  },e=>{console.warn(e);
+    // Already open from the device's copy: keep selling and say why it isn't updating, rather than locking people out.
+    if(S.me&&!$("#app").hidden){toast(readErrMsg(e),7000);return}
+    showWaiting(readErrMsg(e),"bad",true)});
+}
+
 /* ---------- boot ---------- */
 (async()=>{
   loadCart();loadCount();loadRecv();loadHw();loadPl();
@@ -5066,26 +5147,19 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
   auth.onAuthStateChanged(async u=>{
     if(profUnsub){profUnsub();profUnsub=null}
     const seq=++authSeq;
-    if(!u){stopData();S.me=null;S.isOwner=false;showLogin();return}
+    if(!u){stopData();S.me=null;S.isOwner=false;S.shop=null;setShop(null);showLogin();return}
     const fake=isFakeEmail(u.email),uname=fake?u.email.split("@")[0]:"";
     gateCard({sub:"جارِ التحقق من الحساب…",body:`<div class="spinner" aria-hidden="true"></div>`});
+    // A shop's account opens that shop's cashier (if the shop has it); the others open this shop's, as before.
+    const sh=MULTI?await shopOf(u):null;
+    if(seq!==authSeq)return;
+    setShop(sh);
+    if(SHOP){profUnsub=enterShop(u,uname);return}
     const own=fake&&uname!==OWNER_USER?false:await ownerCheck(u);
     if(seq!==authSeq)return;
     S.isOwner=own;
     if(S.isOwner){rememberLogin(OWNER_USER,u.email);S.me={id:u.uid,name:S.settings.ownerName||"المدير",role:"owner",username:OWNER_USER};if(!S.homeSeen){S.homeSeen=true;S.view="home"}startData();showApp();return}
-    profUnsub=db.collection("users").doc(u.uid).onSnapshot({includeMetadataChanges:true},s=>{
-      if(!s.exists){if(s.metadata.fromCache)return;showWaiting("هذا الحساب ما مسجل. سجّل من دفتر الديون أول.","bad");return}
-      const p=s.data();
-      if(p.status==="pending"){stopData();S.me=null;showWaiting("حسابك بانتظار موافقة المدير.","warn");return}
-      if(p.status==="disabled"){stopData();S.me=null;showWaiting("تم إيقاف هذا الحساب. راجع المدير.","bad");return}
-      const first=!S.me;
-      S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:p.username||uname,items:p.role==="editor"&&p.items===true};
-      rememberLogin(S.me.username,u.email);
-      startData();if(first||$("#app").hidden)showApp();else render();
-    },e=>{console.warn(e);
-      // Already open from the device's copy: keep selling and say why it isn't updating, rather than locking people out.
-      if(S.me&&!$("#app").hidden){toast(readErrMsg(e),7000);return}
-      showWaiting(readErrMsg(e),"bad",true)});
+    profUnsub=watchProfile(u,uname);
   });
 // The site moved from GitHub Pages to shahm-debts.app (the old address stops once the code repository goes private).
 // Whoever still opens the old address, or an app installed before the move, is told where to go.
