@@ -629,10 +629,16 @@ const LOGINS_KEY="shahm-logins",OWNER_KEY="shahm-owner-uid";
 const loginMap=()=>{try{return JSON.parse(localStorage.getItem(LOGINS_KEY)||"{}")||{}}catch(e){return {}}};
 const rememberLogin=(user,email)=>{try{const m=loginMap();if(email&&!isFakeEmail(email))m[user]=email;else delete m[user];localStorage.setItem(LOGINS_KEY,JSON.stringify(m))}catch(e){}};
 const badLogin=e=>/invalid-credential|user-not-found|wrong-password|invalid-login|invalid-email/.test((e&&e.code)||"");
+// A shop that signed up with its phone number logs in with it, typed any way (same as phoneId in ../index.html).
+const phoneId=v=>{let d=String(v).replace(/[٠-٩]/g,c=>"٠١٢٣٤٥٦٧٨٩".indexOf(c)).replace(/\D/g,"");if(d.startsWith("00"))d=d.slice(2);if(/^964\d{10}$/.test(d))d="0"+d.slice(3);if(/^7\d{9}$/.test(d))d="0"+d;return d};
 async function signInAny(id,pw){
   if(id.includes("@"))return auth.signInWithEmailAndPassword(id,pw);
+  if(/^[+\d\s()\-٠-٩]+$/.test(id.trim())&&id.replace(/[^\d٠-٩]/g,"").length>=10)id=phoneId(id);
   const mapped=loginMap()[id];
   if(mapped){try{return await auth.signInWithEmailAndPassword(mapped,pw)}catch(e){if(!badLogin(e))throw e}}
+  // A number moved to an account in the debt book (Settings > حسابي): logins/{number} points at that account's login.
+  let moved="";if(/^\d{10,15}$/.test(id))try{const s=await db.doc("logins/"+id).get();moved=s.exists&&s.data().email||""}catch(e){}
+  if(moved&&moved!==emailOf(id)){try{return await auth.signInWithEmailAndPassword(moved,pw)}catch(e){if(!badLogin(e))throw e}}
   return auth.signInWithEmailAndPassword(emailOf(id),pw);
 }
 async function ownerCheck(u){
@@ -803,7 +809,7 @@ function showLogin(msg){
   gateCard({sub:"نفس حسابك بدفتر الديون",body:`
     ${msg?`<div class="banner bad">${esc(msg)}</div>`:""}
     <form id="lf" class="field" style="gap:12px" novalidate>
-      <div class="field"><label for="lUser">اسم المستخدم أو الإيميل</label><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div>
+      <div class="field"><label for="lUser">رقم الهاتف أو اسم المستخدم أو الإيميل</label><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div>
       <div class="field"><label for="lPw">كلمة المرور</label><div class="pw"><input id="lPw" type="password" autocomplete="current-password"><button type="button" data-showpw="lPw">إظهار</button></div></div>
       <p class="err" id="lErr"></p>
       <button class="btn primary block" type="submit" id="lGo">دخول</button>
@@ -813,8 +819,8 @@ function showLogin(msg){
   mount:g=>{
     g.querySelectorAll("[data-showpw]").forEach(b=>b.addEventListener("click",()=>{const i=document.getElementById(b.dataset.showpw);const s=i.type==="password";i.type=s?"text":"password";b.textContent=s?"إخفاء":"إظهار"}));
     g.querySelector("#lf").addEventListener("submit",async e=>{
-      e.preventDefault();const u=normDigits($("#lUser").value).trim().toLowerCase(),p=$("#lPw").value;const err=$("#lErr"),btn=$("#lGo");
-      if(!u||!p){err.textContent="اكتب اسم المستخدم وكلمة المرور.";return}
+      e.preventDefault();const raw=normDigits($("#lUser").value).trim().toLowerCase(),u=/^[+\d\s()-]+$/.test(raw)&&raw.replace(/\D/g,"").length>=10?phoneId(raw):raw,p=$("#lPw").value;const err=$("#lErr"),btn=$("#lGo");
+      if(!u||!p){err.textContent="اكتب رقم الهاتف أو اسم المستخدم وكلمة المرور.";return}
       if(!/^[a-z0-9_.]{3,30}$/.test(u)&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u)){err.textContent="اسم المستخدم أو كلمة المرور غير صحيحة.";return}
       btn.disabled=true;btn.textContent="جارِ الدخول…";
       try{await signInAny(u,p)}catch(x){err.textContent=authMsg(x)+(badLogin(x)&&!u.includes("@")?" إذا ربطت إيميلك، ادخل بالإيميل.":"");btn.disabled=false;btn.textContent="دخول"}
