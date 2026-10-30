@@ -673,8 +673,13 @@ async function signInAny(id,pw){
   if(looksPhone(id))id=phoneId(id);
   const mapped=loginMap()[id];
   if(mapped){try{return await auth.signInWithEmailAndPassword(mapped,pw)}catch(e){if(!badLogin(e))throw e}}
+  const moved=/^\d{10,15}$/.test(id)?await aliasOf(id):"";
+  if(moved&&moved!==emailOf(id)){try{return await auth.signInWithEmailAndPassword(moved,pw)}catch(e){if(!badLogin(e))throw e}}
   return auth.signInWithEmailAndPassword(emailOf(id),pw);
 }
+/* A phone number someone moved their account to (Settings > حسابي > رقم الهاتف): logins/{number} points it at the account's
+   own login (its first number@domain), which never changes, so the new number signs in to the same account. */
+async function aliasOf(id){try{const s=await db.doc("logins/"+id).get();return s.exists&&s.data().email||""}catch(e){return ""}}
 // The owner is the uid in settings/owner; until that exists, the original admin@ login (firestore.rules does the same).
 async function ownerCheck(u){
   const orig=isFakeEmail(u.email)&&u.email.split("@")[0]===OWNER_USER;
@@ -1198,7 +1203,9 @@ function showRegister(){
       if(mail&&(!MAIL_RE.test(mail)||isFakeEmail(mail))){err.textContent="الإيميل مو صحيح. صحّحه أو امسحه (هو اختياري).";return}
       const shop=MULTI?{shop:$("#rShop").value.trim(),phone}:null;
       if(shop&&!shop.shop){err.textContent="اكتب اسم المحل.";return}
-      const label=btn.textContent;btn.disabled=true;btn.textContent="جارِ الإنشاء…";REG={name:r.name,username:r.username,shop,phone,mail};
+      const label=btn.textContent;btn.disabled=true;btn.textContent="جارِ الإنشاء…";
+      if(await aliasOf(phone)){err.textContent="هذا الرقم مسجّل من قبل. ادخل بيه من «تسجيل الدخول».";btn.disabled=false;btn.textContent=label;return}
+      REG={name:r.name,username:r.username,shop,phone,mail};
       // The phone number is the login's unique name (phone@domain), so one number makes one account. A real e-mail, when
       // given, becomes the login once the person opens the link Firebase mails them, and from then on «نسيت كلمة المرور؟» works.
       try{const cr=await auth.createUserWithEmailAndPassword(emailOf(r.username),r.pw);
@@ -2585,6 +2592,7 @@ function setPage(k){
       <button class="btn ghost" type="button" data-act="pastebackup">لصق نص النسخة</button></div></div>`;}
   if(k==="account")return `<h2>حسابي</h2>
     <div class="user-row"><span class="avatar">${initial(S.me.name)}</span><div class="meta"><b>${esc(S.me.name)}</b><span class="num">@${esc(S.me.username||"")}</span></div><span class="role">${ROLE_LABEL[S.me.role]}</span></div>
+    ${phoneCard()}
     ${emailCard()}
     <div class="tpl"><h3>${I.edit}تغيير كلمة المرور</h3>
       <form id="pwForm" class="field" style="gap:10px" novalidate>
@@ -3183,6 +3191,41 @@ function emailCard(){
       <p class="err" id="mErr"></p>
       <div><button class="btn primary" type="submit">دز رابط التأكيد</button></div>
     </form><span class="ro-note">يوصلك رابط على الإيميل. بعد ما تفتحه يصير دخولك بالإيميل، واسم المستخدم يبقى يشتغل على هذا الجهاز.</span></div>`;
+}
+/* Settings > حسابي > رقم الهاتف: when the number is lost or changes, the new one becomes the login (the password and every
+   debt stay as they are). The main notebook's owner signs in with admin or the e-mail, so it isn't shown there. */
+function phoneCard(){
+  if(S.isOwner&&!SHOP)return "";
+  const cur=S.me.username||"";
+  return `<div class="tpl"><h3>${I.call}رقم الهاتف</h3>
+    <span class="ro-note">${/^\d{10,15}$/.test(cur)?`رقمك الحالي: <b class="num">${esc(cur)}</b>. `:""}إذا ضاع رقمك أو تبدّل، اكتب الرقم الجديد هنا وتدخل بيه بنفس كلمة المرور. ديونك وكل بياناتك تبقى مثل ما هي.</span>
+    <form id="phoneForm" class="field" style="gap:10px" novalidate>
+      <div class="field"><label for="phNew">الرقم الجديد</label><input id="phNew" inputmode="tel" autocomplete="tel" maxlength="20" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx"></div>
+      <div class="field"><label for="phPw">كلمة المرور الحالية</label><div class="pw"><input id="phPw" type="password" autocomplete="current-password"><button type="button" data-showpw="phPw">إظهار</button></div></div>
+      <p class="err" id="phErr"></p>
+      <div><button class="btn primary" type="submit" id="phGo">حفظ الرقم الجديد</button></div>
+    </form></div>`;
+}
+async function changePhone(){
+  const err=$("#phErr"),btn=$("#phGo"),ph=phoneId($("#phNew").value),pw=$("#phPw").value,u=auth.currentUser,old=S.me.username||"";
+  if(!/^\d{10,15}$/.test(ph)){err.textContent="اكتب رقم هاتف صحيح، مثل 07701234567.";return}
+  if(ph===old){err.textContent="هذا رقمك الحالي.";return}
+  if(!pw){err.textContent="اكتب كلمة المرور الحالية.";return}
+  btn.disabled=true;
+  try{
+    await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,pw));
+    const taken=await db.doc("logins/"+ph).get({source:"server"});
+    if(taken.exists&&taken.data().uid!==u.uid){err.textContent="هذا الرقم مسجّل بحساب ثاني.";btn.disabled=false;return}
+    // A login on a real e-mail keeps signing in with it; only a number login needs the pointer.
+    const base=isFakeEmail(u.email)?u.email:"";
+    if(base&&base!==emailOf(ph))await db.doc("logins/"+ph).set({email:base,uid:u.uid,at:Date.now()});
+    if(SHOP&&S.isOwner)await db.doc("shops/"+SHOP).update({phone:ph,username:ph});
+    else await db.doc(P("users")+"/"+u.uid).update({username:ph,phone:ph});
+    if(/^\d{10,15}$/.test(old)){const o=await db.doc("logins/"+old).get({source:"server"}).catch(()=>null);if(o&&o.exists&&o.data().uid===u.uid)await db.doc("logins/"+old).delete()}
+    rememberLogin(ph,u.email);S.me.username=ph;
+    if(canWrite())log("edit","account",{detail:`غيّر رقم هاتفه إلى ${ph}`});
+    render();toast(`تغيّر رقمك. من هسه ادخل بـ ${ph} وبنفس كلمة المرور.`,{ms:9000});
+  }catch(x){btn.disabled=false;err.textContent=x&&x.code==="permission-denied"?"تغيير الرقم بعده ما مفعّل: صاحب البرنامج لازم ينشر قواعد Firebase الجديدة.":authMsg(x)}
 }
 async function linkEmail(){
   const m=$("#mNew").value.trim().toLowerCase(),pw=$("#mPw").value,err=$("#mErr");
@@ -4129,6 +4172,7 @@ document.addEventListener("submit",e=>{
   if(e.target.id==="pwForm"){e.preventDefault();changePassword();return}
   if(e.target.id==="delForm"){e.preventDefault();deleteMyAccount();return}
   if(e.target.id==="mailForm"){e.preventDefault();linkEmail();return}
+  if(e.target.id==="phoneForm"){e.preventDefault();changePhone();return}
   if(e.target.id==="bizForm"){e.preventDefault();if(!isAdmin())return;const b=bizData();S.bizDraft=null;
     saveSettings({shopName:b.name.trim()||shopName(),phone:b.phone.trim(),address:b.address.trim(),card:{desc:b.desc.trim(),manager:b.manager.trim(),social:b.social.trim(),style:b.style}}).then(ok=>{if(ok)toast("انحفظت البطاقة")});return}
   if(e.target.id==="lockCodeForm"){e.preventDefault();if(!isAdmin())return;const v=normDigits($("#lcCode").value).trim();

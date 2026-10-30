@@ -636,6 +636,9 @@ async function signInAny(id,pw){
   if(/^[+\d\s()\-٠-٩]+$/.test(id.trim())&&id.replace(/[^\d٠-٩]/g,"").length>=10)id=phoneId(id);
   const mapped=loginMap()[id];
   if(mapped){try{return await auth.signInWithEmailAndPassword(mapped,pw)}catch(e){if(!badLogin(e))throw e}}
+  // A number moved to an account in the debt book (Settings > حسابي): logins/{number} points at that account's login.
+  let moved="";if(/^\d{10,15}$/.test(id))try{const s=await db.doc("logins/"+id).get();moved=s.exists&&s.data().email||""}catch(e){}
+  if(moved&&moved!==emailOf(id)){try{return await auth.signInWithEmailAndPassword(moved,pw)}catch(e){if(!badLogin(e))throw e}}
   return auth.signInWithEmailAndPassword(emailOf(id),pw);
 }
 async function ownerCheck(u){

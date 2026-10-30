@@ -141,7 +141,25 @@ service cloud.firestore {
       allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
       // Signing up here: not an account that belongs to another shop.
       allow create: if isOwner() || (signedIn() && request.auth.uid == uid && !exists(memberPath(uid)) && signUpOk(uid));
-      allow update, delete: if isOwner();
+      allow update: if isOwner() || selfPhone(uid);
+      allow delete: if isOwner();
+    }
+    // Settings > حسابي > رقم الهاتف: the person moves their own login name to a new number, nothing else.
+    function selfPhone(uid) {
+      return signedIn() && request.auth.uid == uid && d().diff(resource.data).affectedKeys().hasOnly(['username', 'phone'])
+        && d().username is string && d().username.matches('^[0-9]{10,15}$') && d().get('phone', '') == d().username;
+    }
+    // A number moved to an account (logins/{number} → that account's own login e-mail): anyone may look one up to sign in;
+    // only the account itself writes or removes its own, and a number another account holds can't be taken.
+    match /logins/{p} {
+      allow get: if true;
+      allow create: if loginOk(p);
+      allow update: if resource.data.uid == request.auth.uid && loginOk(p);
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+    function loginOk(p) {
+      return signedIn() && p.matches('^[0-9]{10,15}$') && d().keys().hasOnly(['email', 'uid', 'at'])
+        && d().uid == request.auth.uid && d().email == request.auth.token.email && d().at is number;
     }
     // Signing up: a pending viewer with only the fields the sign-up form writes.
     function signUpOk(uid) {
@@ -207,8 +225,8 @@ service cloud.firestore {
         && d().id == s && d().owner == s && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30)
         && str(d().username, 40) && d().createdAt is number
         && ((d().status == 'pending' && !('trial' in d()) && !('until' in d())) || (d().status == 'active' && d().trial == true && trialOk(d().until)));
-      allow update: if isOwner() || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['name', 'ownerName', 'phone'])
-        && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30));
+      allow update: if isOwner() || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['name', 'ownerName', 'phone', 'username'])
+        && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30) && str(d().username, 40));
       allow delete: if isOwner();
 
       match /customers/{id} {
@@ -294,7 +312,8 @@ service cloud.firestore {
       match /users/{uid} {
         allow read: if sBoss(s) || (signedIn() && request.auth.uid == uid);
         allow create: if sBoss(s) || (signedIn() && request.auth.uid == uid && signUpOk(uid));
-        allow update, delete: if sBoss(s);
+        allow update: if sBoss(s) || selfPhone(uid);
+        allow delete: if sBoss(s);
       }
     }
   }
