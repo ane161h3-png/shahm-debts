@@ -6,6 +6,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { handlePush, vapidPublic } from "./push.js";
 import { handleBackup } from "./backup.js";
+import { handleDb } from "./db.js";
 
 const MAX_IMAGES = 4;
 const MAX_IMAGE_CHARS = 7_000_000; // ~5 MB of base64 per photo
@@ -414,6 +415,10 @@ export default {
     if (new URL(request.url).pathname === "/backup") {
       try { return await handleBackup(request, env, json, cors); }
       catch (e) { console.error(e); return json({ error: "تعذّر الاتصال بالنسخ على السحابة." }, 502, cors); }
+    }
+    if (new URL(request.url).pathname.startsWith("/db/")) {
+      try { return await handleDb(request, env, json, cors); }
+      catch (e) { console.error(e); return json({ error: "تعذّر الاتصال بقاعدة البيانات الجديدة." }, 502, cors); }
     }
     if (new URL(request.url).pathname === "/wa") {
       if (request.method === "GET") return json({ configured: !!(env.WA_TOKEN && env.WA_PHONE_ID) }, 200, cors);

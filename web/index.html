@@ -1078,11 +1078,11 @@ function local(coll){return coll==="customers"?S.customers:coll==="txns"?S.txns:
 function writeFail(e){console.warn(e);toast(e&&e.code==="permission-denied"?"ما عندك صلاحية لهذا التعديل.":"تعذّر الحفظ. تحقق من الإنترنت وحاول مرة أخرى.")}
 const WRITES=new Map(); // id -> promise of the write reaching the server (sendAutoWa waits for it)
 async function put(coll,obj){
-  local(coll).set(obj.id,obj);const sync=coll==="customers"||coll==="txns";if(sync)UT.set(obj.id,Infinity);render();
+  local(coll).set(obj.id,obj);const sync=coll==="customers"||coll==="txns";if(sync)UT.set(obj.id,Infinity);render();d1Queue(coll,obj.id,obj);
   try{const w=db.collection(P(DBN(coll))).doc(obj.id).set(sync?stamped(obj):obj);WRITES.set(obj.id,w);const done=()=>{if(WRITES.get(obj.id)===w)WRITES.delete(obj.id)};w.then(done,e=>{done();writeFail(e)});return true}catch(e){writeFail(e);return false}
 }
 async function del(coll,id){
-  local(coll).delete(id);UT.delete(id);render();
+  local(coll).delete(id);UT.delete(id);render();d1Queue(coll,id,null);
   try{db.collection(P(DBN(coll))).doc(id).delete().catch(writeFail);goneNote(coll,id)}catch(e){writeFail(e)}
 }
 async function log(kind,what,info){
@@ -1264,7 +1264,7 @@ try{flash=JSON.parse(sessionStorage.getItem(FLASH_KEY)||"null");sessionStorage.r
 
 /* ---------- live data ---------- */
 function stopData(){
-  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;clearTimeout(syncT);UT.clear();caught=new Set();clearTimeout(cloudT);cloudT=null;
+  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;clearTimeout(syncT);UT.clear();caught=new Set();clearTimeout(cloudT);cloudT=null;clearTimeout(d1T);d1T=null;d1Out=new Map();d1Loaded="";
   S.customers=new Map();S.txns=new Map();S.accounts=new Map();S.shops=new Map();S.activity=[];S.settings={};S.ready={c:false,t:false,a:false,s:false};S.selected=null;
 }
 /* Reads: the free plan allows 50,000 a day, and reading every account and transaction each time the app opened used them
@@ -1286,7 +1286,7 @@ let syncT=null;
 const bkTenant=()=>SHOP||"main",bkUrl=()=>window.AI_URL.replace(/\/$/,"")+"/backup";
 let caught=new Set(),cloudT=null;
 function caughtUp(...ks){for(const k of ks)caught.add(k);
-  if(caught.has("customers")&&caught.has("txns")&&caught.has("gone")&&!cloudT&&window.AI_URL)cloudT=setTimeout(()=>{cloudT=null;cloudBackup()},20000)}
+  if(caught.has("customers")&&caught.has("txns")&&caught.has("gone")&&!cloudT&&window.AI_URL)cloudT=setTimeout(()=>{cloudT=null;cloudBackup();d1Check()},20000)}
 // What this device's last attempt did, shown on the settings card: {at, ok, msg}.
 const BK_LAST="shahm-cloudbk-last",bkLast=v=>{try{if(v)localStorage.setItem(BK_LAST,JSON.stringify(v));else return JSON.parse(localStorage.getItem(BK_LAST)||"null")}catch(e){return null}};
 async function cloudBackup(){
@@ -1319,6 +1319,63 @@ async function cloudGet(key){
     if(!r.ok){const j=await r.json().catch(()=>({}));toast(j.error||"تعذّر تنزيل النسخة.");return}
     restorePreview(await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).text());
   }catch(e){toast("تعذّر الاتصال. تأكد من الإنترنت.")}
+}
+/* New database (Cloudflare D1, step one of moving off Firestore's daily limit): every account/transaction write also goes
+   to the worker (/db/push), kept in an outbox on this device until it arrives. Once a day, after this device has caught up
+   with Firestore, a writer's device reads the D1 copy and sends whatever differs from its own (the first time, that is the
+   whole book), so D1 keeps the same book. Firestore stays the real copy: nothing shown is read from D1 yet. */
+const d1Url=()=>window.AI_URL.replace(/\/$/,"")+"/db/",d1Key=()=>"d1out:"+bkTenant();
+let d1Out=new Map(),d1T=null,d1Off=false,d1Loaded="";
+const D1_LAST="shahm-d1-last",d1Last=v=>{try{if(v)localStorage.setItem(D1_LAST,JSON.stringify(v));else return JSON.parse(localStorage.getItem(D1_LAST)||"null")}catch(e){return null}};
+const plainRec=o=>{const x=JSON.parse(JSON.stringify(o));delete x._u;return x};
+function d1Queue(coll,id,data){
+  if((coll!=="customers"&&coll!=="txns")||!window.AI_URL||d1Off)return;
+  d1Out.set(coll+"|"+id,[coll,id,data?plainRec(data):null]);d1Save();d1Kick(1500)}
+function d1Save(){const k=d1Key(),ops=[...d1Out.values()];kv.set(k,ops).catch(()=>{})}
+async function d1Load(){const k=d1Key();if(d1Loaded===k)return;d1Loaded=k;
+  try{const ops=await kv.get(k);if(Array.isArray(ops))for(const o of ops){const key=o[0]+"|"+o[1];if(!d1Out.has(key))d1Out.set(key,o)}}catch(e){}
+  if(d1Out.size)d1Kick(3000)}
+function d1Kick(ms){if(d1T)return;d1T=setTimeout(d1Flush,ms)}
+async function d1Send(ops){
+  const r=await fetch(d1Url()+"push?tenant="+encodeURIComponent(bkTenant()),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body:JSON.stringify({ops})});
+  const j=await r.json().catch(()=>({}));if(j.off)d1Off=true;return {ok:r.ok,status:r.status,j}}
+async function d1Flush(){
+  d1T=null;if(d1Off||!d1Out.size||!auth.currentUser||!canWrite())return;
+  if(!navigator.onLine){d1Kick(60e3);return}
+  const ops=[...d1Out.values()].slice(0,400);
+  const done=()=>{for(const o of ops){const k=o[0]+"|"+o[1];if(d1Out.get(k)===o)d1Out.delete(k)}d1Save()};
+  try{const r=await d1Send(ops);
+    if(r.ok){done();if(d1Out.size)d1Kick(300)}
+    // Turned off on the server, or a save it will never take: drop it (the daily check sends the book again anyway).
+    else if(d1Off||r.status===400||r.status===403||r.status===413){if(d1Off)d1Out.clear();done();d1Last({...(d1Last()||{}),err:r.j.error||"خطأ "+r.status,errAt:Date.now()})}
+    else d1Kick(60e3);
+  }catch(e){d1Kick(60e3)}
+}
+addEventListener("online",()=>{if(d1Out.size)d1Kick(2000)});
+const stableJson=v=>JSON.stringify(v,(k,x)=>x&&typeof x==="object"&&!Array.isArray(x)?Object.keys(x).sort().reduce((o,k2)=>(o[k2]=x[k2],o),{}):x);
+async function d1Pull(){const all=new Map();let since=0;
+  for(;;){const r=await fetch(d1Url()+"pull?tenant="+encodeURIComponent(bkTenant())+"&since="+since,{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
+    const j=await r.json().catch(()=>({}));if(!r.ok){if(j.off)d1Off=true;throw new Error(j.error||"خطأ "+r.status)}
+    for(const [c,id,d,u] of j.rows)all.set(c+"|"+id,{d,u});since=j.u;if(!j.more)return all}}
+async function d1Check(force){
+  if(!window.AI_URL||d1Off||!canWrite()||!dataOn||!S.ready.c||!S.ready.t||!navigator.onLine||!auth.currentUser)return;
+  const flag="shahm-d1chk:"+bkTenant()+":"+shopDay();
+  if(!force){try{if(localStorage.getItem(flag))return}catch(e){}if(Date.now()-(d1Check.tried||0)<30*60e3)return}
+  d1Check.tried=Date.now();
+  try{
+    if(d1Out.size){await d1Flush();if(d1Out.size)return} // our own unsent saves go first
+    const remote=await d1Pull(),ops=[],recent=Date.now()-10*60e3;
+    for(const [k,m] of [["customers",S.customers],["txns",S.txns]])for(const [id,x] of m){
+      if(UT.get(id)===Infinity)continue; // still on its way; the outbox has it
+      const r=remote.get(k+"|"+id);if(!r||!r.d||stableJson(r.d)!==stableJson(plainRec(x)))ops.push([k,id,plainRec(x)])}
+    // In D1 but gone from Firestore: mark it deleted there too (kept, not erased), unless it was saved in the last minutes
+    // by another device and hasn't reached this one yet.
+    for(const [key,r] of remote){if(!r.d||r.u>recent)continue;const [k,id]=key.split("|");if(!(k==="customers"?S.customers:S.txns).has(id))ops.push([k,id,null])}
+    for(let i=0;i<ops.length;i+=400){const r=await d1Send(ops.slice(i,i+400));if(!r.ok)throw new Error(r.j.error||"خطأ "+r.status)}
+    d1Last({at:Date.now(),ok:true,c:S.customers.size,t:S.txns.size,fixed:ops.length});
+    try{localStorage.setItem(flag,"1")}catch(e){}
+  }catch(e){console.warn("d1 check",e);d1Last({...(d1Last()||{}),at:Date.now(),ok:false,msg:e.message||"تعذّر الاتصال"})}
+  if(S.view==="settings")render();
 }
 async function syncData(fail){
   const run=syncData.run=(syncData.run||0)+1,key=SHOP||"root",live=()=>run===syncData.run&&dataOn;
@@ -1485,7 +1542,7 @@ function pushOut(a){
 function startData(){
   if(dataOn)return;dataOn=true;pushState=null;
   const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied")toast("ما عندك صلاحية لقراءة البيانات. راجع المدير.");else if(e&&e.code==="resource-exhausted")toast(readErrMsg(e))};
-  syncData(fail);
+  syncData(fail);d1Load();
   // Activity: the whole business day live (the home log shows every one of today's entries), plus the last 100 before it, read once.
   const day0=shopDayRange(shopDay()).start;let actDay=[],actOld=[];const actSet=()=>{S.activity=[...actDay,...actOld];render()};
   let actFirst=true;
@@ -2447,6 +2504,10 @@ function setPage(k){
       <span class="ro-note">كل يوم أول ما ينفتح البرنامج على أي جهاز ويتزامن، تنحفظ نسخة كاملة على سحابة البرنامج بدون ما تسوي شي. تبقى نسخة كل يوم لمدة شهر، ونسخة أول كل شهر بلا نهاية. الاسترجاع يدمج المحذوف وما يمسح شي موجود.</span>
       ${(()=>{const l=bkLast();return l?`<span class="ro-note">آخر محاولة من هذا الجهاز: ${esc(timeAgo(l.at))} · ${l.ok?"✓ انحفظت":"ما انحفظت: "+esc(l.msg)}</span>`:""})()}
       <div id="cloudBk"><button class="btn" type="button" data-act="cloudlist">${I.back}عرض النسخ واسترجاعها</button></div></div>`:""}
+    ${window.AI_URL?`<div class="tpl"><h3>${I.save}قاعدة البيانات الجديدة (تجريبي)</h3>
+      <span class="ro-note">نسخة ثانية من الحسابات والحركات على Cloudflare، تنحفظ بيها كل حركة أول بأول، وكل يوم تتطابق مع البيانات الحالية. هذا تحضير للانتقال من Firebase، والبرنامج بعده يشتغل على Firebase مثل ما هو.</span>
+      ${(()=>{const l=d1Last();return l&&l.at?`<span class="ro-note">آخر مطابقة من هذا الجهاز: ${esc(timeAgo(l.at))} · ${l.ok?`✓ متطابقة (${fmt(l.c)} حساب · ${fmt(l.t)} حركة)${l.fixed?` · انرسل ${fmt(l.fixed)} سجل`:""}`:"ما تمت: "+esc(l.msg||"")}</span>`:""})()}
+      <div><button class="btn" type="button" data-act="d1check">فحص المطابقة هسه</button></div></div>`:""}
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
       <span class="ro-note">${lb?"آخر نسخة: "+esc(timeAgo(lb)):"لم تحفظ أي نسخة بعد"}</span>
       <p class="ro-note" style="margin:0">الملف يحتوي: <span class="num">${S.customers.size-sups}</span> زبون، <span class="num">${sups}</span> مورد، <span class="num">${S.txns.size}</span> حركة، مع معلومات المتجر وقوالب الرسائل وسجل النشاط.</p>
@@ -3258,7 +3319,7 @@ function restorePreview(text){
       try{
         for(let i=0;i<ops.length;i+=400){
           const b=db.batch();
-          for(const o of ops.slice(i,i+400)){const ref=db.collection(P(o[1])).doc(o[2]);if(o[0]==="del"){b.delete(ref);goneNote(o[1],o[2])}else b.set(ref,o[3])}
+          for(const o of ops.slice(i,i+400)){const ref=db.collection(P(o[1])).doc(o[2]);if(o[0]==="del"){b.delete(ref);goneNote(o[1],o[2])}else b.set(ref,o[3]);d1Queue(o[1],o[2],o[0]==="del"?null:o[3])}
           await b.commit();btn.textContent=`جارِ الاستعادة… ${Math.min(100,Math.round((i+400)/ops.length*100))}%`;
         }
       }catch(e){console.warn(e);btn.disabled=false;btn.textContent="استعادة";m.querySelector("#rErr2").textContent="انقطعت الاستعادة. تحقق من الإنترنت واضغط استعادة مرة ثانية، ما يتكرر شي.";return}
@@ -3870,6 +3931,7 @@ document.addEventListener("click",e=>{
     case "newcustq":{const nm=($("#hq")||{}).value||"";S.kind="customer";customerForm(null,id=>openCustomer(id));setTimeout(()=>{const i=$("#cName");if(i&&!i.value)i.value=nm.trim()},0);break}
     case "monthrep":if(can("totals"))monthReport();break;
     case "cloudlist":if(isAdmin())cloudList();break;
+    case "d1check":if(isAdmin()){toast("جاري فحص المطابقة…");d1Check(true)}break;
     case "voice":if(canWrite())voiceEntry();break;
     case "gowarn":S.rep.tab="warn";S.rep.wf="all";go("reports");break;
     case "reppdf":repExport("pdf");break;
