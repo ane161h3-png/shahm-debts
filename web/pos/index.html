@@ -1934,17 +1934,19 @@ function waAfterSale(sale){
   try{if(localStorage.getItem("shahm-wa-open")==="0")return}catch(e){}
   shareWhatsApp(sale);
 }
-// A debt sale's message follows the debt book's «دين جديد» message, with the items bought in place of «مشتريات».
+// A debt sale's message follows the debt book's «دين جديد» message, with the items bought (one per line) in place of «مشتريات».
 // The shop's own wording (settings/main.templates.debt, edited in the debt book) is used when it was changed.
 const DEBT_TPL_BOOK="مرحباً {الاسم}،\nتم تسجيل دين جديد بمبلغ {المبلغ} د.ع ({البيان}) بتاريخ {التاريخ}.\nالرصيد المتبقي عليك: {الرصيد} د.ع.\n{المتجر}";
-const DEBT_TPL_POS="مرحباً {الاسم}،\nتم تسجيل دين جديد بمبلغ *{المبلغ} د.ع*\n({البيان})\nبتاريخ {التاريخ}.\nالرصيد المتبقي عليك: *{الرصيد} د.ع*\n{المتجر}";
+const DEBT_TPL_POS="مرحباً {الاسم}،\nتم تسجيل دين جديد بمبلغ *{المبلغ} د.ع*\nبتاريخ {التاريخ}.\n\n{البيان}\n\nالرصيد المتبقي عليك: *{الرصيد} د.ع*\n{المتجر}";
 function debtText(sale){
   const c=sale.customerId&&S.customers.get(sale.customerId),own=S.settings.templates&&S.settings.templates.debt;
   const bal=sale.customerId?balanceOf(sale.customerId):null;
   let tpl=own&&own!==DEBT_TPL_BOOK?own:DEBT_TPL_POS;
   if(bal==null)tpl=tpl.split("\n").filter(l=>!l.includes("{الرصيد}")).join("\n");
-  const items=sale.items.map(i=>`${itemName(i)} ×${itemQty(i)} = ${fmt(i.total)}`).join("، ");
-  const what=`فاتورة #${sale.no}: ${items}${sale.discount?` · خصم ${fmt(sale.discount)}`:""}${sale.cash>0?` · دفعت كاش ${fmt(sale.cash)} من ${fmt(sale.total)}`:""}`;
+  // The items one under another, numbered ١- ٢- ٣-.
+  const ar=n=>String(n).replace(/\d/g,d=>"٠١٢٣٤٥٦٧٨٩"[d]);
+  const what=[`🧾 فاتورة #${sale.no}:`,...sale.items.map((i,k)=>`${ar(k+1)}- ${itemName(i)} ×${itemQty(i)} = ${fmt(i.total)}`),
+    ...(sale.discount?[`خصم: ${fmt(sale.discount)}`]:[]),...(sale.cash>0?[`دفعت كاش: ${fmt(sale.cash)} من ${fmt(sale.total)}`]:[])].join("\n");
   const map={"الاسم":(c&&c.name)||sale.customerName||"","المبلغ":fmt(sale.debt),"البيان":what,"التاريخ":`${sale.date} الساعة ${hm12(sale.at)}`,"الرصيد":fmt(bal),"المتجر":shopName()};
   return tpl.replace(/\{([^}]+)\}/g,(m,k)=>k in map?map[k]:m);
 }
