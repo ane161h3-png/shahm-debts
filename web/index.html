@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Where the page may load from and talk to: itself, Firebase (Google) and the photo-reading worker. Anything else, such as a
      script planted in a customer name sending the data elsewhere, is blocked by the browser. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://shahm-ai.hydrzyd83.workers.dev; frame-src https://*.firebaseapp.com https://*.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://shahm-ai.hydrzyd83.workers.dev wss://shahm-ai.hydrzyd83.workers.dev; frame-src https://*.firebaseapp.com https://*.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>دفتر ديون ماركت الشهم</title>
 <meta name="description" content="دفتر ديون ماركت الشهم: ديون الزبائن والموردين، كشوف حساب PDF، وتذكير واتساب.">
@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="دفتر ديوني">
+<meta name="apple-mobile-web-app-title" content="ديون الشهم">
 <link rel="stylesheet" href="vendor/fonts/fonts.css">
 <style>
 /* Layout: shop debt app. Gate (login) -> app with Home / Customers / Settings. Wide: top tabs, list + account side by side. Narrow: bottom nav, one pane. Colors and fonts follow BRAND.md: brand green chrome, red = owed, green = paid. */
@@ -66,6 +66,44 @@ h1,h2,h3{text-wrap:balance}
 .pw button{position:absolute;left:6px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--muted);cursor:pointer;padding:6px 8px;font-size:13px}
 .linkish{border:0;background:none;color:var(--accent);cursor:pointer;font-weight:600;padding:4px}
 .gate-foot{text-align:center;color:var(--muted);font-size:14px}
+/* Login: welcome strip, tabs (username / e-mail), fields with an icon, eye button. */
+.gate-login{width:100%;max-width:440px;display:flex;flex-direction:column;gap:18px}
+.gate-hero{display:flex;align-items:center;gap:14px;padding:18px;border-radius:22px;color:var(--brand-cream);background:linear-gradient(110deg,color-mix(in srgb,var(--brand-orange) 28%,var(--brand-deep)),var(--brand-deep) 70%);box-shadow:var(--shadow)}
+.gate-hero .logo{width:56px;height:56px;border-radius:16px;background:var(--brand-cream);color:var(--brand-deep)}
+.gate-hero b{display:block;font-family:var(--f-display);font-size:22px;font-weight:800}
+.gate-hero span{font-size:13px;opacity:.85}
+.gate-title{text-align:center}
+.gate-title h1{margin:0;font-family:var(--f-display);font-weight:800;font-size:26px}
+.gate-title p{margin:4px 0 0;color:var(--muted)}
+.gate-login .gate-card{gap:14px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:14px;background:var(--paper-2);border:1px solid var(--line)}
+.seg button{border:0;background:none;border-radius:10px;padding:10px;display:flex;align-items:center;justify-content:center;gap:8px;font-family:var(--f-display);font-weight:700;color:var(--muted);cursor:pointer}
+.seg button svg{width:18px;height:18px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.ifield{position:relative}
+.ifield>svg{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:20px;height:20px;color:var(--muted);pointer-events:none}
+.ifield input{padding-right:44px!important;min-height:52px;border-radius:14px!important}
+.pw .pw-eye{width:40px;height:40px;display:grid;place-items:center}.pw .pw-eye svg{width:20px;height:20px}
+.gate-row{display:flex;justify-content:flex-start}
+.btn.big{min-height:52px;border-radius:14px;font-size:17px}
+.btn.big svg{width:20px;height:20px}
+/* Locked shop (subscription ended or stopped): red top with a lock, the reason, and how to reach the seller. */
+.lockd{width:100%;max-width:460px;align-self:start;margin-top:-24px}
+.lockd-top{margin-inline:-16px;padding:16px 16px 70px;background:linear-gradient(160deg,var(--brand-tomato),color-mix(in srgb,var(--brand-tomato) 62%,black));color:var(--brand-cream);border-radius:0 0 36px 36px;text-align:center}
+.lockd-bar{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.lockd-bar h1{margin:0;font-family:var(--f-display);font-size:19px;font-weight:800}
+.lockd-bar button{border:0;background:none;color:inherit;width:40px;height:40px;display:grid;place-items:center;cursor:pointer;border-radius:12px}
+.lockd-bar button svg{width:24px;height:24px}
+.lockd-ic{width:96px;height:96px;margin:18px auto 0;border-radius:50%;background:color-mix(in srgb,var(--brand-cream) 18%,transparent);display:grid;place-items:center}
+.lockd-ic svg{width:48px;height:48px}
+.lockd .gate-card{margin-top:-52px;text-align:center}
+.lockd h2{margin:0;color:var(--debt);font-family:var(--f-display);font-weight:800;font-size:24px}
+.lockd .msg{margin:0;color:var(--ink)}
+.lockd .banner{text-align:start;display:flex;gap:10px;align-items:flex-start}
+.lockd .banner svg{width:20px;height:20px;flex:none;margin-top:2px}
+.lockd-help{margin:18px 0 8px;text-align:center;color:var(--muted);font-size:14px}
+.lockd-ways{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+.lockd-ways a{min-height:50px}
 .spinner{width:30px;height:30px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);margin:8px auto}
 @media (prefers-reduced-motion:no-preference){.spinner{animation:spin 0.9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}}
 
@@ -326,6 +364,7 @@ td.x{width:64px;white-space:nowrap}
 .user-row{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;flex-wrap:wrap}
 .user-row .meta{flex:1;min-width:140px}
 .user-row .meta b{display:block}
+.uperms{flex-basis:100%;display:flex;gap:6px 16px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed var(--line)}
 .user-row .meta span{font-size:12.5px;color:var(--muted)}
 .user-row .ops{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .user-row select{border:1px solid var(--line);background:var(--paper-2);border-radius:8px;padding:5px 8px;font-size:13px}
@@ -535,6 +574,40 @@ td.x{width:64px;white-space:nowrap}
   .settings:not(.open) .set-body-pane{display:none}
   .set-body{padding:14px}
 }
+.sec-sum{gap:0}.sec-row{display:flex;align-items:center;gap:10px;padding:8px 0}.sec-row+.sec-row{border-top:1px solid var(--line)}
+.sec-row .meta{flex:1;min-width:0;display:flex;flex-direction:column}.sec-row .meta b{overflow-wrap:anywhere}
+.sec-ic{width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}.sec-ic svg{width:18px;height:18px}
+.sub-now{display:flex;flex-direction:column;gap:6px}
+.sub-bar{height:8px;border-radius:99px;background:var(--paper-2);overflow:hidden}.sub-bar i{display:block;height:100%;background:currentColor;border-radius:99px}
+.plan{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.plan-p{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.plan-p span{background:var(--paper-2);border-radius:9px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;text-align:center;min-width:0}
+.plan-p small{font-size:12px;color:var(--muted)}.plan-p b{font-size:14px;overflow-wrap:anywhere}
+@media (max-width:420px){.plan-p{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.plan-notes{margin:6px 0 0;padding-inline-start:20px;display:flex;flex-direction:column;gap:6px;line-height:1.6}
+/* Small phones, and phones set to big text (Android scales every font up to 2x): nothing may be wider than the screen.
+   Grid tracks use minmax(0,1fr) so a long label wraps instead of pushing the column out, and buttons may wrap. */
+@media (max-width:760px){
+  .brand h1{font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brand small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sum-mini .k{white-space:normal;line-height:1.3}
+  .sum-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sum-actions .btn{white-space:normal;min-width:0;line-height:1.25;text-align:center}
+  .btn{min-width:0;max-width:100%}
+  .two,.mr-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .seg button,.chips button{min-width:0}
+  .rep-tabs button{flex-direction:column;gap:2px;padding-inline:4px;text-align:center;line-height:1.25}
+  .calc-keys{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .rep-over{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rep-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .toast{width:max-content}
+  .bottom-nav button:not(.plus){min-width:0;flex:1 1 0;padding-inline:2px}
+  .bottom-nav button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media (max-width:420px){
+  header.top{gap:8px}
+  .me{padding:3px}.me .role{display:none}
+}
 /* Laptop pointer: what the mouse is over grows a little, with a short ease. Off for touch screens and reduced motion. */
 @media (hover:hover) and (prefers-reduced-motion:no-preference){
   .btn,.icon-btn,.chips button,.seg button,.tabs button,.act.tap,.top-list li,.rem-row,.search .s-mic{transition:transform .16s ease,box-shadow .16s ease,background-color .16s ease}
@@ -578,7 +651,11 @@ const HIDE_KEY="shahm-hide";
 const HIDE_ITEMS=[["total","مجموع الدين على الزبائن"],["owing","عدد الزبائن اللي عليهم دين"],["cust","عدد الزبائن"],["paid","المحصّل هذا الشهر"],["added","المضاف هذا الشهر"],["top","مبالغ أعلى الديون"],["sup","ديون الموردين (علينا)"]];
 const hiddenNums=()=>{try{const v=JSON.parse(localStorage.getItem(HIDE_KEY)||"[]");return Array.isArray(v)?v:[]}catch(e){return []}};
 const setHidden=a=>{try{localStorage.setItem(HIDE_KEY,JSON.stringify(a))}catch(e){}};
-const shown=(k,html)=>!S.reveal&&hiddenNums().includes(k)?'<span class="masked" aria-label="مخفي">••••</span>':html;
+const shown=(k,html)=>(TOTAL_KEYS.includes(k)&&!can("totals"))||(!S.reveal&&hiddenNums().includes(k))?'<span class="masked" aria-label="مخفي">••••</span>':html;
+/* What the owner lets each worker do (users/{uid}.perms, set only by the owner). A missing key means allowed, so old accounts keep working as before. */
+const PERMS=[["totals","يشوف المجموع الكلي والتقارير"],["edit","يعدّل ويحذف الحركات والزبائن"]];
+const TOTAL_KEYS=["total","owing","paid","added","sup"];
+const can=k=>!S.me||S.me.role==="owner"||!(S.me.perms&&S.me.perms[k]===false);
 const ROLE_LABEL={owner:"المدير",editor:"محرر",viewer:"مشاهد"};
 const PDF_AUTO_KEY="shahm-pdf-auto";
 const DEFAULT_CATS=["مشكل","مواد غذائية","خضروات","فواكه","أجبان وألبان","لحوم ودجاج","معلبات","حلويات","مشروبات","منظفات","خبز ومعجنات","سكائر","كارت رصيد","غاز"];
@@ -621,12 +698,22 @@ const LOGINS_KEY="shahm-logins",OWNER_KEY="shahm-owner-uid";
 const loginMap=()=>{try{return JSON.parse(localStorage.getItem(LOGINS_KEY)||"{}")||{}}catch(e){return {}}};
 const rememberLogin=(user,email)=>{try{const m=loginMap();if(email&&!isFakeEmail(email))m[user]=email;else delete m[user];localStorage.setItem(LOGINS_KEY,JSON.stringify(m))}catch(e){}};
 const badLogin=e=>/invalid-credential|user-not-found|wrong-password|invalid-login|invalid-email/.test((e&&e.code)||"");
+/* Phone sign-up: a new shop's login is its phone number, written one way (07xxxxxxxxx for Iraqi mobiles) whatever form
+   it is typed in, so 07701234567, +964 770 123 4567 and 7701234567 all reach the same account. */
+const phoneId=v=>{let d=normDigits(v).replace(/\D/g,"");if(d.startsWith("00"))d=d.slice(2);if(/^964\d{10}$/.test(d))d="0"+d.slice(3);if(/^7\d{9}$/.test(d))d="0"+d;return d};
+const looksPhone=v=>/^[+\d\s()-]+$/.test(normDigits(v).trim())&&normDigits(v).replace(/\D/g,"").length>=10;
 async function signInAny(id,pw){
   if(id.includes("@"))return auth.signInWithEmailAndPassword(id,pw);
+  if(looksPhone(id))id=phoneId(id);
   const mapped=loginMap()[id];
   if(mapped){try{return await auth.signInWithEmailAndPassword(mapped,pw)}catch(e){if(!badLogin(e))throw e}}
+  const moved=/^\d{10,15}$/.test(id)?await aliasOf(id):"";
+  if(moved&&moved!==emailOf(id)){try{return await auth.signInWithEmailAndPassword(moved,pw)}catch(e){if(!badLogin(e))throw e}}
   return auth.signInWithEmailAndPassword(emailOf(id),pw);
 }
+/* A phone number someone moved their account to (Settings > حسابي > رقم الهاتف): logins/{number} points it at the account's
+   own login (its first number@domain), which never changes, so the new number signs in to the same account. */
+async function aliasOf(id){try{const s=await db.doc("logins/"+id).get();return s.exists&&s.data().email||""}catch(e){return ""}}
 // The owner is the uid in settings/owner; until that exists, the original admin@ login (firestore.rules does the same).
 async function ownerCheck(u){
   const orig=isFakeEmail(u.email)&&u.email.split("@")[0]===OWNER_USER;
@@ -689,6 +776,7 @@ const kindOf=c=>c&&c.kind==="supplier"?"supplier":"customer";
 const isSup=c=>kindOf(c)==="supplier";
 const canWrite=()=>S.me&&(S.me.role==="owner"||S.me.role==="editor");
 const isAdmin=()=>S.me&&S.me.role==="owner";
+const canEdit=()=>canWrite()&&can("edit");
 const waNumber=p=>{let d=normDigits(p).replace(/\D/g,"");if(!d)return "";if(d.startsWith("00"))d=d.slice(2);if(d.startsWith("0"))d="964"+d.slice(1);else if(d.length===10&&d.startsWith("7"))d="964"+d;return d};
 const waLink=(phone,text)=>{const n=waNumber(phone);return n?"https://wa.me/"+n+"?text="+encodeURIComponent(text):""};
 // WhatsApp Business: the shop's number (settings/main.waBiz) and, per phone, whether WhatsApp Business opened on it in the test.
@@ -806,6 +894,15 @@ const I={
   wa:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 1a4 4 0 0 1-2-2l1-1-1-2z"/></svg>',
   save:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>',
   eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
+  at:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>',
+  person:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+  mail:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+  enter:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l4-4-4-4M14 12H4"/></svg>',
+  lockClock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21H6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2h12"/><path d="M7 11V8a5 5 0 0 1 10 0v3"/><circle cx="17.5" cy="17.5" r="4.5"/><path d="M17.5 15.5v2l1.3 1"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
+  tg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 4L3 11l6 2 2 6 3-4 5 4z"/><path d="M9 13l8-6"/></svg>',
+  call:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>',
   eyeOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.6 3.4M6.6 6.6C3.6 8.5 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m3 3 18 18"/></svg>',
   moon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
   out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/></svg>',
@@ -982,7 +1079,7 @@ function promiseForm(c){
 /* Pick a phone number from the phone's contacts: the Android app uses the Contacts plugin, Chrome on Android the Contact Picker API. */
 /* App name for the "allow contacts" hint (the debt book also opens inside the cashier app, whose name differs). */
 let APP_NAME="";if(NATIVE)plugin("App").getInfo().then(i=>{APP_NAME=i&&i.name||""}).catch(()=>{});
-const contactsOff=()=>`جهات الاتصال مقفولة على هذا التطبيق. افتح إعدادات الموبايل ← التطبيقات ← «${APP_NAME||"دفتر ديوني"}» ← الأذونات ← جهات الاتصال ← سماح.`;
+const contactsOff=()=>`جهات الاتصال مقفولة على هذا التطبيق. افتح إعدادات الموبايل ← التطبيقات ← «${APP_NAME||"ديون الشهم"}» ← الأذونات ← جهات الاتصال ← سماح.`;
 const contactErr=e=>/permission/i.test(String(e&&e.message))?contactsOff():"تعذّر فتح جهات الاتصال.";
 const canPickContact=()=>NATIVE||("contacts" in navigator&&"select" in navigator.contacts);
 async function pickContact(){
@@ -1025,11 +1122,11 @@ function local(coll){return coll==="customers"?S.customers:coll==="txns"?S.txns:
 function writeFail(e){console.warn(e);toast(e&&e.code==="permission-denied"?"ما عندك صلاحية لهذا التعديل.":"تعذّر الحفظ. تحقق من الإنترنت وحاول مرة أخرى.")}
 const WRITES=new Map(); // id -> promise of the write reaching the server (sendAutoWa waits for it)
 async function put(coll,obj){
-  local(coll).set(obj.id,obj);const sync=coll==="customers"||coll==="txns";if(sync)UT.set(obj.id,Infinity);render();
+  local(coll).set(obj.id,obj);const sync=coll==="customers"||coll==="txns";if(sync)UT.set(obj.id,Infinity);render();d1Queue(coll,obj.id,obj);
   try{const w=db.collection(P(DBN(coll))).doc(obj.id).set(sync?stamped(obj):obj);WRITES.set(obj.id,w);const done=()=>{if(WRITES.get(obj.id)===w)WRITES.delete(obj.id)};w.then(done,e=>{done();writeFail(e)});return true}catch(e){writeFail(e);return false}
 }
 async function del(coll,id){
-  local(coll).delete(id);UT.delete(id);render();
+  local(coll).delete(id);UT.delete(id);render();d1Queue(coll,id,null);
   try{db.collection(P(DBN(coll))).doc(id).delete().catch(writeFail);goneNote(coll,id)}catch(e){writeFail(e)}
 }
 async function log(kind,what,info){
@@ -1060,27 +1157,37 @@ function authMsg(e){const c=(e&&e.code)||"";
   return "صار خطأ: "+(c||(e&&e.message)||"غير معروف");
 }
 function showLogin(msg,kind){
-  gateCard({sub:"سجّل الدخول للمتابعة",body:`
+  $("#gate").hidden=false;$("#app").hidden=true;$("#bottomNav").hidden=true;
+  const nm=gateName(),tab=showLogin.tab||"user";
+  $("#gate").innerHTML=`<div class="gate-login">
+    <div class="gate-hero"><div class="logo">${brandMark()}</div><div><b>أهلاً بك!</b><span>${nm?"سجل ديون "+esc(nm):"ديون الشهم"}: كل دين وتسديد محفوظ ومرتب.</span></div></div>
+    <div class="gate-title"><h1>تسجيل الدخول</h1><p>اكتب رقم هاتفك (أو اسم المستخدم) أو بريدك وكلمة المرور</p></div>
+    <div class="gate-card">
     ${msg?`<div class="banner ${kind||"bad"}">${esc(msg)}</div>`:""}
+    <div class="seg" role="group" aria-label="طريقة الدخول"><button type="button" data-ltab="user" aria-pressed="${tab==="user"}">${I.person}الرقم أو اسم المستخدم</button><button type="button" data-ltab="mail" aria-pressed="${tab==="mail"}">${I.at}بريد</button></div>
     <form id="lf" class="field" style="gap:12px" novalidate>
-      <div class="field"><label for="lUser">اسم المستخدم أو الإيميل</label><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div>
-      <div class="field"><label for="lPw">كلمة المرور</label><div class="pw"><input id="lPw" type="password" autocomplete="current-password"><button type="button" data-showpw="lPw">إظهار</button></div></div>
+      <div class="field"><label for="lUser" id="lUserL"></label><div class="ifield" id="lUserW"><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div></div>
+      <div class="field"><label for="lPw">كلمة المرور</label><div class="ifield pw">${I.lock}<input id="lPw" type="password" autocomplete="current-password" placeholder="••••••••"><button type="button" class="pw-eye" data-showpw="lPw" aria-label="إظهار كلمة المرور">${I.eye}</button></div></div>
+      <div class="gate-row"><button class="linkish" type="button" id="toForgot">نسيت كلمة المرور؟</button></div>
       <p class="err" id="lErr"></p>
-      <button class="btn primary block" type="submit" id="lGo">دخول</button>
+      <button class="btn primary block big" type="submit" id="lGo">${I.enter}تسجيل الدخول</button>
     </form>
-    <div class="gate-foot"><button class="linkish" type="button" id="toForgot">نسيت كلمة المرور؟</button></div>
-    <div class="gate-foot">${MULTI?`محل جديد؟ <button class="linkish" type="button" id="toReg">سجّل محلك</button>`:`ليس لديك حساب؟ <button class="linkish" type="button" id="toReg">إنشاء حساب</button>`}</div>`,
-  mount:g=>{
-    wirePw(g);g.querySelector("#toReg").onclick=()=>showRegister();g.querySelector("#toForgot").onclick=()=>showForgot($("#lUser").value);
-    g.querySelector("#lf").addEventListener("submit",async e=>{
-      e.preventDefault();const u=normDigits($("#lUser").value).trim().toLowerCase(),p=$("#lPw").value;const err=$("#lErr"),btn=$("#lGo");
-      if(!u||!p){err.textContent="اكتب اسم المستخدم وكلمة المرور.";return}
-      if(!/^[a-z0-9_.]{3,30}$/.test(u)&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u)){err.textContent="اسم المستخدم أو كلمة المرور غير صحيحة.";return}
-      btn.disabled=true;btn.textContent="جارِ الدخول…";
-      try{await signInAny(u,p)}catch(x){err.textContent=authMsg(x)+(badLogin(x)&&!u.includes("@")?" إذا ربطت إيميلك، ادخل بالإيميل.":"");btn.disabled=false;btn.textContent="دخول"}
-    });
-    setTimeout(()=>$("#lUser")&&$("#lUser").focus(),30);
-  }});
+    <div class="gate-foot">${MULTI?`محل جديد؟ <button class="linkish" type="button" id="toReg">سجّل محلك</button>`:`ليس لديك حساب؟ <button class="linkish" type="button" id="toReg">إنشاء حساب</button>`}</div>
+    </div></div>`;
+  const g=$("#gate"),inp=$("#lUser");
+  const setTab=t=>{showLogin.tab=t;g.querySelectorAll("[data-ltab]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.ltab===t)));
+    const mail=t==="mail";$("#lUserL").textContent=mail?"البريد الإلكتروني":"رقم الهاتف أو اسم المستخدم";inp.placeholder=mail?"name@example.com":"07xx xxx xxxx";
+    inp.type=mail?"email":"text";inp.inputMode=mail?"email":"text";const w=$("#lUserW");const old=w.querySelector("svg");if(old)old.remove();w.insertAdjacentHTML("afterbegin",mail?I.mail:I.person)};
+  setTab(tab);g.querySelectorAll("[data-ltab]").forEach(b=>b.onclick=()=>{setTab(b.dataset.ltab);inp.focus()});
+  wirePw(g);g.querySelector("#toReg").onclick=()=>showRegister();g.querySelector("#toForgot").onclick=()=>showForgot(inp.value);
+  g.querySelector("#lf").addEventListener("submit",async e=>{
+    e.preventDefault();const raw=normDigits(inp.value).trim().toLowerCase(),u=looksPhone(raw)?phoneId(raw):raw,p=$("#lPw").value;const err=$("#lErr"),btn=$("#lGo");
+    if(!u||!p){err.textContent=showLogin.tab==="mail"?"اكتب البريد وكلمة المرور.":"اكتب رقم الهاتف أو اسم المستخدم وكلمة المرور.";return}
+    if(!/^[a-z0-9_.]{3,30}$/.test(u)&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u)){err.textContent="اسم المستخدم أو كلمة المرور غير صحيحة.";return}
+    btn.disabled=true;btn.innerHTML="جارِ الدخول…";
+    try{await signInAny(u,p)}catch(x){err.textContent=authMsg(x)+(badLogin(x)&&!u.includes("@")?" إذا ربطت إيميلك، ادخل بالإيميل.":"");btn.disabled=false;btn.innerHTML=I.enter+"تسجيل الدخول"}
+  });
+  setTimeout(()=>inp.focus(),30);
 }
 // Password reset works only for accounts that linked a real e-mail (Settings > حسابي); Firebase sends the link.
 function showForgot(prefill){
@@ -1110,34 +1217,52 @@ function showRegister(){
     <form id="rf" class="field" style="gap:12px" novalidate>
       ${MULTI?`<div class="field"><label for="rShop">اسم المحل</label><input id="rShop" maxlength="60" placeholder="مثال: ماركت النور"></div>`:""}
       <div class="field"><label for="rName">اسمك</label><input id="rName" maxlength="40" placeholder="مثال: علي"></div>
-      <div class="field"><label for="rMail">الإيميل</label><input id="rMail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right" placeholder="name@gmail.com"><span class="help">يوصلك عليه رابط تأكيد، وتسترجع بيه كلمة المرور إذا نسيتها.</span></div>
-      <div class="field"><label for="rPhone">رقم الهاتف</label><input id="rPhone" inputmode="tel" autocomplete="tel" maxlength="20" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx"></div>
-      <div class="field"><label for="rUser">اسم المستخدم</label><input id="rUser" maxlength="30" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right" placeholder="ali"><span class="help">أحرف إنجليزية أو أرقام، بدون فراغات.</span></div>
+      <div class="field"><label for="rPhone">رقم الهاتف</label><input id="rPhone" inputmode="tel" autocomplete="tel" maxlength="20" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx"><span class="help">تدخل بيه للبرنامج، وعليه نتواصل وياك للتفعيل. اكتب رقمك الصحيح.</span></div>
+      <div class="field"><label for="rMail">الإيميل (اختياري)</label><input id="rMail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right" placeholder="name@gmail.com"><span class="help">إذا كتبته يوصلك عليه رابط تأكيد، وتسترجع بيه كلمة المرور إذا نسيتها.</span></div>
       <div class="field"><label for="rPw">كلمة المرور</label><div class="pw"><input id="rPw" type="password" autocomplete="new-password"><button type="button" data-showpw="rPw">إظهار</button></div><span class="help">8 أحرف على الأقل، وخليها صعبة التخمين.</span></div>
       <p class="err" id="rErr"></p>
       <button class="btn primary block" type="submit" id="rGo">${MULTI?"تسجيل المحل":"إنشاء الحساب"}</button>
     </form>
+    ${MULTI?`<div class="banner info">🎁 تبدي بفترة تجريبية مجانية بكل الخصائص. بعدها تختار الاشتراك اللي يناسبك (شهري، 6 أشهر، سنوي أو دائمي)، وبياناتك تبقى مثل ما هي. تشوف الأسعار والعروض من الإعدادات ← اشتراكي والعروض.</div>`:""}
     ${MULTI?`<p class="ro-note">عامل بمحل؟ لا تسجّل محل: صاحب المحل يسويلك حساب من الإعدادات ← المستخدمين.</p>`:""}
     <div class="gate-foot">عندك حساب؟ <button class="linkish" type="button" id="toLogin">تسجيل الدخول</button></div>`,
   mount:g=>{
     wirePw(g);g.querySelector("#toLogin").onclick=()=>showLogin();
     g.querySelector("#rf").addEventListener("submit",async e=>{
       e.preventDefault();const err=$("#rErr"),btn=$("#rGo");
-      const r=validateAccount($("#rName").value,$("#rUser").value,$("#rPw").value,null);
+      const phone=phoneId($("#rPhone").value);
+      if(!/^\d{10,15}$/.test(phone)){err.textContent="اكتب رقم هاتف صحيح، مثل 07701234567.";return}
+      const r=validateAccount($("#rName").value,phone,$("#rPw").value,null);
       if(r.error){err.textContent=r.error;return}
-      const mail=$("#rMail").value.trim().toLowerCase(),phone=normDigits($("#rPhone").value).trim();
-      if(!MAIL_RE.test(mail)||isFakeEmail(mail)){err.textContent="اكتب إيميلك الحقيقي.";return}
-      if(phone.replace(/\D/g,"").length<10){err.textContent="اكتب رقم هاتف صحيح.";return}
+      const mail=$("#rMail").value.trim().toLowerCase();
+      if(mail&&(!MAIL_RE.test(mail)||isFakeEmail(mail))){err.textContent="الإيميل مو صحيح. صحّحه أو امسحه (هو اختياري).";return}
       const shop=MULTI?{shop:$("#rShop").value.trim(),phone}:null;
       if(shop&&!shop.shop){err.textContent="اكتب اسم المحل.";return}
-      const label=btn.textContent;btn.disabled=true;btn.textContent="جارِ الإنشاء…";REG={name:r.name,username:r.username,shop,phone,mail};
-      // The username stays the login's unique name (username@domain); the real e-mail becomes the login once the person
-      // opens the link Firebase mails them, and from then on «نسيت كلمة المرور؟» works.
+      const label=btn.textContent;btn.disabled=true;btn.textContent="جارِ الإنشاء…";
+      if(await aliasOf(phone)){err.textContent="هذا الرقم مسجّل من قبل. ادخل بيه من «تسجيل الدخول».";btn.disabled=false;btn.textContent=label;return}
+      REG={name:r.name,username:r.username,shop,phone,mail};
+      // The phone number is the login's unique name (phone@domain), so one number makes one account. A real e-mail, when
+      // given, becomes the login once the person opens the link Firebase mails them, and from then on «نسيت كلمة المرور؟» works.
       try{const cr=await auth.createUserWithEmailAndPassword(emailOf(r.username),r.pw);
-        try{auth.languageCode="ar";await cr.user.verifyBeforeUpdateEmail(mail);rememberLogin(r.username,mail);toast(`دزينا رابط تأكيد إلى ${mail}. افتحه (شوف Spam هم).`,{ms:12000})}catch(x){console.warn(x)}
-      }catch(x){REG=null;err.textContent=authMsg(x);btn.disabled=false;btn.textContent=label}
+        if(mail)try{auth.languageCode="ar";await cr.user.verifyBeforeUpdateEmail(mail);rememberLogin(r.username,mail);toast(`دزينا رابط تأكيد إلى ${mail}. افتحه (شوف Spam هم).`,{ms:12000})}catch(x){console.warn(x)}
+      }catch(x){REG=null;err.textContent=x&&x.code==="auth/email-already-in-use"?"هذا الرقم مسجّل من قبل. ادخل بيه من «تسجيل الدخول».":authMsg(x);btn.disabled=false;btn.textContent=label}
     });
   }});
+}
+/* How a shop owner reaches the seller when the notebook is locked (shop copies keep these: it's the same seller). */
+const SUPPORT={wa:"9647768987668",tel:"+9647768987668",tg:""};
+function showLocked(title,msg,own){
+  $("#gate").hidden=false;$("#app").hidden=true;$("#bottomNav").hidden=true;
+  const ways=own?[[I.wa,"واتساب","wa","https://wa.me/"+SUPPORT.wa+"?text="+encodeURIComponent("السلام عليكم، أريد أجدد اشتراك محل «"+(S.shop&&S.shop.name||gateName()||"")+"» بديون الشهم.")],
+    SUPPORT.tg?[I.tg,"تيليجرام","","https://t.me/"+SUPPORT.tg]:null,[I.call,"اتصال","","tel:"+SUPPORT.tel]].filter(Boolean):[];
+  $("#gate").innerHTML=`<div class="lockd">
+    <div class="lockd-top"><div class="lockd-bar"><button type="button" id="lkOut" aria-label="تسجيل الخروج">${I.out}</button><h1>${esc(title)}</h1><span style="width:40px"></span></div><div class="lockd-ic">${I.lockClock}</div></div>
+    <div class="gate-card"><h2>${esc(title)}</h2><p class="msg">${esc(msg)}</p>
+      <div class="banner info">${I.info}<span>${own?"جدّد الاشتراك ويرجع دفترك يفتح تلقائياً، وكل اللي سجلته محفوظ. تواصل وياي من الأزرار الجوة.":"صاحب المحل يجدد الاشتراك، وبعدها يرجع الدفتر يفتح لحاله."}</span></div></div>
+    ${ways.length?`<p class="lockd-help">لتجديد الاشتراك تواصل معنا</p><div class="lockd-ways">${ways.map(([ic,t,c,u])=>`<a class="btn ${c}" href="${esc(u)}" target="_blank" rel="noopener" data-ext="${esc(u)}">${ic}${t}</a>`).join("")}</div>`:""}
+  </div>`;
+  const g=$("#gate");g.querySelector("#lkOut").onclick=()=>signOut();
+  g.querySelectorAll("[data-ext]").forEach(a=>a.addEventListener("click",e=>{if(!/^tel:/.test(a.dataset.ext)){e.preventDefault();openExternal(a.dataset.ext)}}));
 }
 function showWaiting(msg,kind,retry){
   gateCard({sub:"",body:`<div class="banner ${kind||"warn"}">${esc(msg)}</div>
@@ -1155,7 +1280,8 @@ function validateAccount(name,username,pw,selfId){
   if(pw!==null&&String(pw).length<PW_MIN)return {error:`كلمة المرور ${PW_MIN} أحرف على الأقل.`};
   return {name,username,pw};
 }
-function wirePw(root){root.querySelectorAll("[data-showpw]").forEach(b=>b.addEventListener("click",()=>{const i=document.getElementById(b.dataset.showpw);const s=i.type==="password";i.type=s?"text":"password";b.textContent=s?"إخفاء":"إظهار"}))}
+function wirePw(root){root.querySelectorAll("[data-showpw]").forEach(b=>b.addEventListener("click",()=>{const i=document.getElementById(b.dataset.showpw);const s=i.type==="password";i.type=s?"text":"password";
+  if(b.classList.contains("pw-eye")){b.innerHTML=s?I.eyeOff:I.eye;b.setAttribute("aria-label",s?"إخفاء كلمة المرور":"إظهار كلمة المرور")}else b.textContent=s?"إخفاء":"إظهار"}))}
 // Signing out also wipes this device's offline copy of the data, so a shared laptop keeps nothing for the next person; but only
 // once every change made here has reached the server: offline, the copy stays so nothing is lost. True when it was wiped (the
 // database connection is closed then, so the page has to start afresh).
@@ -1185,7 +1311,7 @@ try{flash=JSON.parse(sessionStorage.getItem(FLASH_KEY)||"null");sessionStorage.r
 
 /* ---------- live data ---------- */
 function stopData(){
-  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;clearTimeout(syncT);UT.clear();
+  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];dataOn=false;clearTimeout(syncT);UT.clear();caught=new Set();clearTimeout(cloudT);cloudT=null;clearTimeout(d1T);d1T=null;d1Out=new Map();d1Loaded="";S.d1Read=false;
   S.customers=new Map();S.txns=new Map();S.accounts=new Map();S.shops=new Map();S.activity=[];S.settings={};S.ready={c:false,t:false,a:false,s:false};S.selected=null;
 }
 /* Reads: the free plan allows 50,000 a day, and reading every account and transaction each time the app opened used them
@@ -1201,15 +1327,168 @@ function unpack(d){const x=d.data(),u=d.metadata.hasPendingWrites?Infinity:stamp
 function goneNote(coll,id){if(coll!=="customers"&&coll!=="txns")return;
   try{db.collection(P("gone")).doc(coll+"_"+id).set({c:coll,id,_u:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("gone note",e&&e.code))}catch(e){}}
 let syncT=null;
+/* Cloud copy: once a day, after this device's copy has caught up with the server (customers, transactions and deletes),
+   it sends the book to the worker (/backup), which keeps the day's first copy for a month and each month's first copy for
+   good, sealed. It reads nothing from Firebase. The book's owner gets them back in Settings > النسخ الاحتياطي. */
+const bkTenant=()=>SHOP||"main",bkUrl=()=>window.AI_URL.replace(/\/$/,"")+"/backup";
+let caught=new Set(),cloudT=null;
+function caughtUp(...ks){for(const k of ks)caught.add(k);
+  if(caught.has("customers")&&caught.has("txns")&&caught.has("gone")&&!cloudT&&window.AI_URL)cloudT=setTimeout(()=>{cloudT=null;cloudBackup();d1Check()},20000)}
+// What this device's last attempt did, shown on the settings card: {at, ok, msg}.
+const BK_LAST="shahm-cloudbk-last",bkLast=v=>{try{if(v)localStorage.setItem(BK_LAST,JSON.stringify(v));else return JSON.parse(localStorage.getItem(BK_LAST)||"null")}catch(e){return null}};
+async function cloudBackup(){
+  if(!S.me||!dataOn||!navigator.onLine||!S.ready.c||!S.ready.t||!auth.currentUser||typeof CompressionStream!=="function")return;
+  const flag="shahm-cloudbk:"+bkTenant()+":"+shopDay();try{if(localStorage.getItem(flag))return}catch(e){}
+  if(Date.now()-(cloudBackup.tried||0)<30*60e3)return; // every change re-checks; after a failed try, wait a while
+  cloudBackup.tried=Date.now();
+  try{
+    const data={app:"shahm-debts",version:3,exportedAt:new Date().toISOString(),settings:S.settings,customers:[...S.customers.values()],txns:[...S.txns.values()],accounts:[],activity:S.activity};
+    const body=await new Response(new Blob([JSON.stringify(data)]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer();
+    const q=new URLSearchParams({tenant:bkTenant(),c:data.customers.length,t:data.txns.length,by:S.me.name});
+    const r=await fetch(bkUrl()+"?"+q,{method:"POST",headers:{"Content-Type":"application/octet-stream",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body});
+    const j=await r.json().catch(()=>({}));
+    bkLast({at:Date.now(),ok:r.ok,msg:r.ok?"":(j.error||"خطأ "+r.status)});
+    if(r.ok)try{localStorage.setItem(flag,"1")}catch(e){}
+  }catch(e){console.warn("cloud backup",e);bkLast({at:Date.now(),ok:false,msg:"ما وصل للسحابة (الإنترنت)"})}
+}
+async function cloudList(){
+  const box=$("#cloudBk");if(!box)return;box.innerHTML=`<span class="ro-note">جاري جلب النسخ…</span>`;
+  try{
+    const r=await fetch(bkUrl()+"?tenant="+encodeURIComponent(bkTenant()),{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});const j=await r.json().catch(()=>({}));
+    if(!r.ok){box.innerHTML=`<span class="ro-note">${esc(j.error||"تعذّر جلب النسخ.")}</span>`;return}
+    const it=j.items||[];if(!it.length){box.innerHTML=`<span class="ro-note">بعد ما انحفظت نسخة. أول نسخة تنحفظ وحدها اليوم من أحد الأجهزة.</span>`;return}
+    box.innerHTML=`<ul class="sub-hist">${it.map(x=>`<li><span class="num">${esc((x.day||"").split("-").reverse().join("/"))}</span><span>${x.kind==="m"?"نسخة الشهر (دائمية)":"نسخة يومية"}</span><span class="num">${fmt(x.c||0)} حساب · ${fmt(x.t||0)} حركة</span><button class="btn sm" type="button" data-cloudget="${esc(x.key)}">استرجاع</button></li>`).join("")}</ul>`;
+  }catch(e){box.innerHTML=`<span class="ro-note">تعذّر الاتصال. تأكد من الإنترنت.</span>`}
+}
+async function cloudGet(key){
+  toast("جاري تنزيل النسخة…");
+  try{const r=await fetch(bkUrl()+"?tenant="+encodeURIComponent(bkTenant())+"&key="+encodeURIComponent(key),{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
+    if(!r.ok){const j=await r.json().catch(()=>({}));toast(j.error||"تعذّر تنزيل النسخة.");return}
+    restorePreview(await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).text());
+  }catch(e){toast("تعذّر الاتصال. تأكد من الإنترنت.")}
+}
+/* New database (Cloudflare D1, to move off Firestore's daily limit): every account/transaction write also goes to the
+   worker (/db/push), kept in an outbox on this device until it arrives. Books the worker lists in D1_READ are read from
+   D1 (d1Read below); the rest still read Firestore. Firestore stays the reference: once a day a device that caught up
+   with it (when reading from D1, only the owner's, reading Firestore once) compares it with D1 and sends what differs. */
+const d1Url=()=>window.AI_URL.replace(/\/$/,"")+"/db/",d1Key=()=>"d1out:"+bkTenant();
+let d1Out=new Map(),d1T=null,d1Off=false,d1Loaded="";
+const D1_LAST="shahm-d1-last",d1Last=v=>{try{if(v)localStorage.setItem(D1_LAST,JSON.stringify(v));else return JSON.parse(localStorage.getItem(D1_LAST)||"null")}catch(e){return null}};
+const plainRec=o=>{const x=JSON.parse(JSON.stringify(o));delete x._u;return x};
+function d1Queue(coll,id,data){
+  if((coll!=="customers"&&coll!=="txns")||!window.AI_URL||d1Off)return;
+  d1Out.set(coll+"|"+id,[coll,id,data?plainRec(data):null]);d1Save();d1Kick(400)}
+function d1Save(){const k=d1Key(),ops=[...d1Out.values()];kv.set(k,ops).catch(()=>{})}
+async function d1Load(){const k=d1Key();if(d1Loaded===k)return;d1Loaded=k;
+  try{const ops=await kv.get(k);if(Array.isArray(ops))for(const o of ops){const key=o[0]+"|"+o[1];if(!d1Out.has(key))d1Out.set(key,o)}}catch(e){}
+  if(d1Out.size)d1Kick(3000)}
+function d1Kick(ms){const at=Date.now()+ms;if(d1T&&d1Kick.at<=at)return;clearTimeout(d1T);d1Kick.at=at;d1T=setTimeout(d1Flush,ms)} // the sooner of two asks wins
+async function d1Send(ops){
+  const r=await fetch(d1Url()+"push?tenant="+encodeURIComponent(bkTenant()),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body:JSON.stringify({ops})});
+  const j=await r.json().catch(()=>({}));if(j.off)d1Off=true;return {ok:r.ok,status:r.status,j}}
+async function d1Flush(){
+  d1T=null;if(d1Off||!d1Out.size||!auth.currentUser||!canWrite())return;
+  if(!navigator.onLine){d1Kick(60e3);return}
+  const ops=[...d1Out.values()].slice(0,400);
+  const done=()=>{for(const o of ops){const k=o[0]+"|"+o[1];if(d1Out.get(k)===o)d1Out.delete(k)}d1Save()};
+  try{const r=await d1Send(ops);
+    if(r.ok){done();if(d1Out.size)d1Kick(300)}
+    // Turned off on the server, or a save it will never take: drop it (the daily check sends the book again anyway).
+    else if(d1Off||r.status===400||r.status===403||r.status===413){if(d1Off)d1Out.clear();done();d1Last({...(d1Last()||{}),err:r.j.error||"خطأ "+r.status,errAt:Date.now()})}
+    else d1Kick(60e3);
+  }catch(e){d1Kick(60e3)}
+}
+addEventListener("online",()=>{if(d1Out.size)d1Kick(2000)});
+const stableJson=v=>JSON.stringify(v,(k,x)=>x&&typeof x==="object"&&!Array.isArray(x)?Object.keys(x).sort().reduce((o,k2)=>(o[k2]=x[k2],o),{}):x);
+async function d1Pull(){const all=new Map();let since=0;
+  for(;;){const r=await fetch(d1Url()+"pull?tenant="+encodeURIComponent(bkTenant())+"&since="+since,{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
+    const j=await r.json().catch(()=>({}));if(!r.ok){if(j.off)d1Off=true;throw new Error(j.error||"خطأ "+r.status)}
+    for(const [c,id,d,u] of j.rows)all.set(c+"|"+id,{d,u});since=j.u;if(!j.more)return all}}
+async function d1Check(force){
+  if(!window.AI_URL||d1Off||!canWrite()||!dataOn||!S.ready.c||!S.ready.t||!navigator.onLine||!auth.currentUser)return;
+  if(S.d1Read&&S.me.role!=="owner")return; // what this device shows came from D1, so only a fresh read of Firestore can check it
+  const flag="shahm-d1chk:"+bkTenant()+":"+shopDay();
+  if(!force){try{if(localStorage.getItem(flag))return}catch(e){}if(Date.now()-(d1Check.tried||0)<30*60e3)return}
+  d1Check.tried=Date.now();
+  try{
+    if(d1Out.size){await d1Flush();if(d1Out.size)return} // our own unsent saves go first
+    let src={customers:S.customers,txns:S.txns};
+    if(S.d1Read){const got=await Promise.all(["customers","txns"].map(k=>db.collection(P(k)).get({source:"server"})));
+      src={customers:new Map(got[0].docs.map(d=>[d.id,unpack(d)[0]])),txns:new Map(got[1].docs.map(d=>[d.id,unpack(d)[0]]))}}
+    const remote=await d1Pull(),ops=[],recent=Date.now()-10*60e3;
+    for(const [k,m] of [["customers",src.customers],["txns",src.txns]])for(const [id,x] of m){
+      if(UT.get(id)===Infinity||d1Out.has(k+"|"+id))continue; // still on its way; the outbox has it
+      // Saved to D1 in the last minutes: Firestore may not have that save yet, so leave it for tomorrow's check.
+      const r=remote.get(k+"|"+id);if(r&&r.u>recent)continue;
+      if(!r||!r.d||stableJson(r.d)!==stableJson(plainRec(x)))ops.push([k,id,plainRec(x)])}
+    // In D1 but gone from Firestore: mark it deleted there too (kept, not erased), unless it was saved in the last minutes
+    // by another device and hasn't reached this one yet.
+    for(const [key,r] of remote){if(!r.d||r.u>recent||d1Out.has(key))continue;const [k,id]=key.split("|");if(!src[k].has(id))ops.push([k,id,null])}
+    for(let i=0;i<ops.length;i+=400){const r=await d1Send(ops.slice(i,i+400));if(!r.ok)throw new Error(r.j.error||"خطأ "+r.status)}
+    d1Last({at:Date.now(),ok:true,c:src.customers.size,t:src.txns.size,fixed:ops.length});
+    try{localStorage.setItem(flag,"1")}catch(e){}
+  }catch(e){console.warn("d1 check",e);d1Last({...(d1Last()||{}),at:Date.now(),ok:false,msg:e.message||"تعذّر الاتصال"})}
+  if(S.view==="settings")render();
+}
+/* Reading a book from D1 (when the worker lists it in D1_READ): this device keeps its copy (IndexedDB) and asks /db/pull
+   only for what was saved after its mark. A live link (/db/live) says when any device saved, so changes show straight away;
+   it also asks every few minutes and when the app comes back to the screen, in case the link dropped. A record still in
+   this device's outbox isn't replaced by the server's older copy. Returns false, and the Firestore path runs instead,
+   when the worker doesn't read this book from D1, or can't be reached and this device has no copy from D1 yet. If the
+   worker stops reading it from D1 while open, the app starts over on Firestore. */
+const D1_V=2;
+async function d1Read(live,key,ready){
+  await d1Load();
+  const saved=await kv.get("sync"),mine=saved&&saved.v===D1_V&&saved.key===key?saved:null;
+  if(!live())return true;
+  const st={mark:mine?mine.mark:0},M={customers:new Map(),txns:new Map()};
+  if(mine)for(const k of ["customers","txns"])for(const [id,x] of mine[k])M[k].set(id,x);
+  const pullFrom=async since=>{const rows=[];
+    for(;;){const r=await fetch(d1Url()+"pull?tenant="+encodeURIComponent(bkTenant())+"&since="+since,{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
+      const j=await r.json().catch(()=>({}));if(!r.ok){if(j.off)d1Off=true;throw new Error(j.error||"خطأ "+r.status)}
+      if(!j.read)return null;rows.push(...j.rows);since=j.u;if(!j.more)return rows}};
+  const apply=(maps,rows)=>{for(const [c,id,d,u] of rows){if(u>st.mark)st.mark=u;if(d1Out.has(c+"|"+id))continue;
+    const m=maps[c];if(!m)continue;if(d)m.set(id,d),UT.set(id,u);else m.delete(id),UT.delete(id)}};
+  let rows,offline=false;
+  try{rows=await pullFrom(st.mark)}catch(e){if(!live())return true;if(!mine)return false;rows=[];offline=true}
+  if(!live())return true;
+  // Not read from D1, or nothing there yet for this book (its first daily check, on the Firestore path, fills it).
+  if(rows===null||(!mine&&!rows.length))return false;
+  apply(M,rows);
+  for(const [c,id,d] of d1Out.values()){const m=M[c];if(m){if(d)m.set(id,d);else m.delete(id)}} // saved here, not sent yet
+  S.customers=M.customers;S.txns=M.txns;S.d1Read=true;ready();
+  const save=()=>{clearTimeout(syncT);syncT=setTimeout(()=>{if(live())kv.set("sync",{v:D1_V,key,mark:st.mark,customers:[...S.customers],txns:[...S.txns]})},1500)};
+  save();if(!offline)caughtUp("customers","txns","gone");
+  let busy=false,again=false,ws=null,closed=false,wait=1000;
+  const sync=async()=>{if(busy){again=true;return}busy=true;
+    try{const r=await pullFrom(st.mark);if(!live())return;
+      if(r===null){stopData();startData();return}
+      if(r.length){apply(S,r);render();save()}caughtUp("customers","txns","gone");
+    }catch(e){}finally{busy=false;if(again&&live()){again=false;sync()}}};
+  const open=async()=>{if(closed||!live())return;
+    try{ws=new WebSocket(d1Url().replace(/^http/,"ws")+"live?tenant="+encodeURIComponent(bkTenant()),["bearer",await auth.currentUser.getIdToken()]);
+      ws.onopen=()=>{wait=1000;sync()};
+      ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m&&m.u>st.mark)sync()}catch(x){}};
+      ws.onclose=()=>{ws=null;if(!closed)setTimeout(open,wait=Math.min(wait*2,60e3))};
+    }catch(e){ws=null;setTimeout(open,wait=Math.min(wait*2,60e3))}};
+  open();
+  let tick=0;const timer=setInterval(()=>{if(ws&&ws.readyState===1)ws.send("ping");if(!ws||ws.readyState!==1||++tick%5===0)sync()},60e3);
+  const back=()=>{if(document.visibilityState==="visible")sync()};
+  document.addEventListener("visibilitychange",back);addEventListener("online",back);
+  unsubs.push(()=>{closed=true;clearInterval(timer);document.removeEventListener("visibilitychange",back);removeEventListener("online",back);try{if(ws)ws.close()}catch(e){}});
+  return true;
+}
 async function syncData(fail){
   const run=syncData.run=(syncData.run||0)+1,key=SHOP||"root",live=()=>run===syncData.run&&dataOn;
   const ready=()=>{S.ready.c=S.ready.t=true;render()};
+  if(window.AI_URL&&!d1Off&&auth.currentUser&&await d1Read(live,key,ready))return;
+  if(!live())return;
   const [v3,saved]=await Promise.all([db.doc("meta/rules-v3").get().then(()=>true,e=>e&&e.code==="permission-denied"?false:null),kv.get("sync")]);
   if(!live())return;
   const mine=saved&&saved.v===SYNC_V&&saved.key===key?saved:null;
   if(v3===false||(v3===null&&!mine)){
-    unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.c=true;render()},fail));
-    unsubs.push(db.collection(P("txns")).onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.t=true;render()},fail));
+    unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.c=true;render();if(!s.metadata.fromCache)caughtUp("customers","gone")},fail));
+    unsubs.push(db.collection(P("txns")).onSnapshot(s=>{S.txns=new Map(s.docs.map(d=>[d.id,unpack(d)[0]]));S.ready.t=true;render();if(!s.metadata.fromCache)caughtUp("txns")},fail));
     return;
   }
   const M={customers:new Map(),txns:new Map()},st={mark:0,full:0};
@@ -1240,6 +1519,7 @@ async function syncData(fail){
     for(const c of s.docChanges({includeMetadataChanges:true})){if(c.type==="removed")continue; // deletes come from gone
       const [x,u]=unpack(c.doc);m.set(c.doc.id,x);UT.set(c.doc.id,u);seen(u);ch=true}
     if(ch){render();save()}
+    if(!s.metadata.fromCache)caughtUp(k);
   },fail));
   unsubs.push(db.collection(P("gone")).where("_u",">",since).onSnapshot({includeMetadataChanges:true},s=>{
     let ch=false;
@@ -1248,6 +1528,7 @@ async function syncData(fail){
       // Gone only if the copy here is older than the delete: an undo (written again after) stays.
       const have=UT.get(g.id)||0;if(m&&m.has(g.id)&&have!==Infinity&&have<=u){m.delete(g.id);UT.delete(g.id);ch=true}}
     if(ch)render();save();
+    if(!s.metadata.fromCache)caughtUp("gone");
   },fail));
 }
 /* Notifications (Settings > الإشعارات, per device): the owner hears about what someone else records while the app is open
@@ -1364,7 +1645,7 @@ function pushOut(a){
 function startData(){
   if(dataOn)return;dataOn=true;pushState=null;
   const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied")toast("ما عندك صلاحية لقراءة البيانات. راجع المدير.");else if(e&&e.code==="resource-exhausted")toast(readErrMsg(e))};
-  syncData(fail);
+  syncData(fail);d1Load();
   // Activity: the whole business day live (the home log shows every one of today's entries), plus the last 100 before it, read once.
   const day0=shopDayRange(shopDay()).start;let actDay=[],actOld=[];const actSet=()=>{S.activity=[...actDay,...actOld];render()};
   let actFirst=true;
@@ -1420,8 +1701,9 @@ function render(){
   $("#shopTitle").textContent="دفتر ديون "+shopName();document.title="دفتر ديون "+shopName();
   const mk=brandMark();if(mk!==render.mark){render.mark=mk;$("header.top .logo").innerHTML=mk}
   const pending=[...S.accounts.values()].filter(a=>a.status==="pending").length+shopsPending();
-  $("#tabs").innerHTML=NAV.map(([k,l,ic])=>`<button type="button" data-go="${k}" aria-current="${S.view===k?"page":"false"}">${ic}${l}${k==="settings"&&isAdmin()&&pending?` <span class="chip debt" style="padding:0 7px">${pending}</span>`:""}</button>`).join("");
-  $("#bottomNav").innerHTML=NAV.slice(0,2).map(navBtn).join("")+(canWrite()?`<button type="button" class="plus" data-act="quick" aria-label="إضافة دين">${I.plus}</button>`:"")+NAV.slice(2).map(navBtn).join("");
+  const NV=NAV.filter(n=>n[0]!=="reports"||can("totals"));if(S.view==="reports"&&!can("totals"))S.view="home";
+  $("#tabs").innerHTML=NV.map(([k,l,ic])=>`<button type="button" data-go="${k}" aria-current="${S.view===k?"page":"false"}">${ic}${l}${k==="settings"&&isAdmin()&&pending?` <span class="chip debt" style="padding:0 7px">${pending}</span>`:""}</button>`).join("");
+  $("#bottomNav").innerHTML=NV.slice(0,2).map(navBtn).join("")+(canWrite()?`<button type="button" class="plus" data-act="quick" aria-label="إضافة دين">${I.plus}</button>`:"")+NV.slice(2).map(navBtn).join("");
   $("#meBox").innerHTML=`<span class="avatar" aria-hidden="true">${initial(S.me.name)}</span><span class="nm">${esc(S.me.name)}</span><span class="role">${ROLE_LABEL[S.me.role]}</span>`;
   renderBell();
   const v=$("#view");
@@ -1512,7 +1794,7 @@ function homeView(){
       <div><div class="k">${I.check}المحصّل هذا الشهر</div><div class="v paid num">${shown("paid",fmt(mPay))}</div></div>
       <div><div class="k">${I.trend}المضاف هذا الشهر</div><div class="v debt num">${shown("added",fmt(mAdd))}</div></div>
     </div>
-    <div class="sum-actions" role="group" aria-label="إجراءات سريعة">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="voice">${I.mic}بالصوت</button><button class="btn" type="button" data-act="newcust">زبون جديد</button>${SHOP?"":`<button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`}`:""}<button class="btn" type="button" data-act="monthrep">${I.trend}التقرير الشهري</button><button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين${shown("owing",` (${owing})`)}</button></div>
+    <div class="sum-actions" role="group" aria-label="إجراءات سريعة">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="voice">${I.mic}بالصوت</button><button class="btn" type="button" data-act="newcust">زبون جديد</button>${SHOP?"":`<button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`}`:""}${can("totals")?`<button class="btn" type="button" data-act="monthrep">${I.trend}التقرير الشهري</button>`:""}<button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين${shown("owing",` (${owing})`)}</button></div>
   </section>
   <section class="pane card-pad home-search" aria-label="بحث عن زبون">
     <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
@@ -1591,9 +1873,9 @@ function renderHomeTable(){
       <td class="ct-ops">${w?`<button type="button" class="ct-b q-pay" data-qpay="${esc(c.id)}" title="تسديد" aria-label="تسديد ${esc(c.name)}">${I.minus}</button><button type="button" class="ct-b q-debt" data-qdebt="${esc(c.id)}" title="دين" aria-label="دين على ${esc(c.name)}">${I.plus}</button>`:""}${l?`<a class="ct-b wa" href="${esc(l)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}" title="تذكير واتساب" aria-label="تذكير ${esc(c.name)}">${I.wa}</a>`:""}</td>
       <td class="h-xs"><button class="btn sm" type="button" data-open="${esc(c.id)}">${I.book}كشف</button></td></tr>`}).join("")}</tbody></table>`;
   foot.innerHTML=`<div class="ct-sum"><span>عدد الزبائن: <b class="num">${rows.length}</b>${rows.length!==all?` من <span class="num">${all}</span>`:""}</span><span>إجمالي الديون: <b class="num amt">${shown("total",fmt(tot))}</b> ${CUR}</span></div>
-    <div class="ct-exp"><button class="btn sm" type="button" data-act="htpdf" ${rows.length?"":"disabled"}>${I.pdf}طباعة PDF</button><button class="btn sm" type="button" data-act="htcsv" ${rows.length?"":"disabled"}>${I.save}تصدير Excel</button></div>`;
+    ${can("totals")?`<div class="ct-exp"><button class="btn sm" type="button" data-act="htpdf" ${rows.length?"":"disabled"}>${I.pdf}طباعة PDF</button><button class="btn sm" type="button" data-act="htcsv" ${rows.length?"":"disabled"}>${I.save}تصدير Excel</button></div>`:""}`;
 }
-function custTableExport(kind){
+function custTableExport(kind){if(!can("totals"))return;
   const rows=custTableRows();if(!rows.length)return;let tot=0;for(const x of rows)if(x.p.bal>0)tot+=x.p.bal;
   const cat=x=>x.lv?PRIO[x.lv]:"منتظم",last=x=>x.p.count?msISO(x.p.last):"",base="الزبائن-"+todayISO();
   if(kind==="csv"){
@@ -1622,7 +1904,7 @@ function customersView(){
           <div class="seg" role="group" aria-label="تصفية">${[["all","الكل"],["owe",S.kind==="supplier"?"علينا لهم":"عليهم دين"],["clear","مسددين"],...(S.kind==="supplier"?[["due","فواتير مستحقة"]]:[]),...(S.kind!=="supplier"&&anyLock()?[["locked",`مقفولة (${[...lockMap().values()].filter(x=>x.locked).length})`]]:[]),["nophone",`بدون رقم (${[...S.customers.values()].filter(c=>kindOf(c)===S.kind&&!normDigits(c.phone).replace(/\D/g,"")).length})`]].map(([k,l])=>`<button type="button" data-f="${k}" aria-pressed="${S.filter===k}">${l}</button>`).join("")}</div>
           <select class="sort" id="sort" aria-label="ترتيب">${[["bal","الأعلى ديناً"],["recent","آخر حركة"],["name","الاسم"]].map(([k,l])=>`<option value="${k}" ${S.sort===k?"selected":""}>${l}</option>`).join("")}</select>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn primary" type="button" data-act="newcust" style="flex:1">${I.plus}${S.kind==="supplier"?"إضافة مورد":"إضافة زبون"}</button>`:""}<button class="btn" type="button" data-act="listpdf">${I.pdf}تقرير PDF</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${canWrite()?`<button class="btn primary" type="button" data-act="newcust" style="flex:1">${I.plus}${S.kind==="supplier"?"إضافة مورد":"إضافة زبون"}</button>`:""}${can("totals")?`<button class="btn" type="button" data-act="listpdf">${I.pdf}تقرير PDF</button>`:""}</div>
       </div>
       <ul class="cust-list" id="list"></ul>
     </aside>
@@ -1706,9 +1988,10 @@ function renderDetail(){
       <button class="btn ghost back" type="button" data-act="back">${I.back}رجوع</button>
       <div class="who"><h2>${esc(c.name)}</h2><div class="phone">${sup?"مورد":"زبون"}${sup&&c.visit&&c.visit.length?" · يزورك: "+c.visit.slice().sort().map(i=>AR_DAYS[i]).join("، "):""} · ${c.phone?'<span class="num">'+esc(c.phone)+'</span>':"بدون رقم هاتف"}${c.note?" · "+esc(c.note):""}</div></div>
       <div class="head-tools">
+        ${waNumber(c.phone)?`<a class="btn sm" href="tel:+${waNumber(c.phone)}">${I.call}اتصال</a>`:""}
         ${c.phone?`<a class="btn sm" href="${esc(waLink(c.phone,statementText(c)))}" target="_blank" rel="noopener">${I.wa}إرسال الكشف</a>`:""}
         <button class="btn sm" type="button" data-act="statement">${I.copy}نسخ الكشف</button>
-        ${w?`<button class="btn sm" type="button" data-act="editcust">${I.edit}تعديل</button>
+        ${w&&can("edit")?`<button class="btn sm" type="button" data-act="editcust">${I.edit}تعديل</button>
         <button class="btn sm ghost danger-text" type="button" data-act="delcust">${I.trash}حذف الحساب</button>`:""}
       </div>
     </div>
@@ -1716,7 +1999,7 @@ function renderDetail(){
       <div><div class="lbl">${balLbl}</div><div class="amt"><span class="num">${fmt(Math.abs(per.bal))}</span><small>${CUR}</small></div>
         <div class="limit-row">${sup?"":(()=>{const n=lockDaysOf(c),own=ownLock(c);if(!n&&!own&&!isAdmin())return "";
           if(c.lockNow)return `<span class="chip debt"><i class="lk">${I.lock}</i> مقفول هسه</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">تغيير القفل</button>`:""}`;
-          return `<span class="chip ${n?"warn":"zero"}"><i class="lk">${I.lock}</i> ${n?"قفل بعد "+lockName(n):"بدون قفل"}${own?"":" (عام)"}</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">${n||own?"تغيير القفل":"+ قفل الحساب"}</button>`:""}`})()}${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
+          return `<span class="chip ${n?"warn":"zero"}"><i class="lk">${I.lock}</i> ${n?"قفل بعد "+lockName(n):"بدون قفل"}${own?"":" (عام)"}</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">${n||own?"تغيير القفل":"+ قفل الحساب"}</button>`:""}`})()}${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup&&can("edit")?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
       ${w?`<div class="actions"><button class="btn debt" type="button" data-act="debt" title="اختصار: +">${I.plus}${sup?"فاتورة شراء":"دين"}</button><button class="btn paid" type="button" data-act="pay" title="اختصار: −">${I.minus}${sup?"دفعة للمورد":"دفعة"}</button>${per.bal!==0?`<button class="btn zero" type="button" data-act="zero">${I.zero}تصفير</button>`:""}</div>`:""}
     </div>
     ${balSpark(c)}
@@ -1742,7 +2025,7 @@ function renderDetail(){
         <td class="amt-d">${t.type==="debt"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="amt-p">${t.type==="pay"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="run"><span class="num">${fmt(run)}</span></td>
-        ${w?`<td class="x">${!sup&&t.type==="pay"?`<button class="icon-btn rc-btn" type="button" title="سند قبض" aria-label="سند قبض لهذا التسديد" data-act="receipt" data-id="${esc(t.id)}">${I.pdf}</button>`:""}${!sup&&waNumber(c.phone)?`<button class="icon-btn wa-re" type="button" title="إرسال الرسالة مرة ثانية" aria-label="إرسال رسالة واتساب لهذه الحركة مرة ثانية" data-act="resendwa" data-id="${esc(t.id)}">${I.wa}</button>`:""}<button class="icon-btn" type="button" title="تعديل" aria-label="تعديل الحركة" data-act="edittx" data-id="${esc(t.id)}">${I.edit}</button><button class="icon-btn del" type="button" title="حذف" aria-label="حذف الحركة" data-act="deltx" data-id="${esc(t.id)}">${I.trash}</button></td>`:""}</tr>`).join("")}
+        ${w?`<td class="x">${!sup&&t.type==="pay"?`<button class="icon-btn rc-btn" type="button" title="سند قبض" aria-label="سند قبض لهذا التسديد" data-act="receipt" data-id="${esc(t.id)}">${I.pdf}</button>`:""}${!sup&&waNumber(c.phone)?`<button class="icon-btn wa-re" type="button" title="إرسال الرسالة مرة ثانية" aria-label="إرسال رسالة واتساب لهذه الحركة مرة ثانية" data-act="resendwa" data-id="${esc(t.id)}">${I.wa}</button>`:""}${can("edit")?`<button class="icon-btn" type="button" title="تعديل" aria-label="تعديل الحركة" data-act="edittx" data-id="${esc(t.id)}">${I.edit}</button><button class="icon-btn del" type="button" title="حذف" aria-label="حذف الحركة" data-act="deltx" data-id="${esc(t.id)}">${I.trash}</button>`:""}</td>`:""}</tr>`).join("")}
       ${L.from?`<tr class="edge"><td colspan="3">رصيد بداية المدة · ${esc(shortDate(L.from))}</td><td class="run"><span class="num">${fmt(L.open)}</span></td>${w?"<td></td>":""}</tr>`:""}
       </tbody></table></div>`:`<div class="empty"><b>لا توجد حركات</b>${w?"سجّل أول دين بالضغط على «دين».":""}</div>`}
       <div class="mini-sums" style="margin-top:8px"><span>${sup?"مشتريات المدة":"ديون المدة"}: <b class="num">${fmt(L.dSum)}</b></span><span>دفعات المدة: <b class="num">${fmt(L.pSum)}</b></span><span>عدد الحركات: <b class="num">${L.list.length}</b></span></div>
@@ -2236,15 +2519,15 @@ function pushBlock(){
     :note("فعّله حتى يوصلك الإشعار مثل إشعارات البرامج، حتى لو البرنامج مسكّر.")+`<div><button class="btn primary sm" type="button" data-act="pushon">${I.bell}تفعيل الإشعار على الموبايل</button></div>`;
   return `<div class="tpl" style="margin-top:12px"><h3>${I.bell}إشعار على الموبايل</h3>${body}</div>`;
 }
-const SET_PAGES=[["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
+const SET_PAGES=[["sub","اشتراكي والعروض",I.wallet,true],["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["security","الأمان والخصوصية",I.lock,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 function settingsView(){
-  const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner));
+  const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner)&&(p[0]!=="sub"||(SHOP&&S.shop)));
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
   const cur=S.setPage||(window.innerWidth>820?pages[0][0]:null);
   const pending=[...S.accounts.values()].filter(a=>a.status==="pending").length;
   return `<div class="settings ${S.setPage?"open":""}">
     <nav class="pane set-menu-pane"><div class="set-menu">
-      ${pages.map(([k,l,ic])=>`<button type="button" data-set="${k}" aria-current="${cur===k}">${ic}${l}${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}${k==="shops"&&shopsPending()?`<span class="badge">${shopsPending()}</span>`:""}</button>`).join("")}
+      ${pages.map(([k,l,ic])=>`<button type="button" data-set="${k}" aria-current="${cur===k}">${ic}${l}${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}${k==="shops"&&shopsPending()?`<span class="badge">${shopsPending()}</span>`:""}${k==="sub"&&S.shop.trial?`<span class="chip warn" style="margin-inline-start:auto">تجريبي</span>`:""}</button>`).join("")}
       <button type="button" data-act="logout" style="color:var(--debt)">${I.out}تسجيل الخروج</button>
     </div></nav>
     <section class="pane set-body-pane"><div class="set-body">${cur?`<button class="btn ghost set-back" type="button" data-set="">${I.back}رجوع</button>`+setPage(cur):""}</div></section>
@@ -2277,7 +2560,8 @@ function setPage(k){
       <div class="ops">${a.status==="disabled"?`<span class="chip warn">موقوف</span>`:""}
         <select data-urole="${esc(a.id)}" aria-label="الصلاحية"><option value="editor" ${a.role!=="viewer"?"selected":""}>محرر: يضيف ويعدّل</option><option value="viewer" ${a.role==="viewer"?"selected":""}>مشاهد: يشوف فقط</option></select>
         <button class="btn sm" type="button" data-uact="${a.status==="disabled"?"enable":"disable"}" data-id="${esc(a.id)}">${a.status==="disabled"?"تفعيل":"إيقاف"}</button>
-        <button class="icon-btn del" type="button" aria-label="حذف الحساب" data-uact="delete" data-id="${esc(a.id)}">${I.trash}</button></div></div>`).join("")}`;
+        <button class="icon-btn del" type="button" aria-label="حذف الحساب" data-uact="delete" data-id="${esc(a.id)}">${I.trash}</button></div>
+      <div class="uperms" role="group" aria-label="صلاحيات ${esc(a.name)}">${PERMS.filter(([k2])=>k2!=="edit"||a.role!=="viewer").map(([k2,l])=>`<label class="wa-auto"><input type="checkbox" data-uperm="${k2}" data-id="${esc(a.id)}" ${!(a.perms&&a.perms[k2]===false)?"checked":""}>${l}</label>`).join("")}</div></div>`).join("")}`;
   }
   if(k==="shops")return shopsPage();
   if(k==="wabiz")return waBizPage();
@@ -2319,6 +2603,14 @@ function setPage(k){
       <span class="ro-note">تحفظ ملفين سوا: النسخة الاحتياطية، وتقرير شامل لليوم (حركات اليوم بأوقاتها، والمجاميع، وكل زبون وشكد عليه). اليوم يحسب من 2 الفجر لـ 2 الفجر، فإذا حفظت بعد نص الليل يبقى نفس يوم الشغل. وإذا عبرت 2 الفجر وما لحكت تحفظ، اضغط «نسخة أمس» وتنحفظ نسخة اليوم اللي فات بمجلده وتقريره.</span>
       ${FOLDER_OK?`<span class="ro-note">بالفلاش: إذا عندك مجلدات السنة الجاهزة (السنة ثم الشهر ثم اليوم)، أول مرة اختار مجلد <b>Shahm-Backups</b>، وبعدها كل يوم ينحفظ بمجلد يومه وحده بدون ما يسألك. البرنامج ما يسوي مجلدات.</span>`:""}
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="daybackup">${I.save}حفظ نسخة اليوم</button><button class="btn" type="button" data-act="daybackup" data-prev="1">${I.save}نسخة أمس (${prevShopDay().split("-").slice(1).reverse().join("/")})</button>${FOLDER_OK?`<button class="btn ghost sm" type="button" data-act="bkrootreset">تغيير مجلد الفلاش</button>`:""}</div></div>
+    ${window.AI_URL?`<div class="tpl"><h3>${I.save}النسخ على السحابة (تلقائي)</h3>
+      <span class="ro-note">كل يوم أول ما ينفتح البرنامج على أي جهاز ويتزامن، تنحفظ نسخة كاملة على سحابة البرنامج بدون ما تسوي شي. تبقى نسخة كل يوم لمدة شهر، ونسخة أول كل شهر بلا نهاية. الاسترجاع يدمج المحذوف وما يمسح شي موجود.</span>
+      ${(()=>{const l=bkLast();return l?`<span class="ro-note">آخر محاولة من هذا الجهاز: ${esc(timeAgo(l.at))} · ${l.ok?"✓ انحفظت":"ما انحفظت: "+esc(l.msg)}</span>`:""})()}
+      <div id="cloudBk"><button class="btn" type="button" data-act="cloudlist">${I.back}عرض النسخ واسترجاعها</button></div></div>`:""}
+    ${window.AI_URL?`<div class="tpl"><h3>${I.save}قاعدة البيانات الجديدة (تجريبي)</h3>
+      <span class="ro-note">نسخة ثانية من الحسابات والحركات على Cloudflare، تنحفظ بيها كل حركة أول بأول، وكل يوم تتطابق مع البيانات الحالية. هذا تحضير للانتقال من Firebase، والبرنامج بعده يشتغل على Firebase مثل ما هو.</span>
+      ${(()=>{const l=d1Last();return l&&l.at?`<span class="ro-note">آخر مطابقة من هذا الجهاز: ${esc(timeAgo(l.at))} · ${l.ok?`✓ متطابقة (${fmt(l.c)} حساب · ${fmt(l.t)} حركة)${l.fixed?` · انرسل ${fmt(l.fixed)} سجل`:""}`:"ما تمت: "+esc(l.msg||"")}</span>`:""})()}
+      <div><button class="btn" type="button" data-act="d1check">فحص المطابقة هسه</button></div></div>`:""}
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
       <span class="ro-note">${lb?"آخر نسخة: "+esc(timeAgo(lb)):"لم تحفظ أي نسخة بعد"}</span>
       <p class="ro-note" style="margin:0">الملف يحتوي: <span class="num">${S.customers.size-sups}</span> زبون، <span class="num">${sups}</span> مورد، <span class="num">${S.txns.size}</span> حركة، مع معلومات المتجر وقوالب الرسائل وسجل النشاط.</p>
@@ -2335,16 +2627,10 @@ function setPage(k){
       <button class="btn ghost" type="button" data-act="pastebackup">لصق نص النسخة</button></div></div>`;}
   if(k==="account")return `<h2>حسابي</h2>
     <div class="user-row"><span class="avatar">${initial(S.me.name)}</span><div class="meta"><b>${esc(S.me.name)}</b><span class="num">@${esc(S.me.username||"")}</span></div><span class="role">${ROLE_LABEL[S.me.role]}</span></div>
-    ${emailCard()}
-    <div class="tpl"><h3>${I.edit}تغيير كلمة المرور</h3>
-      <form id="pwForm" class="field" style="gap:10px" novalidate>
-        <div class="field"><label for="pCur">كلمة المرور الحالية</label><div class="pw"><input id="pCur" type="password" autocomplete="current-password"><button type="button" data-showpw="pCur">إظهار</button></div></div>
-        <div class="field"><label for="pNew">كلمة المرور الجديدة</label><div class="pw"><input id="pNew" type="password" autocomplete="new-password"><button type="button" data-showpw="pNew">إظهار</button></div><span class="help">8 أحرف على الأقل.</span></div>
-        <p class="err" id="pErr"></p>
-        <div><button class="btn primary" type="submit">حفظ كلمة المرور</button></div>
-      </form></div>
-    <div><button class="btn" type="button" data-act="logout" style="color:var(--debt)">${I.out}تسجيل الخروج</button></div>
-    ${delAccountCard()}`;
+    <div><button class="btn" type="button" data-set="security">${I.lock}الأمان والخصوصية: رقمك، إيميلك وكلمة المرور</button></div>
+    <div><button class="btn" type="button" data-act="logout" style="color:var(--debt)">${I.out}تسجيل الخروج</button></div>`;
+  if(k==="security")return securityPage();
+  if(k==="sub")return subPage();
   if(k==="install"){
     const introBtn=`<div style="margin-top:12px"><button class="btn" type="button" data-act="intro">${I.book}شرح البرنامج</button></div>`;
     const shareTxt="برنامج دفتر ديون "+shopName()+":\nللأندرويد (APK): "+APK_URL+"\nللابتوب والآيفون: "+WEB_URL;
@@ -2352,7 +2638,7 @@ function setPage(k){
     ${installEvt?`<div class="tpl"><h3>${I.save}تثبيت على هذا الجهاز</h3><span class="ro-note">يضيف أيقونة للبرنامج ويفتح بنافذة خاصة حتى بدون إنترنت.</span><div><button class="btn primary" type="button" data-act="pwainstall">${I.save}تثبيت الآن</button></div></div>`:""}
     <div class="tpl"><h3>أندرويد (ملف APK)</h3><ol class="steps"><li>حمّل الملف من الزر تحت.</li><li>افتحه واضغط «تثبيت». إذا طلب، فعّل «السماح بالتثبيت من هذا المصدر».</li><li>للتحديث لاحقاً: حمّل الملف من نفس الزر وثبّته فوق القديم، البيانات ما تنمسح.</li></ol>
       <div><a class="btn primary" href="${APK_URL}" target="_blank" rel="noopener">${I.save}تحميل ملف APK</a></div></div>
-    <div class="tpl"><h3>اللابتوب (Chrome أو Edge)</h3><ol class="steps"><li>افتح <span class="num">${esc(WEB_URL)}</span></li><li>اضغط أيقونة التثبيت ⊕ بآخر شريط العنوان، أو من القائمة ⋮ اختر «تثبيت دفتر ديوني».</li><li>تظهر أيقونة على سطح المكتب ويفتح كبرنامج مستقل.</li></ol></div>
+    <div class="tpl"><h3>اللابتوب (Chrome أو Edge)</h3><ol class="steps"><li>افتح <span class="num">${esc(WEB_URL)}</span></li><li>اضغط أيقونة التثبيت ⊕ بآخر شريط العنوان، أو من القائمة ⋮ اختر «تثبيت ديون الشهم».</li><li>تظهر أيقونة على سطح المكتب ويفتح كبرنامج مستقل.</li></ol></div>
     <div class="tpl"><h3>آيفون (Safari)</h3><ol class="steps"><li>افتح الرابط نفسه في Safari.</li><li>اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية».</li></ol></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button" data-act="copylinks" data-txt="${esc(shareTxt)}">${I.copy}نسخ روابط التثبيت</button><a class="btn wa" href="https://wa.me/?text=${encodeURIComponent(shareTxt)}" target="_blank" rel="noopener">${I.wa}إرسال الروابط واتساب</a></div>
     <p class="ro-note" style="margin:0">يشتغل بدون إنترنت، وأول ما يرجع الإنترنت ترسل التعديلات وتتزامن.</p>${introBtn}`;}
@@ -2934,6 +3220,91 @@ function emailCard(){
       <div><button class="btn primary" type="submit">دز رابط التأكيد</button></div>
     </form><span class="ro-note">يوصلك رابط على الإيميل. بعد ما تفتحه يصير دخولك بالإيميل، واسم المستخدم يبقى يشتغل على هذا الجهاز.</span></div>`;
 }
+/* Settings > الأمان والخصوصية: what the person signs in with (number, e-mail, password) at a glance, and where to change each. */
+const pwCard=()=>`
+    <div class="tpl"><h3>${I.edit}تغيير كلمة المرور</h3>
+      <form id="pwForm" class="field" style="gap:10px" novalidate>
+        <div class="field"><label for="pCur">كلمة المرور الحالية</label><div class="pw"><input id="pCur" type="password" autocomplete="current-password"><button type="button" data-showpw="pCur">إظهار</button></div></div>
+        <div class="field"><label for="pNew">كلمة المرور الجديدة</label><div class="pw"><input id="pNew" type="password" autocomplete="new-password"><button type="button" data-showpw="pNew">إظهار</button></div><span class="help">8 أحرف على الأقل.</span></div>
+        <p class="err" id="pErr"></p>
+        <div><button class="btn primary" type="submit">حفظ كلمة المرور</button></div>
+      </form></div>`;
+function securityPage(){
+  const u=auth.currentUser,real=u&&!isFakeEmail(u.email),login=S.me.username||"";
+  const row=(ic,k,v,ok)=>`<div class="sec-row"><span class="sec-ic">${ic}</span><div class="meta"><span class="ro-note">${k}</span><b>${v}</b></div>${ok===undefined?"":`<span class="chip ${ok?"paid":"warn"}">${ok?"مضبوط":"ناقص"}</span>`}</div>`;
+  return `<h2>الأمان والخصوصية</h2><p class="lead">معلومات دخولك لحسابك، ومنها تغيّرها.</p>
+    <div class="tpl sec-sum">
+      ${row(I.call,/^\d{10,15}$/.test(login)?"رقم الهاتف (تدخل بيه)":"اسم الدخول",`<span class="num">${esc(login)}</span>`)}
+      ${row(I.at,"الإيميل",real?`<span class="num">${esc(u.email)}</span>`:"ما مربوط",real)}
+      ${row(I.lock,"كلمة المرور","••••••••")}
+    </div>
+    <div class="banner info"><span>🔒 بياناتك محفوظة على سيرفرات Google بشكل مشفّر، ومحد يشوف دفترك غيرك وغير اللي تضيفهم. لا تعطي كلمة المرور لأحد، وإذا ربطت إيميلك تكدر ترجعها إذا نسيتها. <a href="https://shahm-debts.app/privacy.html" target="_blank" rel="noopener">سياسة الخصوصية</a></span></div>
+    ${phoneCard()}
+    ${emailCard()}
+    ${pwCard()}
+    ${delAccountCard()}`;
+}
+/* Settings > اشتراكي والعروض (shop owners): where the subscription stands, above all the free trial's days left, and the offers in
+   plain words. Prices are the ones in the sales guide (project files, sales/): change both together. */
+const PLANS=[["دفتر الديون","10,000","50,000","90,000","350,000"],["الكاشير","15,000","75,000","135,000","400,000"],["الدفتر + الكاشير","20,000","100,000","180,000","600,000"]];
+function subPage(){
+  const x=S.shop,n=subLeft(x),end=x.until?dmyMs(x.until):"";
+  let st;
+  if(x.trial){const all=Math.max(1,Math.round((x.until-(x.createdAt||x.until))/864e5)),pct=Math.max(0,Math.min(100,Math.round(100*(all-Math.max(0,n))/all)));
+    st=`<div class="banner ${n<=2?"bad":"warn"} sub-now"><b>🎁 أنت هسه بالفترة التجريبية المجانية</b>
+      <span>${n<=0?"تنتهي اليوم":n===1?"باقي يوم واحد":`باقي <b class="num">${n}</b> يوم`} من أصل <span class="num">${all}</span>، وتنتهي <span class="num">${end}</span>.</span>
+      <div class="sub-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+      <span>لما تخلص، الدفتر يتوقف لحد ما تشترك. كل ديونك وبياناتك تبقى محفوظة، وترجع تشتغل أول ما تشترك.</span></div>`}
+  else st=`<div class="banner ok sub-now"><b>✅ اشتراكك فعّال</b><span>${x.until?`لحد <span class="num">${end}</span> (باقي <b class="num">${Math.max(0,n)}</b> يوم).`:"اشتراك دائمي."}</span></div>`;
+  const wa="https://wa.me/"+SUPPORT.wa+"?text="+encodeURIComponent("السلام عليكم، أريد أشترك بديون الشهم لمحل «"+(x.name||shopName())+"».");
+  return `<h2>اشتراكي والعروض</h2>${st}
+    <div class="tpl"><h3>${I.wallet}الأسعار</h3><p class="ro-note" style="margin:0">بالدينار العراقي، لمحل واحد، والعمال والأجهزة بدون حد.</p>
+      ${PLANS.map(([nm,...v])=>`<div class="plan"><b>${nm}</b><div class="plan-p">${v.map((p,i)=>`<span><small>${["شهر","6 أشهر","سنة","دائمي"][i]}</small><b class="num">${p}</b></span>`).join("")}</div></div>`).join("")}
+      <ul class="plan-notes"><li><b>6 أشهر</b> = شهر ببلاش، و<b>السنة</b> = 3 أشهر ببلاش.</li><li><b>الدائمي</b> تدفعه مرة وحدة ويبقى شغّال.</li><li>الدفتر والكاشير سوا أرخص من كل واحد بروحه.</li></ul></div>
+    <div class="tpl"><h3>🎉 عروض الافتتاح (لفترة محدودة)</h3>
+      <ul class="plan-notes"><li>أول شهر من الدفتر بـ <b class="num">5,000</b> بدل 10,000.</li>
+        <li>الدفتر دائمي بـ <b class="num">300,000</b> بدل 350,000، لأول 10 محلات.</li>
+        <li>الدفتر + الكاشير دائمي بـ <b class="num">500,000</b> بدل 600,000، لأول 10 محلات، ويا تنصيب وتدريب بالمحل.</li>
+        <li>جيب محل صديق: كل محل يشترك من طرفك ينضافلك <b>شهر ببلاش</b>.</li>
+        <li>بالسنوي أو الدائمي ندخّل أسماء زبائنك وأرصدتهم من الدفتر الورقي ببلاش.</li></ul></div>
+    <div class="tpl"><h3>${I.check}طريقة الاشتراك</h3><p class="ro-note" style="margin:0">تواصل ويانا وختار باقتك، تدفع نقداً أو بالتحويل، ونفعّل اشتراكك على نفس حسابك. بياناتك تبقى مثل ما هي.</p>
+      <div class="lockd-ways"><a class="btn wa" href="${esc(wa)}" target="_blank" rel="noopener">${I.wa}واتساب</a><a class="btn" href="tel:${SUPPORT.tel}">${I.call}اتصال</a></div></div>`;
+}
+/* Settings > حسابي > رقم الهاتف: when the number is lost or changes, the new one becomes the login (the password and every
+   debt stay as they are). The main notebook's owner signs in with admin or the e-mail, so it isn't shown there. */
+function phoneCard(){
+  if(S.isOwner&&!SHOP)return "";
+  const cur=S.me.username||"";
+  return `<div class="tpl"><h3>${I.call}رقم الهاتف</h3>
+    <span class="ro-note">${/^\d{10,15}$/.test(cur)?`رقمك الحالي: <b class="num">${esc(cur)}</b>. `:""}إذا ضاع رقمك أو تبدّل، اكتب الرقم الجديد هنا وتدخل بيه بنفس كلمة المرور. ديونك وكل بياناتك تبقى مثل ما هي.</span>
+    <form id="phoneForm" class="field" style="gap:10px" novalidate>
+      <div class="field"><label for="phNew">الرقم الجديد</label><input id="phNew" inputmode="tel" autocomplete="tel" maxlength="20" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx"></div>
+      <div class="field"><label for="phPw">كلمة المرور الحالية</label><div class="pw"><input id="phPw" type="password" autocomplete="current-password"><button type="button" data-showpw="phPw">إظهار</button></div></div>
+      <p class="err" id="phErr"></p>
+      <div><button class="btn primary" type="submit" id="phGo">حفظ الرقم الجديد</button></div>
+    </form></div>`;
+}
+async function changePhone(){
+  const err=$("#phErr"),btn=$("#phGo"),ph=phoneId($("#phNew").value),pw=$("#phPw").value,u=auth.currentUser,old=S.me.username||"";
+  if(!/^\d{10,15}$/.test(ph)){err.textContent="اكتب رقم هاتف صحيح، مثل 07701234567.";return}
+  if(ph===old){err.textContent="هذا رقمك الحالي.";return}
+  if(!pw){err.textContent="اكتب كلمة المرور الحالية.";return}
+  btn.disabled=true;
+  try{
+    await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,pw));
+    const taken=await db.doc("logins/"+ph).get({source:"server"});
+    if(taken.exists&&taken.data().uid!==u.uid){err.textContent="هذا الرقم مسجّل بحساب ثاني.";btn.disabled=false;return}
+    // A login on a real e-mail keeps signing in with it; only a number login needs the pointer.
+    const base=isFakeEmail(u.email)?u.email:"";
+    if(base&&base!==emailOf(ph))await db.doc("logins/"+ph).set({email:base,uid:u.uid,at:Date.now()});
+    if(SHOP&&S.isOwner)await db.doc("shops/"+SHOP).update({phone:ph,username:ph});
+    else await db.doc(P("users")+"/"+u.uid).update({username:ph,phone:ph});
+    if(/^\d{10,15}$/.test(old)){const o=await db.doc("logins/"+old).get({source:"server"}).catch(()=>null);if(o&&o.exists&&o.data().uid===u.uid)await db.doc("logins/"+old).delete()}
+    rememberLogin(ph,u.email);S.me.username=ph;
+    if(canWrite())log("edit","account",{detail:`غيّر رقم هاتفه إلى ${ph}`});
+    render();toast(`تغيّر رقمك. من هسه ادخل بـ ${ph} وبنفس كلمة المرور.`,{ms:9000});
+  }catch(x){btn.disabled=false;err.textContent=x&&x.code==="permission-denied"?"تغيير الرقم بعده ما مفعّل: صاحب البرنامج لازم ينشر قواعد Firebase الجديدة.":authMsg(x)}
+}
 async function linkEmail(){
   const m=$("#mNew").value.trim().toLowerCase(),pw=$("#mPw").value,err=$("#mErr");
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)||isFakeEmail(m)){err.textContent="اكتب إيميل صحيح.";return}
@@ -3130,7 +3501,7 @@ function restorePreview(text){
       try{
         for(let i=0;i<ops.length;i+=400){
           const b=db.batch();
-          for(const o of ops.slice(i,i+400)){const ref=db.collection(P(o[1])).doc(o[2]);if(o[0]==="del"){b.delete(ref);goneNote(o[1],o[2])}else b.set(ref,o[3])}
+          for(const o of ops.slice(i,i+400)){const ref=db.collection(P(o[1])).doc(o[2]);if(o[0]==="del"){b.delete(ref);goneNote(o[1],o[2])}else b.set(ref,o[3]);d1Queue(o[1],o[2],o[0]==="del"?null:o[3])}
           await b.commit();btn.textContent=`جارِ الاستعادة… ${Math.min(100,Math.round((i+400)/ops.length*100))}%`;
         }
       }catch(e){console.warn(e);btn.disabled=false;btn.textContent="استعادة";m.querySelector("#rErr2").textContent="انقطعت الاستعادة. تحقق من الإنترنت واضغط استعادة مرة ثانية، ما يتكرر شي.";return}
@@ -3730,6 +4101,7 @@ document.addEventListener("click",e=>{
   const rpp=t.closest("[data-repper]");if(rpp){S.rep.per=rpp.dataset.repper;if(S.rep.per==="custom"&&!S.rep.from){S.rep.to=todayISO();S.rep.from=addDays(todayISO(),-29)}render();return}
   const htf=t.closest("[data-htf]");if(htf){S.ht.f=htf.dataset.htf;document.querySelectorAll("[data-htf]").forEach(b=>b.setAttribute("aria-pressed",b===htf));renderHomeTable();return}
   const wf=t.closest("[data-wf]");if(wf){S.rep.wf=wf.dataset.wf;S.rep.wlimit=40;render();return}
+  const cg=t.closest("[data-cloudget]");if(cg){if(isAdmin())cloudGet(cg.dataset.cloudget);return}
   const fw=t.closest("[data-follow]");if(fw){const fc=S.customers.get(fw.dataset.follow);if(fc&&canWrite())followForm(fc);return}
   const b=t.closest("[data-act]");if(!b)return;
   const c=S.customers.get(S.selected);
@@ -3739,7 +4111,9 @@ document.addEventListener("click",e=>{
     case "viewlist":if(c)viewListPhotos(c,b.dataset.date);break;
     case "listsall":if(c){S.listsAll=c.id;render()}break;
     case "newcustq":{const nm=($("#hq")||{}).value||"";S.kind="customer";customerForm(null,id=>openCustomer(id));setTimeout(()=>{const i=$("#cName");if(i&&!i.value)i.value=nm.trim()},0);break}
-    case "monthrep":monthReport();break;
+    case "monthrep":if(can("totals"))monthReport();break;
+    case "cloudlist":if(isAdmin())cloudList();break;
+    case "d1check":if(isAdmin()){toast("جاري فحص المطابقة…");d1Check(true)}break;
     case "voice":if(canWrite())voiceEntry();break;
     case "gowarn":S.rep.tab="warn";S.rep.wf="all";go("reports");break;
     case "reppdf":repExport("pdf");break;
@@ -3764,12 +4138,12 @@ document.addEventListener("click",e=>{
     case "newcust":if(canWrite())customerForm(null);break;
     case "debt":if(canWrite())txnForm("debt");break;
     case "pay":if(canWrite())txnForm("pay");break;
-    case "editcust":if(canWrite())customerForm(c);break;
+    case "editcust":if(canEdit())customerForm(c);break;
     case "statement":showStatement();break;
     case "zero":if(canWrite()&&c)zeroAccount(c);break;
-    case "setlimit":if(canWrite())customerForm(c);break;
+    case "setlimit":if(canEdit())customerForm(c);break;
     case "custpdf":if(c)custPdf(c);break;
-    case "listpdf":listPdf();break;
+    case "listpdf":if(can("totals"))listPdf();break;
     case "intro":showIntro(0);break;
     case "pushon":pushOn();break;
     case "pushoff":pushOff();break;
@@ -3804,15 +4178,15 @@ document.addEventListener("click",e=>{
     case "wabizlink":waBizForm();break;
     case "wabizoff":try{localStorage.removeItem(WA_BIZ_KEY)}catch(x){}render();break;
     case "savetpl":if(isAdmin()){const tp={};for(const k of Object.keys(DEFAULT_TPL))tp[k]=document.getElementById("tpl-"+k).value;saveSettings({templates:tp}).then(ok=>ok&&toast("تم حفظ القوالب"))}break;
-    case "edittx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())txnForm(null,x);break}
+    case "edittx":{const x=S.txns.get(b.dataset.id);if(x&&canEdit())txnForm(null,x);break}
     case "receipt":{const x=S.txns.get(b.dataset.id);if(x&&c&&!isSup(c)&&x.type==="pay")showReceipt(x,c);break}
     case "resendwa":{const x=S.txns.get(b.dataset.id);if(x&&c&&!isSup(c)&&waNumber(c.phone))
       openExternal(waLink(c.phone,fillTpl(x.type==="debt"?"debt":"pay",c,{amount:x.amount,date:x.date,note:x.note,time:hm12(x.createdAt)})));break}
-    case "deltx":{const x=S.txns.get(b.dataset.id);if(x&&canWrite())confirmBox("حذف الحركة",`حذف ${c&&isSup(c)?(x.type==="debt"?"فاتورة":"دفعة"):(x.type==="debt"?"دين":"تسديد")} بمبلغ ${fmt(x.amount)} ${CUR} بتاريخ ${x.date}؟`,"حذف",()=>{del("txns",x.id);log("delete",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount,...(c&&isSup(c)?{sup:true}:{})});
+    case "deltx":{const x=S.txns.get(b.dataset.id);if(x&&canEdit())confirmBox("حذف الحركة",`حذف ${c&&isSup(c)?(x.type==="debt"?"فاتورة":"دفعة"):(x.type==="debt"?"دين":"تسديد")} بمبلغ ${fmt(x.amount)} ${CUR} بتاريخ ${x.date}؟`,"حذف",()=>{del("txns",x.id);log("delete",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount,...(c&&isSup(c)?{sup:true}:{})});
       // Photos are removed only after the undo window closes.
       let undone=false;const tm=setTimeout(()=>{if(!undone)dropPhotos(x.photos)},9000);
       toast("حُذفت الحركة",{label:"تراجع",ms:8000,onClick:()=>{undone=true;clearTimeout(tm);put("txns",x);log("add",x.type==="debt"?"debt":"pay",{customerName:c?c.name:"",amount:x.amount,detail:"تراجع عن الحذف",...(c&&isSup(c)?{sup:true}:{})});toast("رجعت الحركة")}})});break}
-    case "delcust":if(canWrite()&&c)confirmBox("حذف الزبون",`سيُحذف ${c.name} وكل حركاته نهائياً. صدّر نسخة احتياطية أولاً إذا كنت تحتاج السجل.`,"حذف نهائي",()=>{
+    case "delcust":if(canEdit()&&c)confirmBox("حذف الزبون",`سيُحذف ${c.name} وكل حركاته نهائياً. صدّر نسخة احتياطية أولاً إذا كنت تحتاج السجل.`,"حذف نهائي",()=>{
       const gone=txnsOf(c.id),cc={...c};for(const x of gone)del("txns",x.id);del("customers",c.id);log("delete","customer",{customerName:c.name});S.selected=null;render();
       let undone=false;const tm=setTimeout(()=>{if(!undone){for(const x of gone)dropPhotos(x.photos);dropPhotos((cc.lists||[]).map(x=>x.id))}},9000);
       toast("حُذف الحساب",{label:"تراجع",ms:8000,onClick:()=>{undone=true;clearTimeout(tm);put("customers",cc);for(const x of gone)put("txns",x);log("add","customer",{customerName:cc.name,detail:"تراجع عن الحذف"});openCustomer(cc.id);toast("رجع الحساب وكل حركاته")}})});break;
@@ -3867,6 +4241,8 @@ document.addEventListener("change",e=>{
   if(e.target.id==="payDay"&&e.target.value){S.rep.pday=e.target.value;render()}
   if(e.target.id==="repFrom"||e.target.id==="repTo"){if(e.target.value){S.rep[e.target.id==="repFrom"?"from":"to"]=e.target.value;render()}}
   if(e.target.id==="importFile"){const f=e.target.files[0];if(f&&isAdmin())importData(f);e.target.value=""}
+  const upm=e.target.closest&&e.target.closest("[data-uperm]");
+  if(upm&&isAdmin()){const a=S.accounts.get(upm.dataset.id),k=upm.dataset.uperm,on=upm.checked;if(a){const pm={...(a.perms||{})};if(on)delete pm[k];else pm[k]=false;put("accounts",{...a,perms:pm});const l=(PERMS.find(x=>x[0]===k)||[,k])[1];log("edit","account",{detail:`${on?"سمح":"منع"} ${a.name}: ${l}`});toast(on?"تم السماح":"تم المنع")}}
   const ur=e.target.closest&&e.target.closest("[data-urole]");
   if(ur&&isAdmin()){const a=S.accounts.get(ur.dataset.urole);if(a){put("accounts",{...a,role:ur.value});log("edit","account",{detail:`غيّر صلاحية ${a.name} إلى ${ROLE_LABEL[ur.value]}`});toast("تم تغيير الصلاحية")}}
 });
@@ -3874,6 +4250,7 @@ document.addEventListener("submit",e=>{
   if(e.target.id==="pwForm"){e.preventDefault();changePassword();return}
   if(e.target.id==="delForm"){e.preventDefault();deleteMyAccount();return}
   if(e.target.id==="mailForm"){e.preventDefault();linkEmail();return}
+  if(e.target.id==="phoneForm"){e.preventDefault();changePhone();return}
   if(e.target.id==="bizForm"){e.preventDefault();if(!isAdmin())return;const b=bizData();S.bizDraft=null;
     saveSettings({shopName:b.name.trim()||shopName(),phone:b.phone.trim(),address:b.address.trim(),card:{desc:b.desc.trim(),manager:b.manager.trim(),social:b.social.trim(),style:b.style}}).then(ok=>{if(ok)toast("انحفظت البطاقة")});return}
   if(e.target.id==="lockCodeForm"){e.preventDefault();if(!isAdmin())return;const v=normDigits($("#lcCode").value).trim();
@@ -3904,7 +4281,7 @@ const SHOP_ST={pending:["بانتظار التفعيل","warn"],trial:["فترة
 /* Free trial: when the owner sets meta/trial.days, a new shop opens by itself for that many days (trial:true, until);
    the rules check the length against meta/trial, so a shop can't give itself more. Paying ends the trial from today. */
 const TRIAL_DAYS=[0,7,15,30];
-const SUB_PLANS=[["trial","تجربة",0],["1","شهر",1],["3","3 أشهر",3],["6","6 أشهر",6],["12","سنة",12],["date","تاريخ معيّن",0],["none","بدون مدة",0]];
+const SUB_PLANS=[["trial","تجربة",0],["1","شهر",1],["3","3 أشهر",3],["6","6 أشهر",6],["12","سنة",12],["none","دائمي",0],["date","تاريخ معيّن",0]];
 const subLeft=x=>x&&x.until?Math.ceil((x.until-Date.now())/864e5):null;
 const shopExpired=x=>!!(x&&x.status==="active"&&x.until&&x.until<=Date.now());
 const shopState=x=>shopExpired(x)?"expired":x.status==="active"&&x.trial?"trial":(x.status||"pending");
@@ -3912,7 +4289,7 @@ const dmyMs=ms=>{const d=new Date(ms);return `${d.getDate()}/${d.getMonth()+1}/$
 function addMonths(ms,n){const d=new Date(ms),day=d.getDate();d.setMonth(d.getMonth()+n);if(d.getDate()<day)d.setDate(0);return d.getTime()}
 function subLine(x){
   if(x.status!=="active"&&!x.until)return "";
-  if(!x.until)return `<span class="ro-note">الاشتراك: بدون مدة</span>`;
+  if(!x.until)return `<span class="ro-note">الاشتراك: دائمي</span>`;
   const n=subLeft(x);return `<span class="ro-note ${n<=0?"sub-end":n<=7?"sub-soon":""}">${x.trial?"التجربة":"الاشتراك"} إلى ${dmyMs(x.until)} · ${n<=0?"انتهى":n===1?"باقي يوم":`باقي ${n} يوم`}</span>`;
 }
 // Redraw the shops list and the bell when the next subscription ends, so an ended shop moves without a reload.
@@ -3923,7 +4300,7 @@ function subForm(id){
   const prices=(S.settings.subPrices||{}),subs=(x.subs||[]).slice().reverse(),paid=subs.reduce((a,v)=>a+(Number(v.amount)||0),0);
   const base=Math.max(Date.now(),x.until&&x.status==="active"&&!x.trial?x.until:0),tDays=S.trialDays||15;
   openModal(`<h3>اشتراك ${esc(x.name)}</h3>
-    <p class="hint">${x.trial&&x.status==="active"?`بالفترة التجريبية لحد ${dmyMs(x.until)}${shopExpired(x)?" (انتهت)":""}. الاشتراك المدفوع يبدأ من اليوم.`:x.until&&x.status==="active"?`ينتهي حالياً ${dmyMs(x.until)}${shopExpired(x)?" (انتهى)":""}. التمديد يبدأ ${shopExpired(x)||x.status!=="active"?"من اليوم":"من نهاية الاشتراك الحالي"}.`:x.status==="active"?"شغّال بدون مدة. اختار مدة حتى ينقفل وحده بنهايتها.":"اختار المدة اللي دفع عليها، وينفتح دفتره هسه."}</p>
+    <p class="hint">${x.trial&&x.status==="active"?`بالفترة التجريبية لحد ${dmyMs(x.until)}${shopExpired(x)?" (انتهت)":""}. الاشتراك المدفوع يبدأ من اليوم.`:x.until&&x.status==="active"?`ينتهي حالياً ${dmyMs(x.until)}${shopExpired(x)?" (انتهى)":""}. التمديد يبدأ ${shopExpired(x)||x.status!=="active"?"من اليوم":"من نهاية الاشتراك الحالي"}.`:x.status==="active"?"شغّال تفعيل دائمي. اختار مدة حتى ينقفل وحده بنهايتها.":"اختار المدة اللي دفع عليها، وينفتح دفتره هسه."}</p>
     <form id="subF" class="field" style="gap:12px" novalidate>
       <div class="chips" role="group" aria-label="المدة">${SUB_PLANS.map(([k,l])=>`<button type="button" data-subplan="${k}" aria-pressed="${k==="1"}">${k==="trial"?`تجربة ${tDays} يوم`:l}</button>`).join("")}</div>
       <div class="field" id="subDateF" hidden><label for="subDate">ينتهي بتاريخ</label><input id="subDate" type="date" min="${todayISO()}"></div>
@@ -3932,21 +4309,21 @@ function subForm(id){
       <p class="err" id="subErr"></p>
       <div class="foot"><button class="btn primary" type="submit">${x.status==="active"&&!shopExpired(x)?"تمديد الاشتراك":"تفعيل"}</button><button class="btn" type="button" data-close>إلغاء</button></div>
     </form>
-    ${subs.length?`<h3 style="margin-top:14px;font-size:15px">الاشتراكات السابقة${paid?` · المجموع <span class="num">${fmt(paid)}</span>`:""}</h3><ul class="sub-hist">${subs.slice(0,12).map(v=>`<li><span>${esc(v.label||"")}</span><span class="num">${v.to?"إلى "+dmyMs(v.to):"بدون مدة"}</span><span class="num">${v.amount?fmt(v.amount):"—"}</span><span class="ro-note">${dmyMs(v.at)}</span></li>`).join("")}</ul>`:""}`,m=>{
+    ${subs.length?`<h3 style="margin-top:14px;font-size:15px">الاشتراكات السابقة${paid?` · المجموع <span class="num">${fmt(paid)}</span>`:""}</h3><ul class="sub-hist">${subs.slice(0,12).map(v=>`<li><span>${esc(v.label||"")}</span><span class="num">${v.to?"إلى "+dmyMs(v.to):"دائمي"}</span><span class="num">${v.amount?fmt(v.amount):"—"}</span><span class="ro-note">${dmyMs(v.at)}</span></li>`).join("")}</ul>`:""}`,m=>{
     let plan="1";const to=()=>{const P=SUB_PLANS.find(p=>p[0]===plan);if(plan==="none")return null;if(plan==="trial")return Math.max(Date.now(),x.until||0)+tDays*864e5;if(plan==="date"){const v=m.querySelector("#subDate").value;if(!v)return undefined;const [y,mo,d]=v.split("-").map(Number);return new Date(y,mo-1,d,23,59,59).getTime()}return addMonths(base,P[2])};
-    const show=()=>{const t=to();m.querySelector("#subTo").innerHTML=t===null?"ينفتح بدون تاريخ انتهاء.":t?`ينفتح لحد <b class="num">${dmyMs(t)}</b> (${Math.ceil((t-Date.now())/864e5)} يوم).`:""};
+    const show=()=>{const t=to();m.querySelector("#subTo").innerHTML=t===null?"تفعيل دائمي: ينفتح بدون تاريخ انتهاء.":t?`ينفتح لحد <b class="num">${dmyMs(t)}</b> (${Math.ceil((t-Date.now())/864e5)} يوم).`:""};
     m.querySelectorAll("[data-subplan]").forEach(b=>b.addEventListener("click",()=>{plan=b.dataset.subplan;m.querySelectorAll("[data-subplan]").forEach(o=>o.setAttribute("aria-pressed",o===b));
-      m.querySelector("#subDateF").hidden=plan!=="date";m.querySelector("#subAmtF").hidden=plan==="none"||plan==="trial";const pr=prices[plan];m.querySelector("#subAmt").value=pr?fmt(pr):"";show()}));
+      m.querySelector("#subDateF").hidden=plan!=="date";m.querySelector("#subAmtF").hidden=plan==="trial";const pr=prices[plan];m.querySelector("#subAmt").value=pr?fmt(pr):"";show()}));
     m.querySelector("#subDate").addEventListener("input",show);show();
     m.querySelector("#subF").addEventListener("submit",e=>{e.preventDefault();
       const t=to(),err=m.querySelector("#subErr");if(t===undefined){err.textContent="اختار تاريخ الانتهاء.";return}
       if(t&&t<=Date.now()){err.textContent="التاريخ لازم يكون بعد اليوم.";return}
-      const av=m.querySelector("#subAmt").value.trim(),amount=plan==="none"||plan==="trial"||!av?0:parseAmt(av);if(av&&plan!=="none"&&plan!=="trial"&&!(amount>0)){err.textContent="المبلغ لازم يكون رقم.";return}
+      const av=m.querySelector("#subAmt").value.trim(),amount=plan==="trial"||!av?0:parseAmt(av);if(av&&plan!=="trial"&&!(amount>0)){err.textContent="المبلغ لازم يكون رقم.";return}
       const label=plan==="trial"?`تجربة ${tDays} يوم`:SUB_PLANS.find(p=>p[0]===plan)[1],entry={at:Date.now(),plan,label,from:t?base:Date.now(),to:t,amount:Math.round(amount||0),by:S.me.name};
       db.doc("shops/"+id).update({status:"active",activatedAt:x.activatedAt||Date.now(),until:t,trial:plan==="trial",subs:firebase.firestore.FieldValue.arrayUnion(entry)}).catch(writeFail);
       if(amount>0&&plan!=="date"&&plan!=="trial"&&prices[plan]!==Math.round(amount))saveSettings({subPrices:{...prices,[plan]:Math.round(amount)}});
       log("edit","account",{detail:`اشتراك محل ${x.name}: ${label}${t?" إلى "+dmyMs(t):""}${amount?" بمبلغ "+fmt(amount):""}`});
-      closeModal();toast(t?`انفعّل ${x.name} لحد ${dmyMs(t)}`:`انفعّل ${x.name} بدون مدة`)});
+      closeModal();toast(t?`انفعّل ${x.name} لحد ${dmyMs(t)}`:`انفعّل ${x.name} تفعيل دائمي`)});
   });
 }
 function shopsPage(){
@@ -3955,14 +4332,16 @@ function shopsPage(){
     return `<div class="user-row"><span class="avatar">${esc(markLetter(x.name))}</span><div class="meta"><b>${esc(x.name)}</b>
       <span>${esc(x.ownerName||"")} · <span class="num">@${esc(x.username||"")}</span>${x.phone?` · <span class="num">${esc(x.phone)}</span>`:""}</span>
       <span class="ro-note">سجّل ${esc(timeAgo(x.createdAt||0))}${x.activatedAt?` · انفعّل ${esc(shortDate(new Date(x.activatedAt).toISOString().slice(0,10)))}`:""}${subLine(x)?" · ":""}</span>${subLine(x)}</div>
-      <div class="ops"><span class="chip ${cls}">${lbl}</span>
+      <div class="ops"><span class="chip ${cls}">${lbl}</span>${x.pos?`<span class="chip paid">كاشير</span>`:""}
         <button class="btn ${x.status==="active"&&!shopExpired(x)&&!x.trial?"":"paid "}sm" type="button" data-shopact="sub" data-id="${esc(x.id)}">${x.status==="active"&&!shopExpired(x)&&!x.trial?"تمديد":"تفعيل"}</button>
+        ${x.status!=="pending"?`<button class="btn sm" type="button" data-shopact="pos" data-id="${esc(x.id)}" aria-pressed="${!!x.pos}">${x.pos?"إيقاف الكاشير":"تشغيل الكاشير"}</button>`:""}
         ${x.status==="active"?`<button class="btn sm" type="button" data-shopact="disable" data-id="${esc(x.id)}">إيقاف</button>`:""}
         ${x.status==="pending"?`<button class="btn ghost sm danger-text" type="button" data-shopact="reject" data-id="${esc(x.id)}">رفض</button>`:""}</div></div>`};
   const by=st=>all.filter(x=>shopState(x)===st);
   const sec=(t,l)=>l.length?`<h3 style="margin:8px 0 0;font-size:15px">${t} (${l.length})</h3>${l.map(row).join("")}`:"";
   return `<h2>المحلات</h2><p class="lead">المشتري ينزّل نفس التطبيق (أو يفتح الموقع)، يضغط «سجّل محلك»، ويظهر هنا. فعّله بعد ما يدفع، ويصير إله دفتر منفصل: ما يشوف بياناتك ولا تشوف بياناته من هنا. الموقوف ما يكدر يفتح دفتره، وبياناته تبقى لحد ما ترجع تفعّله.</p>
     <p class="ro-note">«تفعيل» و«تمديد»: تختار المدة (تجربة، شهر، 3 أشهر، 6 أشهر، سنة أو تاريخ)، والمحل ينقفل وحده بنهايتها لحد ما تجدّد له. بياناته تبقى محفوظة.</p>
+    <p class="ro-note">«تشغيل الكاشير»: للمحل اللي اشترى الكاشير. صاحبه وعماله يفتحون الكاشير (shahm-debts.app/pos أو تطبيق الكاشير) بنفس حساباتهم، والبيع بالدين ينكتب بدفتره. ينقفل ويا اشتراك المحل.</p>
     <div class="card" style="margin:10px 0;padding:12px 14px"><b style="font-size:15px">الفترة التجريبية</b>
       <p class="ro-note" style="margin:4px 0 8px">المحل الجديد ينفتح وحده بعد ما يسجّل، لهذي المدة، وبنهايتها ينقفل لحد ما يدفع. «بدون» = ينتظر تفعيلك مثل قبل.</p>
       <div class="chips" role="group" aria-label="الفترة التجريبية">${TRIAL_DAYS.map(n=>`<button type="button" data-trialdays="${n}" aria-pressed="${(S.trialDays||0)===n}">${n?n+" يوم":"بدون"}</button>`).join("")}</div></div>
@@ -3972,6 +4351,13 @@ function shopAction(act,id){
   const x=S.shops.get(id);if(!x||!S.superOwner)return;
   const set=patch=>db.doc("shops/"+id).update(patch).catch(writeFail);
   if(act==="activate"||act==="sub"){subForm(id);return}
+  // The shop's cashier (web/pos/): on only after the rules that hold it are published (meta/rules-v4).
+  if(act==="pos"){
+    if(x.pos){confirmBox("إيقاف الكاشير",`كاشير ${x.name} ينقفل ودفتر ديونه يبقى شغّال. مواده ومبيعاته ما تنحذف، وترجع إذا شغّلته.`,"إيقاف",()=>{set({pos:false});log("edit","account",{detail:`أوقف كاشير محل ${x.name}`});toast("انوقف الكاشير")});return}
+    db.doc("meta/rules-v4").get().then(()=>{set({pos:true});log("edit","account",{detail:`شغّل كاشير محل ${x.name}`});toast(`انفتح الكاشير لـ ${x.name}`)},
+      e=>{if(e&&e.code==="permission-denied")toast("انشر قواعد firestore.rules الجديدة من Firebase أول، وبعدها شغّل الكاشير.",7000);else writeFail(e)});
+    return;
+  }
   else if(act==="disable")confirmBox("إيقاف المحل",`محل ${x.name} وعماله ما يكدرون يفتحون الدفتر لحد ما ترجع تفعّله. بياناتهم ما تنحذف.`,"إيقاف",()=>{set({status:"disabled"});toast("انوقف المحل")});
   else if(act==="reject")confirmBox("رفض المحل",`ينحذف طلب ${x.name}. إذا صاحبه دخل بعدين يكدر يسجّل محله من جديد.`,"رفض",()=>{db.doc("shops/"+id).delete().catch(writeFail);toast("انرفض الطلب")});
 }
@@ -4054,6 +4440,7 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
     return cached;
   }
   // Opens a shop's notebook once its owner (the root owner) has activated it; its owner is the account whose uid is the shop id.
+  function showExpired(own){const tr=S.shop.trial;showLocked(tr?"انتهت الفترة التجريبية":"انتهى الاشتراك",own?(tr?`انتهت الفترة التجريبية لمحلك بتاريخ ${dmyMs(S.shop.until)}.`:`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}.`):"انتهى اشتراك المحل. راجع صاحب المحل.",own)}
   function enterShop(u,uname){
     const own=SHOP===u.uid;let profOff=null;
     const close=()=>{stopData();S.me=null};
@@ -4061,11 +4448,12 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
       if(!s.exists){if(s.metadata.fromCache)return;close();showWaiting(own?"طلب محلك انرفض أو انحذف. تواصل ويا صاحب البرنامج.":"هذا المحل انحذف. راجع صاحب المحل.","bad");return}
       S.shop={...s.data(),id:s.id};
       if(S.shop.status==="pending"){close();showWaiting(own?`تم تسجيل «${S.shop.name}» ✅ بانتظار التفعيل من صاحب البرنامج. أول ما يتفعّل يفتح دفترك تلقائياً.`:"المحل بعده ما متفعّل. راجع صاحب المحل.","warn");return}
-      if(S.shop.status!=="active"){close();showWaiting(own?"اشتراك محلك موقوف. تواصل ويا صاحب البرنامج حتى يرجع يشتغل، وبياناتك محفوظة.":"المحل موقوف. راجع صاحب المحل.","bad");return}
+      if(S.shop.status==="expired"&&S.shop.until){close();showExpired(own);return}
+      if(S.shop.status!=="active"){close();showLocked("الدفتر موقوف",own?"اشتراك محلك موقوف حالياً، وبياناتك كلها محفوظة.":"المحل موقوف. راجع صاحب المحل.",own);return}
       clearTimeout(enterShop.endT);
-      if(shopExpired(S.shop)){close();showWaiting(own?(S.shop.trial?`انتهت الفترة التجريبية لمحلك بتاريخ ${dmyMs(S.shop.until)}. اشترك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وكل اللي سجلته محفوظ.`:`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}. جدّد الاشتراك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وبياناتك كلها محفوظة.`):"انتهى اشتراك المحل. راجع صاحب المحل.","bad");return}
+      if(shopExpired(S.shop)){close();showExpired(own);return}
       // Close the notebook the moment the subscription ends while it is open (setTimeout can't wait more than ~24 days).
-      if(S.shop.until){const ms=S.shop.until-Date.now();if(ms<20*864e5)enterShop.endT=setTimeout(()=>{if(SHOP===S.shop.id&&shopExpired(S.shop)){close();showWaiting(own?(S.shop.trial?`انتهت الفترة التجريبية لمحلك بتاريخ ${dmyMs(S.shop.until)}. اشترك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وكل اللي سجلته محفوظ.`:`انتهى اشتراك محلك بتاريخ ${dmyMs(S.shop.until)}. جدّد الاشتراك ويا صاحب البرنامج ويرجع يفتح تلقائياً، وبياناتك كلها محفوظة.`):"انتهى اشتراك المحل. راجع صاحب المحل.","bad")}},ms+1000)}
+      if(S.shop.until){const ms=S.shop.until-Date.now();if(ms<20*864e5)enterShop.endT=setTimeout(()=>{if(SHOP===S.shop.id&&shopExpired(S.shop)){close();showExpired(own)}},ms+1000)}
       if(own){
         const first=!S.me;S.isOwner=true;
         S.me={id:u.uid,name:S.settings.ownerName||S.shop.ownerName||"المدير",role:"owner",username:S.shop.username||uname};
@@ -4141,7 +4529,7 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
       if(p.status==="pending"){stopData();S.me=null;showWaiting("تم استلام طلبك ✅ بانتظار موافقة المدير. أول ما يفعّل حسابك يفتح البرنامج تلقائياً.","warn");return}
       if(p.status==="disabled"){stopData();S.me=null;showWaiting("تم إيقاف هذا الحساب. راجع المدير.","bad");return}
       const first=!S.me;
-      S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:p.username||uname};
+      S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:p.username||uname,perms:p.perms||{}};
       rememberLogin(S.me.username,u.email);
       startData();if(first||$("#app").hidden)showApp();else render();
     },e=>{console.warn(e);

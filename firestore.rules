@@ -55,9 +55,9 @@ service cloud.firestore {
       allow write: if isOwner() && (id != 'owner' || (request.resource != null && request.resource.data.uid is string));
     }
     // Readable only once these rules are published: rules-v2 lets the owner change e-mail, rules-v3 lets the app read only
-    // what changed (it needs the gone notes below).
+    // what changed (it needs the gone notes below), rules-v4 opens the cashier for shops.
     match /meta/{id} {
-      allow get: if signedIn() && id in ['rules-v2', 'rules-v3', 'trial'];
+      allow get: if signedIn() && id in ['rules-v2', 'rules-v3', 'rules-v4', 'trial'];
       // trial: how many days a newly registered shop opens by itself (0 = waits for this owner, as before).
       allow write: if isOwner() && id == 'trial' && d().keys().hasOnly(['days', 'at']) && d().days is int && d().days >= 0 && d().days <= 90;
     }
@@ -141,7 +141,25 @@ service cloud.firestore {
       allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
       // Signing up here: not an account that belongs to another shop.
       allow create: if isOwner() || (signedIn() && request.auth.uid == uid && !exists(memberPath(uid)) && signUpOk(uid));
-      allow update, delete: if isOwner();
+      allow update: if isOwner() || selfPhone(uid);
+      allow delete: if isOwner();
+    }
+    // Settings > حسابي > رقم الهاتف: the person moves their own login name to a new number, nothing else.
+    function selfPhone(uid) {
+      return signedIn() && request.auth.uid == uid && d().diff(resource.data).affectedKeys().hasOnly(['username', 'phone'])
+        && d().username is string && d().username.matches('^[0-9]{10,15}$') && d().get('phone', '') == d().username;
+    }
+    // A number moved to an account (logins/{number} → that account's own login e-mail): anyone may look one up to sign in;
+    // only the account itself writes or removes its own, and a number another account holds can't be taken.
+    match /logins/{p} {
+      allow get: if true;
+      allow create: if loginOk(p);
+      allow update: if resource.data.uid == request.auth.uid && loginOk(p);
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+    function loginOk(p) {
+      return signedIn() && p.matches('^[0-9]{10,15}$') && d().keys().hasOnly(['email', 'uid', 'at'])
+        && d().uid == request.auth.uid && d().email == request.auth.token.email && d().at is number;
     }
     // Signing up: a pending viewer with only the fields the sign-up form writes.
     function signUpOk(uid) {
@@ -174,6 +192,23 @@ service cloud.firestore {
     function sReader(s) { return shopOn(s) && (sOwner(s) || sMember(s)); }
     function sWriter(s) { return shopOn(s) && (sOwner(s) || (sMember(s) && sProf(s).role == 'editor')); }
     function sBoss(s) { return shopOn(s) && sOwner(s); }
+    // The cashier (web/pos/) of a shop opens only once this app's owner turned it on for that shop (shops/{s}.pos), and closes
+    // with the shop. Inside it the same people do the same things as at the root: the shop's owner is the owner there.
+    function posOn(s) { return shopOn(s) && get(shopPath(s)).data.get('pos', false) == true; }
+    function pReader(s) { return posOn(s) && (sOwner(s) || sMember(s)); }
+    function pWriter(s) { return posOn(s) && (sOwner(s) || (sMember(s) && sProf(s).role == 'editor')); }
+    function pItems(s) { return posOn(s) && (sOwner(s) || (sMember(s) && sProf(s).role == 'editor' && sProf(s).get('items', false) == true)); }
+    function pBoss(s) { return posOn(s) && sOwner(s); }
+    function sApPath(s, aid) { return /databases/$(database)/documents/shops/$(s)/approvals/$(aid); }
+    function sDiscountOk(s, d) {
+      return !('discount' in d) || d.discount == 0 || sOwner(s) || (('approvalId' in d) && d.approvalId is string
+        && exists(sApPath(s, d.approvalId))
+        && get(sApPath(s, d.approvalId)).data.status == 'approved'
+        && get(sApPath(s, d.approvalId)).data.byId == request.auth.uid
+        && get(sApPath(s, d.approvalId)).data.amount >= d.discount
+        && get(sApPath(s, d.approvalId)).data.subtotal == d.subtotal
+        && getAfter(sApPath(s, d.approvalId)).data.status == 'used');
+    }
     function sSigned(s, x) { return (x.by == sProf(s).get('name', x.by) || sProf(s).get('name', '') == '') && x.at is number && x.at < request.time.toMillis() + 86400000; }
 
     match /memberOf/{uid} {
@@ -190,8 +225,8 @@ service cloud.firestore {
         && d().id == s && d().owner == s && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30)
         && str(d().username, 40) && d().createdAt is number
         && ((d().status == 'pending' && !('trial' in d()) && !('until' in d())) || (d().status == 'active' && d().trial == true && trialOk(d().until)));
-      allow update: if isOwner() || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['name', 'ownerName', 'phone'])
-        && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30));
+      allow update: if isOwner() || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['name', 'ownerName', 'phone', 'username'])
+        && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30) && str(d().username, 40));
       allow delete: if isOwner();
 
       match /customers/{id} {
@@ -221,13 +256,64 @@ service cloud.firestore {
       }
       match /settings/{id} {
         allow read: if sReader(s);
-        allow write: if sBoss(s) && id == 'main';
+        allow write: if sBoss(s) && (id == 'main' || (id == 'pos' && posOn(s)));
+      }
+      // Its cashier: the same collections and checks as the root cashier above.
+      match /products/{id} {
+        allow read: if pReader(s);
+        allow write: if pItems(s);
+        allow update: if pWriter(s) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']) && d().stock is number;
+      }
+      match /itemPhotos/{id} {
+        allow read: if pReader(s);
+        allow create, update: if pItems(s) && (sOwner(s) || imageOk(d().data));
+        allow delete: if pItems(s);
+      }
+      match /sales/{id} {
+        allow read: if pReader(s);
+        allow create: if pWriter(s) && sDiscountOk(s, request.resource.data) && (sOwner(s) || (d().id == id && d().status == 'done'
+          && d().date is string && d().date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}') && d().total is number && d().total >= 0));
+        allow update, delete: if pBoss(s);
+      }
+      match /approvals/{id} {
+        allow read: if pReader(s);
+        allow create: if pWriter(s) && request.resource.data.byId == request.auth.uid && request.resource.data.status == 'pending';
+        allow update: if pBoss(s) || (pWriter(s) && resource.data.byId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'saleId', 'usedAt'])
+          && ((resource.data.status == 'pending' && request.resource.data.status == 'cancelled')
+            || (resource.data.status == 'approved' && request.resource.data.status == 'used')));
+        allow delete: if pBoss(s);
+      }
+      match /shifts/{id} {
+        allow read: if pReader(s);
+        allow create: if pWriter(s) && d().status == 'open' && (sOwner(s) || d().openedById == request.auth.uid);
+        allow update: if pWriter(s) && resource.data.status == 'open' && (sOwner(s) || (
+          d().diff(resource.data).affectedKeys().hasOnly(['noSale', 'status', 'closedAt', 'closedBy', 'closedById', 'counted', 'expected',
+            'diff', 'note', 'z', 'usdExpected', 'usdCounted', 'usdDiff'])
+          && (d().status == 'open' || (d().status == 'closed' && d().closedById == request.auth.uid))));
+        allow delete: if pBoss(s);
+      }
+      match /stocktakes/{id} {
+        allow read: if pReader(s);
+        allow create: if pItems(s);
+        allow update, delete: if pBoss(s);
+      }
+      match /receipts/{id} {
+        allow read: if pReader(s);
+        allow create: if pItems(s);
+        allow update, delete: if pBoss(s);
+      }
+      match /prices/{id} {
+        allow read: if pReader(s);
+        allow create: if pWriter(s) && request.resource.data.byId == request.auth.uid;
+        allow delete: if pBoss(s);
       }
       // Its workers: the shop's owner makes their accounts (or approves one that asks), as at the root.
       match /users/{uid} {
         allow read: if sBoss(s) || (signedIn() && request.auth.uid == uid);
         allow create: if sBoss(s) || (signedIn() && request.auth.uid == uid && signUpOk(uid));
-        allow update, delete: if sBoss(s);
+        allow update: if sBoss(s) || selfPhone(uid);
+        allow delete: if sBoss(s);
       }
     }
   }

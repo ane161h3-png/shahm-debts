@@ -13,6 +13,8 @@ FIREBASE_PROJECT = "shahm-debts-a080e"
 OWNER_EMAIL = "admin@shahm-debts.app"
 ALLOWED_ORIGINS = "https://shahm-debts.app,https://ane161h3-png.github.io,https://localhost,capacitor://localhost"
 GH_REPO = "ane161h3-png/shahm-debts"
+# Books the app reads from D1 (src/db.js): "all", or book ids ("main", a shop's id) separated by commas. "" = Firestore only.
+D1_READ = ""
 
 # Starts the periodic Telegram report every 5 hours of the working day: 7 AM, noon, 5 PM and 10 PM Baghdad
 # (UTC+3), 7 minutes past. The 2 AM daily report covers the night. See dispatchReport() in src/index.js.
@@ -28,6 +30,27 @@ simple = { limit = 10, period = 60 }
 name = "PUSH_LIMIT"
 namespace_id = "1002"
 simple = { limit = 60, period = 60 }
+
+# At most 20 cloud backup uploads a minute per person (see src/backup.js).
+[[ratelimits]]
+name = "BK_LIMIT"
+namespace_id = "1003"
+simple = { limit = 20, period = 60 }
+
+# At most 120 saves a minute per person to the new database (see src/db.js); a big save sends up to 400 records.
+[[ratelimits]]
+name = "DB_LIMIT"
+namespace_id = "1004"
+simple = { limit = 120, period = 60 }
+
+# Live updates between a book's devices: one Durable Object per book (see Live in src/db.js).
+[[durable_objects.bindings]]
+name = "LIVE"
+class_name = "Live"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Live"]
 
 [triggers]
 crons = ["7 4,9,14,19 * * *"]
