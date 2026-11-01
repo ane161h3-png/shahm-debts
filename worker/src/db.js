@@ -19,16 +19,19 @@ const PAGE = 1000;
 const MAX_DOC = 100_000; // characters of one record's JSON
 const ROLE_TTL = 5 * 60e3;
 
-const validTenant = t => typeof t === "string" && (t === "main" || /^[A-Za-z0-9]{10,40}$/.test(t));
-const validId = id => typeof id === "string" && id.length > 0 && id.length <= 100 && !id.includes("/");
+export const validTenant = t => typeof t === "string" && (t === "main" || /^[A-Za-z0-9]{10,40}$/.test(t));
+export const validId = id => typeof id === "string" && id.length > 0 && id.length <= 100 && !id.includes("/");
 
 let schemaReady = false;
-async function schema(env) {
+export async function schema(env) {
   if (schemaReady) return;
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS docs (t TEXT NOT NULL, c TEXT NOT NULL, id TEXT NOT NULL, d TEXT, u INTEGER NOT NULL, del INTEGER NOT NULL DEFAULT 0, by TEXT, PRIMARY KEY (t, c, id)) WITHOUT ROWID"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS docs_tu ON docs (t, u)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS ctr (t TEXT PRIMARY KEY, u INTEGER NOT NULL)"),
+    // An account's own records, for the statement link a customer opens (src/statement.js).
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS docs_cust ON docs (t, c, json_extract(d, '$.customerId'))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS stlinks (t TEXT NOT NULL, cid TEXT NOT NULL, k TEXT NOT NULL UNIQUE, nm TEXT, at INTEGER NOT NULL, by TEXT, PRIMARY KEY (t, cid)) WITHOUT ROWID"),
   ]);
   schemaReady = true;
 }
@@ -40,7 +43,7 @@ const field = (doc, k) => doc && doc.fields ? val(doc.fields[k]) : null;
 
 // Who is asking and what they may do in this book: {uid, role: "owner" | "editor" | "viewer" | ""}.
 const roles = new Map();
-async function access(request, env, tenant) {
+export async function access(request, env, tenant) {
   // A browser can't set headers on a WebSocket, so the live link sends the login as its second protocol.
   const proto = (request.headers.get("Sec-WebSocket-Protocol") || "").split(",").map(x => x.trim());
   const token = proto[0] === "bearer" && proto[1] ? proto[1] : (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");

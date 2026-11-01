@@ -7,6 +7,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { handlePush, vapidPublic } from "./push.js";
 import { handleBackup } from "./backup.js";
 import { handleDb, Live } from "./db.js";
+import { handleStatement } from "./statement.js";
 export { Live };
 
 const MAX_IMAGES = 4;
@@ -420,6 +421,10 @@ export default {
     if (new URL(request.url).pathname.startsWith("/db/")) {
       try { return await handleDb(request, env, json, cors); }
       catch (e) { console.error(e); return json({ error: "تعذّر الاتصال بقاعدة البيانات الجديدة." }, 502, cors); }
+    }
+    if (new URL(request.url).pathname === "/st") {
+      try { return await handleStatement(request, env, json, cors); }
+      catch (e) { console.error(e); return json({ error: "تعذّر فتح الكشف. حاول مرة ثانية." }, 502, { ...cors, "Access-Control-Allow-Origin": "*" }); }
     }
     if (new URL(request.url).pathname === "/wa") {
       if (request.method === "GET") return json({ configured: !!(env.WA_TOKEN && env.WA_PHONE_ID) }, 200, cors);

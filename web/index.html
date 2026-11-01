@@ -486,6 +486,10 @@ td.x{width:64px;white-space:nowrap}
 .modal .hint{margin:-6px 0 0;color:var(--muted);font-size:13px}
 .foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
 .err{color:var(--debt);font-size:13px;min-height:1em;margin:0}
+.st-qr{display:flex;justify-content:center;margin:8px 0 12px;min-height:120px;align-items:center}
+.st-qr canvas{width:min(260px,70vw);height:auto;border-radius:var(--r);border:1px solid var(--line)}
+.st-more{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:4px 0 8px;font-size:14px}
+.st-more .ro-note{flex-basis:100%}
 .statement{width:100%;min-height:180px;border:1px solid var(--line);border-radius:10px;background:var(--paper-2);padding:10px;font-size:13.5px}
 .pick-list{list-style:none;margin:0;padding:0;max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px}
 .pick-list li button{width:100%;display:flex;justify-content:space-between;gap:8px;border:0;border-bottom:1px solid var(--line);background:none;padding:10px 12px;cursor:pointer;text-align:right}
@@ -874,6 +878,7 @@ function fillTpl(kind,c,extra){
   return tpl.replace(/\{([^}]+)\}/g,(m,k)=>k in map?map[k]:m);
 }
 const I={
+  qr:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>',
   mic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
   alert:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/></svg>',
   lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
@@ -1991,6 +1996,7 @@ function renderDetail(){
         ${waNumber(c.phone)?`<a class="btn sm" href="tel:+${waNumber(c.phone)}">${I.call}اتصال</a>`:""}
         ${c.phone?`<a class="btn sm" href="${esc(waLink(c.phone,statementText(c)))}" target="_blank" rel="noopener">${I.wa}إرسال الكشف</a>`:""}
         <button class="btn sm" type="button" data-act="statement">${I.copy}نسخ الكشف</button>
+        ${w&&window.AI_URL?`<button class="btn sm" type="button" data-act="stlink">${I.qr}رابط الكشف</button>`:""}
         ${w&&can("edit")?`<button class="btn sm" type="button" data-act="editcust">${I.edit}تعديل</button>
         <button class="btn sm ghost danger-text" type="button" data-act="delcust">${I.trash}حذف الحساب</button>`:""}
       </div>
@@ -3170,6 +3176,50 @@ function showStatement(){
     <div class="foot">${link?`<a class="btn wa" href="${esc(link)}" target="_blank" rel="noopener">${I.wa}إرسال واتساب</a>`:""}<button class="btn primary" type="button" id="cpy">${I.copy}نسخ النص</button><button class="btn" type="button" data-close>إغلاق</button></div>`,
     m=>m.querySelector("#cpy").addEventListener("click",()=>copyText(txt,m.querySelector("#stTxt"))));
 }
+/* Statement link: a private link (and its QR code) the customer opens to see their own account, read only (worker/src/statement.js,
+   page s.html). The same link every time; «رابط جديد» or «إيقاف الرابط» makes the old one stop working. */
+const stUrl=k=>(/^https?:\/\/(localhost|127\.)/.test(location.href)?new URL("s.html",location.href).href:WEB_URL+"s")+"#"+k;
+async function stCall(c,act){
+  const r=await fetch(window.AI_URL.replace(/\/$/,"")+"/st?tenant="+encodeURIComponent(bkTenant()),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body:JSON.stringify({cid:c.id,act,nm:shopName()})});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"تعذّر الاتصال بالسيرفر.");return j.k||""}
+async function stQr(url,c){
+  try{await loadScript("vendor/qrcode.js")}catch(e){}
+  if(!window.qrcode)return null;
+  qrcode.stringToBytes=qrcode.stringToBytesFuncs["UTF-8"];const q=qrcode(0,"M");q.addData(url,"Byte");q.make();
+  try{await Promise.all(["400 40px Lalezar","700 30px Tajawal"].map(f=>document.fonts.load(f)))}catch(e){}
+  const n=q.getModuleCount(),W=640,box=520,cs=Math.floor(box/(n+8)),qs=cs*n,X=(W-qs)/2,Y=120,H=Y+qs+150;
+  const cv=document.createElement("canvas");cv.width=W;cv.height=H;const x=cv.getContext("2d");
+  x.fillStyle="#fff";x.fillRect(0,0,W,H);x.fillStyle=PDFC.green;x.fillRect(0,0,W,84);x.fillStyle=PDFC.orange;x.fillRect(0,84,W,6);
+  x.direction="rtl";x.textAlign="center";x.fillStyle="#fff";x.font="400 40px "+PDF_BRAND;x.fillText(shopName()||"كشف حساب",W/2,58);
+  x.fillStyle="#000";for(let r=0;r<n;r++)for(let k=0;k<n;k++)if(q.isDark(r,k))x.fillRect(X+k*cs,Y+r*cs,cs,cs);
+  x.fillStyle=PDFC.ink;x.font="700 30px Tajawal, sans-serif";x.fillText(c.name,W/2,Y+qs+56);
+  x.fillStyle=PDFC.muted;x.font="500 22px 'IBM Plex Sans Arabic', Tahoma, sans-serif";x.fillText("امسح الرمز وشوف كشف حسابك",W/2,Y+qs+100);
+  return cv}
+async function stLink(c,act){
+  if(!auth.currentUser||!navigator.onLine)return toast("رابط الكشف يحتاج إنترنت.");
+  let k;try{toast(act==="make"?"جاري تجهيز الرابط…":"جاري تجهيز رابط جديد…");k=await stCall(c,act)}catch(e){return toast(e.message)}
+  const url=stUrl(k),msg=`كشف حسابك لدى ${shopName()}:\n${url}`;const wa=c.phone?waLink(c.phone,msg):"";
+  openModal(`<h3>رابط كشف ${esc(c.name)}</h3>
+    <p class="hint">الزبون يمسح الرمز أو يفتح الرابط ويشوف حسابه وحركاته بس، ويتحدث وحده مع كل قيد. ما يكدر يعدّل شي ولا يشوف حساب غيره.</p>
+    <div class="st-qr" id="stQr"><span class="ro-note">جاري رسم الرمز…</span></div>
+    <div class="field"><input id="stUrl" class="num" readonly value="${esc(url)}" aria-label="رابط الكشف"></div>
+    <div class="foot">${wa?`<a class="btn wa" href="${esc(wa)}" target="_blank" rel="noopener">${I.wa}إرسال واتساب</a>`:""}
+      <button class="btn primary" type="button" id="stImg">${I.save}مشاركة صورة الرمز</button>
+      <button class="btn" type="button" id="stCpy">${I.copy}نسخ الرابط</button></div>
+    <div class="st-more"><button class="linkish" type="button" id="stNew">رابط جديد</button> · <button class="linkish danger-text" type="button" id="stStop">إيقاف الرابط</button>
+      <span class="ro-note">إذا وصل الرابط لشخص ثاني، سوّي رابط جديد والقديم يتوقف.</span></div>
+    <div class="foot"><button class="btn" type="button" data-close>إغلاق</button></div>`,
+    m=>{
+      m.querySelector("#stCpy").addEventListener("click",()=>copyText(url,m.querySelector("#stUrl")));
+      let cv=null;stQr(url,c).then(x=>{cv=x;const b=m.querySelector("#stQr");if(!b)return;if(x){x.setAttribute("role","img");x.setAttribute("aria-label","رمز QR لكشف الحساب");b.innerHTML="";b.appendChild(x)}else b.innerHTML='<span class="ro-note">تعذّر رسم الرمز. أرسل الرابط بداله.</span>'});
+      m.querySelector("#stImg").addEventListener("click",async()=>{if(!cv)return toast("الرمز بعده ما جاهز.");
+        const blob=await new Promise(r=>cv.toBlob(r,"image/png"));if(!blob)return toast("تعذّر تجهيز الصورة.");
+        try{await saveFile(`كشف-${c.name}.png`.replace(/[\\/:*?"<>|]/g,""),blob,"image/png",msg)}catch(e){toast("تعذّر حفظ الصورة.")}});
+      m.querySelector("#stNew").addEventListener("click",()=>{if(confirm("الرابط القديم راح يتوقف، والزبون يحتاج الرابط الجديد. نكمل؟"))stLink(c,"new")});
+      m.querySelector("#stStop").addEventListener("click",async()=>{if(!confirm("يتوقف الرابط والزبون ما يكدر يفتح كشفه بعد. نكمل؟"))return;
+        try{await stCall(c,"stop");closeModal();toast("توقف الرابط")}catch(e){toast(e.message)}});
+    });
+}
 function copyText(txt,ta){try{navigator.clipboard.writeText(txt).then(()=>toast("تم النسخ"),()=>{ta.select();toast("النص محدد، انسخه يدوياً")})}catch(e){ta.select();toast("النص محدد، انسخه يدوياً")}}
 function accountForm(){
   openModal(`<h3>إنشاء حساب</h3>
@@ -4140,6 +4190,7 @@ document.addEventListener("click",e=>{
     case "pay":if(canWrite())txnForm("pay");break;
     case "editcust":if(canEdit())customerForm(c);break;
     case "statement":showStatement();break;
+    case "stlink":{const c=S.customers.get(S.selected);if(c)stLink(c,"make")}break;
     case "zero":if(canWrite()&&c)zeroAccount(c);break;
     case "setlimit":if(canEdit())customerForm(c);break;
     case "custpdf":if(c)custPdf(c);break;
