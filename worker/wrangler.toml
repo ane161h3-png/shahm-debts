@@ -43,6 +43,12 @@ name = "DB_LIMIT"
 namespace_id = "1004"
 simple = { limit = 120, period = 60 }
 
+# At most 30 statement-page opens a minute per address (see src/statement.js), so links can't be probed in bulk.
+[[ratelimits]]
+name = "ST_LIMIT"
+namespace_id = "1005"
+simple = { limit = 30, period = 60 }
+
 # Live updates between a book's devices: one Durable Object per book (see Live in src/db.js).
 [[durable_objects.bindings]]
 name = "LIVE"
