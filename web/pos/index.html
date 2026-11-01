@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- Where the page may load from and talk to: itself, Firebase (Google) and the photo-reading worker. Anything else, such as a
      script planted in a customer name sending the data elsewhere, is blocked by the browser. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://shahm-ai.hydrzyd83.workers.dev https://world.openfoodfacts.org https://images.openfoodfacts.org; frame-src https://*.firebaseapp.com https://*.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://shahm-ai.hydrzyd83.workers.dev wss://shahm-ai.hydrzyd83.workers.dev https://world.openfoodfacts.org https://images.openfoodfacts.org; frame-src https://*.firebaseapp.com https://*.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>كاشير ماركت الشهم</title>
 <meta name="description" content="كاشير ماركت الشهم: بيع كاش أو بالدين على حساب الزبون بدفتر الديون، وتقرير مبيعات يومي.">
@@ -857,7 +857,7 @@ function readFail(e){console.warn(e);if(e&&e.code==="resource-exhausted"&&!quota
   if(e&&e.code==="permission-denied"&&!deniedShown){deniedShown=true;
   toast(SHOP?"الكاشير مو جاهز لمحلك بعد. تواصل ويا صاحب البرنامج.":isAdmin()?"قاعدة البيانات رفضت القراءة. انشر قواعد firestore.rules الجديدة من Firebase console.":"ما عندك صلاحية لقراءة بيانات الكاشير. راجع المدير.",7000)}}
 function stopData(){
-  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];if(salesUnsub){salesUnsub();salesUnsub=null}dataOn=false;custOn=custReady=false;txnWatch.clear();txnLoaded.clear();
+  unsubs.forEach(u=>{try{u()}catch(e){}});unsubs=[];if(salesUnsub){salesUnsub();salesUnsub=null}dataOn=false;custOn=custReady=d1All=false;d1Cust.run=(d1Cust.run||0)+1;txnWatch.clear();txnLoaded.clear();
   S.products=new Map();S.customers=new Map();S.txns=new Map();S.sales=new Map();S.settings={};S.repCache=new Map();S.shift=null;S.shiftLog=null;S.approvals=new Map();S.ready={p:false,s:false,sh:false};S.pos={};S.takes=null;S.recvs=null;S.prices=null;PW.clear();deniedShown=false;renderApprovals();
 }
 function startData(){
@@ -877,10 +877,52 @@ function startData(){
 }
 /* Customers load only when needed (a sale on credit, suppliers, a receipt), and debt records only for the customer in hand.
    Reading every customer and every record on each open was most of the daily free Firestore reads. */
-let custOn=false,custReady=false;const txnWatch=new Set(),txnLoaded=new Set();
+let custOn=false,custReady=false,d1All=false;const txnWatch=new Set(),txnLoaded=new Set();
 function needCust(){
   if(custOn||!dataOn)return;custOn=true;
-  unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));custReady=true;refresh("cust")},e=>{custOn=false;readFail(e)}));
+  const fs=()=>unsubs.push(db.collection(P("customers")).onSnapshot(s=>{S.customers=new Map(s.docs.map(d=>[d.id,d.data()]));custReady=true;refresh("cust")},e=>{custOn=false;readFail(e)}));
+  if(!window.AI_URL||!auth.currentUser){fs();return}
+  d1Cust().then(on=>{if(!on&&dataOn&&custOn&&!d1All)fs()},()=>{if(dataOn&&custOn&&!d1All)fs()});
+}
+/* Books the worker reads from D1 (D1_READ, see ../index.html d1Read): the cashier takes every customer and record from there in
+   one go, then only what was saved after its mark: right away when the live link (/db/live) says another device saved,
+   every minute otherwise, and when the screen comes back. Records in this device's outbox win over the server's older copy.
+   False (and Firestore is read as before) when the worker doesn't read this book from D1 or can't be reached. */
+async function d1Cust(){
+  const run=d1Cust.run=(d1Cust.run||0)+1,live=()=>run===d1Cust.run&&dataOn&&custOn,tenant=encodeURIComponent(SHOP||"main"),base=window.AI_URL.replace(/\/$/,"")+"/db/";
+  const st={mark:0};
+  const pullFrom=async since=>{const rows=[];
+    for(;;){const r=await fetch(base+"pull?tenant="+tenant+"&since="+since,{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
+      const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"خطأ "+r.status);
+      if(!j.read)return null;rows.push(...j.rows);since=j.u;if(!j.more)return rows}};
+  const out=()=>{const o=d1Box(),m=new Set();for(const k in o)m.add(k);return m};
+  const apply=rows=>{const mine=out();for(const [c,id,d,u] of rows){if(u>st.mark)st.mark=u;if(mine.has(c+"|"+id))continue;
+    const m=c==="customers"?S.customers:c==="txns"?S.txns:null;if(!m)continue;if(d)m.set(id,d);else m.delete(id)}};
+  const rows=await pullFrom(0);
+  if(!live())return true;
+  if(rows===null||!rows.length)return false;
+  S.customers=new Map();S.txns=new Map();apply(rows);
+  for(const [c,id,d] of Object.values(d1Box())){const m=c==="customers"?S.customers:S.txns;if(d)m.set(id,d);else m.delete(id)}
+  d1All=true;custReady=true;refresh("cust");
+  let busy=false,again=false,ws=null,closed=false,wait=1000;
+  const sync=async()=>{if(busy){again=true;return}busy=true;
+    try{const r=await pullFrom(st.mark);if(!live())return;
+      if(r===null){d1All=false;custOn=false;closed=true;S.customers=new Map();S.txns=new Map();txnWatch.clear();txnLoaded.clear();custReady=false;needCust();return}
+      if(r.length){apply(r);refresh("cust")}
+    }catch(e){}finally{busy=false;if(again&&live()){again=false;sync()}}};
+  d1Cust.sync=sync;
+  const open=async()=>{if(closed||!live())return;
+    try{ws=new WebSocket(base.replace(/^http/,"ws")+"live?tenant="+tenant,["bearer",await auth.currentUser.getIdToken()]);
+      ws.onopen=()=>{wait=1000;sync()};
+      ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m&&m.u>st.mark)sync()}catch(x){}};
+      ws.onclose=()=>{ws=null;if(!closed&&live())setTimeout(open,wait=Math.min(wait*2,60e3))};
+    }catch(e){ws=null;setTimeout(open,wait=Math.min(wait*2,60e3))}};
+  open();
+  const timer=setInterval(()=>{if(ws&&ws.readyState===1)ws.send("ping");sync()},60e3);
+  const back=()=>{if(document.visibilityState==="visible")sync()};
+  document.addEventListener("visibilitychange",back);addEventListener("online",back);
+  unsubs.push(()=>{closed=true;d1All=false;d1Cust.sync=null;clearInterval(timer);document.removeEventListener("visibilitychange",back);removeEventListener("online",back);try{if(ws)ws.close()}catch(e){}});
+  return true;
 }
 /* Account lock, set in the debt book (Settings > قفل الحسابات); same rule as there. A customer who still owes lockDays after the
    debt that opened the current balance takes no credit sale until it is paid off, or the owner (or the unlock code) opens it. */
@@ -914,6 +956,7 @@ function unlockCust(c,how){
   log("edit","lock",{customerName:c.name,detail:`فتح قفل حساب ${c.name}${how?" "+how:""}`});toast("انفتح حساب "+c.name);
 }
 function watchTxns(id){
+  if(d1All&&id){txnLoaded.add(id);return}
   if(!id||txnWatch.has(id)||!dataOn)return;txnWatch.add(id);
   unsubs.push(db.collection(P("txns")).where("customerId","==",id).onSnapshot(s=>{
     for(const [k,t] of S.txns)if(t.customerId===id)S.txns.delete(k);
@@ -1842,13 +1885,14 @@ function d1Later(ms){clearTimeout(d1Later.t);d1Later.t=setTimeout(d1Flush,ms)}
 function d1Queue(coll,id,data){
   if((coll!=="txns"&&coll!=="customers")||!window.AI_URL)return;
   let d=null;if(data){d=JSON.parse(JSON.stringify(data));delete d._u}
-  const o=d1Box();o[coll+"|"+id]=[coll,id,d];d1Keep(o);d1Later(1500)}
+  const o=d1Box();o[coll+"|"+id]=[coll,id,d];d1Keep(o);d1Later(1500);
+  if(d1All){const m=coll==="customers"?S.customers:S.txns;if(d)m.set(id,d);else m.delete(id)}}
 async function d1Flush(){
   const o=d1Box(),keys=Object.keys(o).slice(0,400);if(!keys.length||!window.AI_URL||!auth.currentUser||!canSell())return;
   if(!navigator.onLine){d1Later(60e3);return}
   try{const r=await fetch(window.AI_URL.replace(/\/$/,"")+"/db/push?tenant="+encodeURIComponent(SHOP||"main"),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body:JSON.stringify({ops:keys.map(k=>o[k])})});
     // Sent, or never going to be taken (turned off, refused): drop it; the debt book's daily check catches anything missed.
-    if(r.ok||[400,403,413,503].includes(r.status)){const n=d1Box();for(const k of keys)if(JSON.stringify(n[k])===JSON.stringify(o[k]))delete n[k];d1Keep(n);if(Object.keys(n).length)d1Later(300)}
+    if(r.ok||[400,403,413,503].includes(r.status)){const n=d1Box();for(const k of keys)if(JSON.stringify(n[k])===JSON.stringify(o[k]))delete n[k];d1Keep(n);if(Object.keys(n).length)d1Later(300);else if(d1Cust.sync)d1Cust.sync()}
     else d1Later(60e3);
   }catch(e){d1Later(60e3)}
 }
