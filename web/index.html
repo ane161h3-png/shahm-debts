@@ -875,7 +875,10 @@ function fillTpl(kind,c,extra){
   const bal=c?balanceOf(c.id):0;
   const pr=(c&&c.promise)||{};
   const map={"نهاية الشهر":dayName(monthEndISO()),"الموعد":pr.date?dayName(pr.date):"","مبلغ الوعد":pr.amount?` بمبلغ ${fmt(pr.amount)} د.ع`:"","الاسم":c?c.name:"","المبلغ":fmt(extra&&extra.amount),"الرصيد":fmt(bal),"التاريخ":((extra&&extra.date)||todayISO())+(extra&&extra.time?" الساعة "+extra.time:""),"الوقت":(extra&&extra.time)||hm12(Date.now()),"البيان":(extra&&extra.note)||(kind==="debt"?"مشتريات":"دفعة"),"المتجر":shopName()};
-  return tpl.replace(/\{([^}]+)\}/g,(m,k)=>k in map?map[k]:m);
+  const sk=c?stKnown(c.id):"";map["رابط الكشف"]=sk?stUrl(sk):"";
+  const out=tpl.replace(/\{([^}]+)\}/g,(m,k)=>k in map?map[k]:m);
+  // The new-debt message carries the account's statement link (s.html), unless the template places it itself.
+  return kind==="debt"&&sk&&!tpl.includes("{رابط الكشف}")?out+"\nكشف حسابك: "+stUrl(sk):out;
 }
 const I={
   qr:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>',
@@ -2038,7 +2041,7 @@ function renderDetail(){
     </div>
 </div>`;
 }
-function openCustomer(id){S.hq="";S.view="customers";S.selected=id;const oc=S.customers.get(id);if(oc)S.kind=kindOf(oc);render();if(window.innerWidth<=820)window.scrollTo(0,0)}
+function openCustomer(id){S.hq="";S.view="customers";S.selected=id;const oc=S.customers.get(id);if(oc)S.kind=kindOf(oc);render();stPrefetch(oc);if(window.innerWidth<=820)window.scrollTo(0,0)}
 
 /* ---------- reminders ---------- */
 // The customers shown on the reminders page (with a phone, and not already reminded this month-end), for «إرسال للكل بالدور».
@@ -2573,7 +2576,7 @@ function setPage(k){
   if(k==="wabiz")return waBizPage();
   if(k==="templates"){
     const t=st.templates||{};
-    const ph=["الاسم","المبلغ","الرصيد","التاريخ","البيان","نهاية الشهر","المتجر"];
+    const ph=["الاسم","المبلغ","الرصيد","التاريخ","البيان","نهاية الشهر","المتجر","رابط الكشف"];
     const box=(key,title,desc)=>`<div class="tpl"><h3>${I.wa}${title}</h3><span class="ro-note">${desc}</span>
       <div class="field"><textarea id="tpl-${key}" aria-label="${title}">${esc(tplText(key))}</textarea></div>
       <div class="ph">${ph.map(p=>`<button type="button" data-ph="${p}" data-for="tpl-${key}">{${p}}</button>`).join("")}</div>
@@ -2793,6 +2796,7 @@ function phoneForm(c){
 function txnForm(type,existing,pre){
   const c=S.customers.get(existing?existing.customerId:S.selected);if(!c)return;
   const isDebt=(existing?existing.type:type)==="debt";const bal=balanceOf(c.id);
+  if(isDebt&&!existing)stPrefetch(c);
   if(isDebt&&!existing){const L=lockState(c);if(L&&L.locked){lockGate(c,L,()=>txnForm(type,null,pre));return}}
   const sup=isSup(c);
   const quick=sup?[10000,25000,50000,100000,250000]:isDebt?[250,500,1000,2000,5000,10000,25000]:[1000,5000,10000,25000];
@@ -3179,6 +3183,18 @@ function showStatement(){
 /* Statement link: a private link (and its QR code) the customer opens to see their own account, read only (worker/src/statement.js,
    page s.html). The same link every time; «رابط جديد» or «إيقاف الرابط» makes the old one stop working. */
 const stUrl=k=>(/^https?:\/\/(localhost|127\.)/.test(location.href)?new URL("s.html",location.href).href:WEB_URL+"s")+"#"+k;
+// Each account's statement link, kept on this device so a new-debt message can carry it without waiting for the server.
+const stMapKey=()=>"shahm-st:"+bkTenant();
+const stMap=()=>{try{return JSON.parse(localStorage.getItem(stMapKey())||"{}")}catch(e){return {}}};
+const stKnown=id=>stMap()[id]||"";
+function stKeep(id,k){try{const m=stMap();if(k)m[id]=k;else delete m[id];localStorage.setItem(stMapKey(),JSON.stringify(m))}catch(e){}}
+// Asks the server for the account's current link once per session (when its page or the debt form opens), so the copy
+// here follows a «رابط جديد» made on another device. Customers with a phone only: the link goes out on WhatsApp.
+const stAsked=new Set();
+function stPrefetch(c){
+  if(!c||!window.AI_URL||!canWrite()||isSup(c)||!waNumber(c.phone)||!auth.currentUser||navigator.onLine===false)return;
+  const key=bkTenant()+"|"+c.id;if(stAsked.has(key))return;stAsked.add(key);
+  stCall(c,"make").then(k=>stKeep(c.id,k)).catch(()=>stAsked.delete(key))}
 async function stCall(c,act){
   const r=await fetch(window.AI_URL.replace(/\/$/,"")+"/st?tenant="+encodeURIComponent(bkTenant()),{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await auth.currentUser.getIdToken()},body:JSON.stringify({cid:c.id,act,nm:shopName()})});
   const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"تعذّر الاتصال بالسيرفر.");return j.k||""}
@@ -3197,7 +3213,7 @@ async function stQr(url,c){
   return cv}
 async function stLink(c,act){
   if(!auth.currentUser||!navigator.onLine)return toast("رابط الكشف يحتاج إنترنت.");
-  let k;try{toast(act==="make"?"جاري تجهيز الرابط…":"جاري تجهيز رابط جديد…");k=await stCall(c,act)}catch(e){return toast(e.message)}
+  let k;try{toast(act==="make"?"جاري تجهيز الرابط…":"جاري تجهيز رابط جديد…");k=await stCall(c,act);stKeep(c.id,k)}catch(e){return toast(e.message)}
   const url=stUrl(k),msg=`كشف حسابك لدى ${shopName()}:\n${url}`;const wa=c.phone?waLink(c.phone,msg):"";
   openModal(`<h3>رابط كشف ${esc(c.name)}</h3>
     <p class="hint">الزبون يمسح الرمز أو يفتح الرابط ويشوف حسابه وحركاته بس، ويتحدث وحده مع كل قيد. ما يكدر يعدّل شي ولا يشوف حساب غيره.</p>
@@ -3216,8 +3232,8 @@ async function stLink(c,act){
         const blob=await new Promise(r=>cv.toBlob(r,"image/png"));if(!blob)return toast("تعذّر تجهيز الصورة.");
         try{await saveFile(`كشف-${c.name}.png`.replace(/[\\/:*?"<>|]/g,""),blob,"image/png",msg)}catch(e){toast("تعذّر حفظ الصورة.")}});
       m.querySelector("#stNew").addEventListener("click",()=>{if(confirm("الرابط القديم راح يتوقف، والزبون يحتاج الرابط الجديد. نكمل؟"))stLink(c,"new")});
-      m.querySelector("#stStop").addEventListener("click",async()=>{if(!confirm("يتوقف الرابط والزبون ما يكدر يفتح كشفه بعد. نكمل؟"))return;
-        try{await stCall(c,"stop");closeModal();toast("توقف الرابط")}catch(e){toast(e.message)}});
+      m.querySelector("#stStop").addEventListener("click",async()=>{if(!confirm("يتوقف الرابط والزبون ما يكدر يفتحه بعد. رسالة الدين الجاية تحمل رابط جديد. نكمل؟"))return;
+        try{await stCall(c,"stop");stKeep(c.id,"");closeModal();toast("توقف الرابط القديم")}catch(e){toast(e.message)}});
     });
 }
 function copyText(txt,ta){try{navigator.clipboard.writeText(txt).then(()=>toast("تم النسخ"),()=>{ta.select();toast("النص محدد، انسخه يدوياً")})}catch(e){ta.select();toast("النص محدد، انسخه يدوياً")}}
