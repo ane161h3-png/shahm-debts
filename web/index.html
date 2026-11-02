@@ -359,6 +359,32 @@ td.x{width:64px;white-space:nowrap}
 .set-body h2{margin:0;font-family:var(--f-display);font-size:19px}
 .set-body .lead{margin:-8px 0 0;color:var(--muted);font-size:14px}
 .set-back{display:none}
+.set-acc{padding:6px;display:flex;flex-direction:column}
+.acc-item{border-bottom:1px solid var(--line)}
+.acc-item:last-of-type{border-bottom:0}
+.acc-head{border:0;background:none;display:flex;align-items:center;gap:10px;width:100%;padding:14px 10px;cursor:pointer;text-align:right;font:inherit;font-weight:600;color:var(--ink);border-radius:var(--r-ctl);transition:background .2s,color .2s}
+.acc-head:active{background:var(--paper-2)}
+.acc-head>svg:first-child{width:20px;height:20px;flex:none;color:var(--muted);transition:color .2s}
+.acc-head .acc-t{flex:1;min-width:0}
+.acc-head .badge{background:var(--debt);color:var(--paper);border-radius:99px;font-size:11.5px;padding:0 7px}
+.acc-head .chev{width:18px;height:18px;flex:none;color:var(--muted);transition:transform .28s cubic-bezier(.2,.7,.2,1)}
+.acc-item.open>.acc-head{color:var(--accent)}
+.acc-item.open>.acc-head>svg:first-child{color:var(--accent)}
+.acc-item.open>.acc-head .chev{transform:rotate(180deg);color:var(--accent)}
+.acc-panel{display:grid;grid-template-rows:1fr}
+.acc-in{min-height:0;overflow:hidden}
+.acc-panel .set-body{padding:2px 6px 16px}
+.acc-panel .set-body>h2:first-child{display:none}
+.acc-panel .set-body>.lead:nth-child(2){margin-top:0}
+.acc-panel.anim{animation:accOpen .3s cubic-bezier(.2,.7,.2,1)}
+.acc-panel.anim .acc-in{animation:accFade .3s ease}
+.acc-panel.closing{animation:accClose .2s ease forwards}
+@keyframes accOpen{from{grid-template-rows:0fr}to{grid-template-rows:1fr}}
+@keyframes accFade{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes accClose{from{grid-template-rows:1fr;opacity:1}to{grid-template-rows:0fr;opacity:0}}
+.acc-out{color:var(--debt);margin-top:4px}
+.acc-out>svg:first-child{color:var(--debt)}
+@media (prefers-reduced-motion:reduce){.acc-panel.anim,.acc-panel.anim .acc-in,.acc-panel.closing{animation:none}.acc-head .chev{transition:none}}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 @media (max-width:600px){.form-grid{grid-template-columns:minmax(0,1fr)}}
 .user-row{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;flex-wrap:wrap}
@@ -562,7 +588,9 @@ td.x{width:64px;white-space:nowrap}
   .bottom-nav button{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--muted);cursor:pointer;padding:4px 6px;border-radius:12px;font-weight:600;min-width:56px}
   .bottom-nav button svg{width:22px;height:22px}
   .bottom-nav button[aria-current="page"]{color:var(--accent);background:var(--accent-soft)}
-  .bottom-nav .plus{background:var(--accent);color:var(--accent-ink);width:52px;height:52px;min-width:0;border-radius:50%;justify-content:center;margin-top:-22px;box-shadow:var(--shadow-fab)}
+  /* The add button rises out of the bar in its own slot: a ring the colour of the bar keeps it apart from the tabs beside it. */
+  .bottom-nav .plus{background:var(--accent);color:var(--accent-ink);flex:0 0 60px;width:60px;height:60px;min-width:0;padding:0;border-radius:50%;justify-content:center;margin:-28px 4px 0;border:4px solid var(--paper);box-shadow:var(--shadow-fab);transition:transform .15s}
+  .bottom-nav .plus:active{transform:scale(.94)}
   .bottom-nav .plus svg{width:26px;height:26px}
   .layout{grid-template-columns:minmax(0,1fr)}
   .list-pane{position:static;max-height:none}
@@ -2529,11 +2557,31 @@ function pushBlock(){
   return `<div class="tpl" style="margin-top:12px"><h3>${I.bell}إشعار على الموبايل</h3>${body}</div>`;
 }
 const SET_PAGES=[["sub","اشتراكي والعروض",I.wallet,true],["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["security","الأمان والخصوصية",I.lock,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
+/* Settings on phones: tapping a title opens its section under it (and closes the one that was open); tapping it again closes it. */
+const calmMotion=()=>{try{return matchMedia("(prefers-reduced-motion: reduce)").matches}catch(e){return false}};
+function accFocus(){const it=document.querySelector(".acc-item.open");if(!it)return;const top=it.getBoundingClientRect().top+scrollY-72;
+  if(Math.abs(top-scrollY)>8)window.scrollTo({top:Math.max(0,top),behavior:calmMotion()?"auto":"smooth"})}
+function setAcc(k){
+  const cur=document.querySelector(`.acc-item[data-acc="${k}"]`);
+  if(S.setPage===k){ // close with the slide reversed, then redraw
+    const pn=cur&&cur.querySelector(".acc-panel");if(cur)cur.classList.remove("open");
+    const done=()=>{if(S.setPage===k){S.setPage=null;render()}};
+    if(!pn||calmMotion()){done();return}
+    pn.classList.add("closing");setTimeout(done,200);return}
+  S.setPage=k;S.setAnim=k;render();accFocus();
+}
 function settingsView(){
   const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner)&&(p[0]!=="sub"||(SHOP&&S.shop)));
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
   const cur=S.setPage||(window.innerWidth>820?pages[0][0]:null);
   const pending=[...S.accounts.values()].filter(a=>a.status==="pending").length;
+  const extra=k=>`${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}${k==="shops"&&shopsPending()?`<span class="badge">${shopsPending()}</span>`:""}${k==="sub"&&S.shop.trial?`<span class="chip warn">تجريبي</span>`:""}`;
+  // Phones: each section opens under its own title (an accordion), with a short slide; only the section just tapped animates.
+  if(window.innerWidth<=820){const anim=S.setAnim;S.setAnim=null;
+    return `<div class="pane set-acc">${pages.map(([k,l,ic])=>{const open=S.setPage===k;
+      return `<div class="acc-item${open?" open":""}" data-acc="${k}"><button type="button" class="acc-head" data-setacc="${k}" aria-expanded="${open}">${ic}<span class="acc-t">${l}</span>${extra(k)}<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        ${open?`<div class="acc-panel${anim===k?" anim":""}"><div class="acc-in"><div class="set-body">${setPage(k)}</div></div></div>`:""}</div>`}).join("")}
+      <button type="button" class="acc-head acc-out" data-act="logout">${I.out}<span class="acc-t">تسجيل الخروج</span></button></div>`}
   return `<div class="settings ${S.setPage?"open":""}">
     <nav class="pane set-menu-pane"><div class="set-menu">
       ${pages.map(([k,l,ic])=>`<button type="button" data-set="${k}" aria-current="${cur===k}">${ic}${l}${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}${k==="shops"&&shopsPending()?`<span class="badge">${shopsPending()}</span>`:""}${k==="sub"&&S.shop.trial?`<span class="chip warn" style="margin-inline-start:auto">تجريبي</span>`:""}</button>`).join("")}
@@ -4152,7 +4200,8 @@ document.addEventListener("click",e=>{
     const n=d?[...lockMap(d).values()].filter(x=>x.locked).length:0;
     if(n&&d!==lockDays())confirmBox("تشغيل قفل الحسابات",`${n} زبون راح ينقفل حسابه هسه لأنه ما سدد كامل خلال ${d} يوم. تكدر تفتح أي واحد منهم من صفحته.`,"تشغيل",go);else go();return}
   const vsb=t.closest("[data-vsearch]");if(vsb){voiceSearch(vsb);return}
-  const sp=t.closest("[data-set]");if(sp){S.setPage=sp.dataset.set||null;render();window.scrollTo(0,0);return}
+  const sacc=t.closest("[data-setacc]");if(sacc){setAcc(sacc.dataset.setacc);return}
+  const sp=t.closest("[data-set]");if(sp){S.setPage=sp.dataset.set||null;if(S.setPage&&window.innerWidth<=820){S.setAnim=S.setPage;render();accFocus()}else{render();window.scrollTo(0,0)}return}
   const nf=t.closest("[data-notif]");if(nf){const k=nf.dataset.notif,on=nf.dataset.v==="1";setNotif(k,on);if(NOTIF_ITEMS.some(x=>x[0]===k))pushKindsSave();if(on&&k==="sound")chime();if(on&&k==="saveFx")saveFx(false);if(k==="daily")dailyCheck();render();return}
   const hd=t.closest("[data-hide]");if(hd){const k=hd.dataset.hide,h=hiddenNums().filter(x=>x!==k);if(hd.dataset.v==="1")h.push(k);setHidden(h);render();return}
   const ha=t.closest("[data-hideall]");if(ha){setHidden(ha.dataset.hideall==="1"?HIDE_ITEMS.map(x=>x[0]):[]);S.reveal=false;render();return}
