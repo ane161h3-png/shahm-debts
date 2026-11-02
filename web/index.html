@@ -307,10 +307,10 @@ tr.edge td{background:var(--paper-2);color:var(--muted);font-size:13px}
 
 .detail{padding:18px;display:flex;flex-direction:column;gap:16px}
 .detail-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
-.detail-head .who{flex:1;min-width:0}
+.detail-head .who{flex:1 1 220px;min-width:min(220px,100%)}
 .detail-head h2{margin:0;font-family:var(--f-display);font-size:22px;line-height:1.3;overflow-wrap:anywhere}
 .detail-head .phone{color:var(--muted);font-size:13.5px}
-.head-tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.head-tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-width:0}
 @media (max-width:760px){.head-tools{flex-basis:100%}}
 .back{display:none}
 .balance-card{border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--paper-2)}
