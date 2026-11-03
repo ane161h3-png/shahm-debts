@@ -71,6 +71,40 @@ h1,h2,h3{text-wrap:balance}
 .gate-foot a{color:var(--accent);font-weight:600}
 .spinner{width:30px;height:30px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);margin:8px auto}
 @media (prefers-reduced-motion:no-preference){.spinner{animation:spin 0.9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}}
+/* ---------- motion (all of it off when the device asks for reduced motion) ---------- */
+@media (prefers-reduced-motion:no-preference){
+  :root{--ease-out:cubic-bezier(.2,.8,.2,1);--ease-pop:cubic-bezier(.34,1.56,.64,1)}
+  .scrim{animation:mFade .16s ease-out}
+  .modal{animation:mPop .24s var(--ease-pop)}
+  .toast{animation:mToast .26s var(--ease-out)}
+  .flash{animation:mDrop .28s var(--ease-pop)}
+  #view.vin{animation:mView .24s var(--ease-out)}
+  .btn,.ib-bar button,.sd-qp button,.ib-r,.stepper button,.ib-chips button,.ib-ico,.tabs button,.tile{transition:transform .12s var(--ease-out),background-color .15s,box-shadow .15s}
+  .btn:active:not(:disabled),.ib-bar button:active:not(:disabled),.sd-qp button:active:not(:disabled),.ib-r:active:not(:disabled),.stepper button:active,.ib-chips button:active,.ib-ico:active,.tabs button:active,.tile:active{transform:scale(.95)}
+  .ib-line.ib-new{animation:lnIn .42s var(--ease-pop),lnHi 1.1s ease-out}
+  .ib-line.ib-more{animation:lnHi 1.1s ease-out}
+  .ib-line.ib-more .stepper .num,.ib-line.ib-more .wpill{animation:numPop .34s var(--ease-pop)}
+  .ib-line.ib-new .lt,.ib-line.ib-more .lt{animation:numPop .38s var(--ease-pop) .12s both}
+  .ib-line.ib-out{animation:lnOut .2s ease-in forwards}
+  .ib-sum b.pop{animation:numPop .36s var(--ease-pop)}
+  .fly{position:fixed;z-index:40;pointer-events:none;background:var(--accent);color:var(--paper);font-weight:700;font-size:14px;padding:7px 12px;border-radius:999px;box-shadow:var(--shadow);white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;will-change:transform,opacity}
+  .sold .done-mark{animation:markIn .5s var(--ease-pop)}
+  .sold .done-mark svg path,.sold .done-mark svg polyline{stroke-dasharray:30;stroke-dashoffset:30;animation:draw .4s ease-out .2s forwards}
+  .sold>*:not(.done-mark){animation:mView .3s var(--ease-out) both}
+  .sold>*:nth-child(2){animation-delay:.12s}.sold>*:nth-child(3){animation-delay:.16s}.sold>*:nth-child(4){animation-delay:.2s}.sold>*:nth-child(n+5){animation-delay:.24s}
+  .sold.seen *{animation:none!important;stroke-dashoffset:0!important}
+  @keyframes mFade{from{opacity:0}}
+  @keyframes mPop{from{opacity:0;transform:translateY(10px) scale(.96)}}
+  @keyframes mToast{from{opacity:0;transform:translate(-50%,14px) scale(.96)}}
+  @keyframes mDrop{from{opacity:0;transform:translate(-50%,-16px) scale(.94)}}
+  @keyframes mView{from{opacity:0;transform:translateY(8px)}}
+  @keyframes lnIn{from{opacity:0;transform:translateY(-12px) scale(.97)}}
+  @keyframes lnHi{0%,35%{background-color:var(--accent-soft)}100%{background-color:transparent}}
+  @keyframes lnOut{to{opacity:0;transform:translateX(-24px)}}
+  @keyframes numPop{0%{transform:scale(1)}40%{transform:scale(1.22)}100%{transform:scale(1)}}
+  @keyframes markIn{0%{opacity:0;transform:scale(.4) rotate(-20deg)}100%{opacity:1;transform:none}}
+  @keyframes draw{to{stroke-dashoffset:0}}
+}
 
 /* ---------- shell ---------- */
 .app{max-width:1280px;margin:0 auto;padding-inline:16px;padding-block:12px 24px;display:flex;flex-direction:column;gap:12px}
@@ -1094,10 +1128,46 @@ const lineKey=(p,pack)=>p.id+"|"+(pack?pack.name:"");
 function lineFor(p,pack,qty){return priceLine({key:lineKey(p,pack),pid:p.id,unit:pack?pack.name:baseUnit(p),n:pack?pack.n:1,name:p.name,price:0,qty,cat:p.category||"",cost:costFor(p,pack),...(isWeighed(p)&&!pack?{w:1}:{})},p,pack,S.whole)}
 // The line key is "<item id>|<pack name>" (empty pack name = the base unit).
 function packOfLine(p,l){const nm=String(l.key||"").split("|")[1]||"";return nm?packsOf(p).find(k=>k.name===nm)||null:null}
+/* ---------- motion ----------
+   A new item flies as a small chip from where it came from (the tapped button, or the search field for a scanned code)
+   onto its line; the line slides in and lights up, the quantity and the total pop. Off with reduced motion. */
+const motionOn=()=>!!document.body.animate&&!(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches);
+let lastTap=null,addMark=null,totShown=null,totRaf=0;
+document.addEventListener("pointerdown",e=>{const b=e.target.closest&&e.target.closest("[data-add],[data-qp],.ib-r,.tile");lastTap=b?{r:b.getBoundingClientRect(),at:Date.now()}:null},true);
+function markAdd(key,isNew,label){
+  const tap=lastTap&&Date.now()-lastTap.at<1500?lastTap.r:null,q=$("#q");
+  addMark={key,isNew,label,at:Date.now(),from:tap||(q&&q.offsetParent?q.getBoundingClientRect():null)};lastTap=null;
+}
+function playAdd(root){
+  const m=addMark;addMark=null;if(!m||Date.now()-m.at>1000)return;
+  const li=[...root.querySelectorAll(".ib-line")].find(x=>x.dataset.k===m.key);if(!li)return;
+  li.classList.add(m.isNew?"ib-new":"ib-more");
+  try{li.scrollIntoView({block:"nearest",behavior:motionOn()?"smooth":"auto"})}catch(e){}
+  if(!motionOn()||!m.from||!m.label)return;
+  const to=(li.querySelector(".lt")||li).getBoundingClientRect();if(!to.width)return;
+  const c=document.createElement("div");c.className="fly";c.textContent=m.label;c.setAttribute("aria-hidden","true");document.body.appendChild(c);
+  const w=c.offsetWidth,h=c.offsetHeight,x0=m.from.left+m.from.width/2-w/2,y0=m.from.top+m.from.height/2-h/2,x1=to.left+to.width/2-w/2,y1=to.top+to.height/2-h/2;
+  c.style.left=x0+"px";c.style.top=y0+"px";
+  const dx=x1-x0,dy=y1-y0,lift=Math.min(90,Math.abs(dx)*.25+40);
+  const a=c.animate([{transform:"translate(0,0) scale(.7)",opacity:0},{transform:"translate(0,-6px) scale(1.06)",opacity:1,offset:.18},
+    {transform:`translate(${dx*.55}px,${dy*.55-lift}px) scale(.9)`,opacity:1,offset:.6},{transform:`translate(${dx}px,${dy}px) scale(.4)`,opacity:0}],
+    {duration:620,easing:"cubic-bezier(.3,.7,.4,1)"});
+  a.onfinish=a.oncancel=()=>c.remove();
+}
+// The invoice total counts up (or down) to its new value instead of jumping.
+function countTotal(total){
+  const b=$("#ibFoot .ib-sum b"),n=b&&b.querySelector(".num");if(!n)return;
+  const from=totShown;totShown=total;cancelAnimationFrame(totRaf);
+  if(from===null||from===total||!motionOn())return;
+  b.classList.add("pop");const t0=performance.now(),d=380;
+  const step=now=>{const k=Math.min(1,(now-t0)/d),e=1-Math.pow(1-k,3);if(!n.isConnected)return;n.textContent=fmt(Math.round(from+(total-from)*e));if(k<1)totRaf=requestAnimationFrame(step)};
+  n.textContent=fmt(from);totRaf=requestAnimationFrame(step);
+}
 function addToCart(p,qty,pack){
   if(!canSell())return;
   const l=S.cart.find(x=>x.key===lineKey(p,pack));
   if(l)l.qty=round3(l.qty+(qty||1));else S.cart.push(lineFor(p,pack||null,qty||1));
+  markAdd(lineKey(p,pack),!l,p.name+(pack?" ("+pack.name+")":""));
   S.lastSale=null;saveCart();refresh("cart");sound("add");splitView(true);
 }
 function setQty(key,q){
@@ -1122,6 +1192,7 @@ function render(){
   if((S.view==="products"||S.view==="count"||S.view==="recv")&&!canItems())S.view="sell";
   renderHeader();
   const v=$("#view");
+  if(render.last!==S.view){render.last=S.view;if(motionOn()){v.classList.remove("vin");void v.offsetWidth;v.classList.add("vin")}}
   if(S.view==="sell"){v.innerHTML=sellView();renderTiles();renderCart()}
   else if(S.view==="sales")renderSales();
   else if(S.view==="home")renderHome();
@@ -1208,7 +1279,7 @@ function renderInv(){
     +B("ibprint",I.print,"طباعة",!has)+B("newinv",I.pause,"فاتورة جديدة",!has||!sell)+B("clear",I.trash,"حذف الكل",!has||!sell);
   const inCart=new Map();for(const l of S.cart)if(l.pid)inCart.set(l.pid,round3((inCart.get(l.pid)||0)+l.qty*(l.n||1)));
   root.innerHTML=has?`<ul class="ib-lines">${S.cart.map(l=>{const p=l.pid&&S.products.get(l.pid),left=p&&tracked(p)?round3(stockOf(p)-(inCart.get(l.pid)||0)):null,k=esc(l.key);
-    return `<li class="ib-line"><div class="nm"><b>${esc(l.name)}</b>
+    return `<li class="ib-line" data-k="${k}"><div class="nm"><b>${esc(l.name)}</b>
         <span><span class="num">${fmt(l.price)}</span> ${CUR}${l.w?" للكيلو":""}${left!==null?` | <span class="${left<=0?"low":""}">المخزن: <span class="num">${qtyText(left)}</span></span>`:""}${l.was?` <s class="was num">${fmt(l.was)}</s>`:""}${l.deal||l.was?` <span class="of">عرض${l.deal?" "+offerHtml(l.deal):""}</span>`:""}${l.fix>0&&l.disc>0?` <span class="of">خصم <span class="num">${fmt(l.disc)}</span></span>`:""}</span>
         ${l.note?`<small class="note">${esc(l.note)}</small>`:""}</div>
       ${adm&&sell?`<div class="ib-chips"><button type="button" data-lprice="${k}">سعر</button><button type="button" data-ldisc="${k}">خصم</button><button type="button" data-lpct="${k}">%</button></div>`:""}
@@ -1225,6 +1296,9 @@ function renderInv(){
       <button class="btn" type="button" data-act="quickcash"${has&&sell?"":" disabled"}>كاش${kk("cash")}</button>
       <button class="btn primary ib-go" type="button" data-act="checkout"${has&&sell?"":" disabled"}>${I.check}إتمام وحفظ${kk("pay")}</button></div></div>`;
   hydratePics(root);
+  // The sale's tick and lines play once, not again each time the screen refreshes.
+  const sd=root.querySelector(".sold");if(sd){if(renderInv.sold===S.lastSale)sd.classList.add("seen");renderInv.sold=S.lastSale}
+  playAdd(root);countTotal(t.total);
 }
 // Items back onto the invoice from the last sale made on this device (the same customer buying again).
 function redoLast(){
@@ -1267,6 +1341,7 @@ const QP=[250,500,750,1000,1500,2000,3000,5000,10000,25000];
 function quickAdd(price){
   if(!canSell()||!(price>0))return;
   const l=S.cart.find(x=>!x.pid&&x.price===price&&x.name==="مادة متفرقة"&&!x.note);if(l)l.qty=round3(l.qty+1);else S.cart.push({key:"c-"+uid(),pid:null,name:"مادة متفرقة",price,qty:1,cat:cats()[0]||""});
+  markAdd(l?l.key:S.cart[S.cart.length-1].key,!l,fmt(price));
   S.lastSale=null;saveCart();refresh("cart");sound("add");
 }
 // The side panel stays open beside the invoice: quick prices, the items sold by weight, and all items by category.
@@ -1526,6 +1601,7 @@ function sellScaled(r){
   if(!(kg>0)){toast("الملصق ما بيه وزن.",3000);return false}
   if(l){const before=lineTotal(l);l.qty=round3(l.qty+kg);if(r.amt||l.fix>0)l.fix=before+amt}
   else{const nl=lineFor(p,null,kg);if(r.amt)nl.fix=r.amt;S.cart.push(nl)}
+  markAdd(lineKey(p,null),!l,p.name);
   S.lastSale=null;saveCart();refresh("cart");sound("add");if(navigator.vibrate)navigator.vibrate(40);
   toast(`انضاف ${kgText(kg)} ${p.name} = ${fmt(amt)}`,1800);return true;
 }
@@ -4992,7 +5068,7 @@ document.addEventListener("click",e=>{
   const ld=t.closest("[data-ldisc]");if(ld){lineDiscForm(ld.dataset.ldisc,false);return}
   const lc=t.closest("[data-lpct]");if(lc){lineDiscForm(lc.dataset.lpct,true);return}
   const lnn=t.closest("[data-lnote]");if(lnn){lineNoteForm(lnn.dataset.lnote);return}
-  const ldl=t.closest("[data-ldel]");if(ldl){setQty(ldl.dataset.ldel,0);return}
+  const ldl=t.closest("[data-ldel]");if(ldl){const k=ldl.dataset.ldel,li=ldl.closest(".ib-line");if(li&&motionOn()){li.classList.add("ib-out");setTimeout(()=>setQty(k,0),180)}else setQty(k,0);return}
   const iv=t.closest("[data-inv]");if(iv){switchInvoice(+iv.dataset.inv);return}
   const qp=t.closest("[data-qp]");if(qp){quickAdd(Number(qp.dataset.qp));return}
   const c=t.closest("[data-cat]");if(c){S.cat=c.dataset.cat;renderSide();return}
@@ -5199,7 +5275,7 @@ function enterShop(u,uname){
       const first=!S.me;S.isOwner=true;
       S.me={id:u.uid,name:S.settings.ownerName||x.ownerName||"المدير",role:"owner",username:x.username||uname};
       rememberLogin(S.me.username,u.email);
-      if(!S.homeSeen){S.homeSeen=true;S.view="home"}
+      
       startData();if(first||$("#app").hidden)showApp();else render();
       return;
     }
@@ -5256,7 +5332,7 @@ function watchProfile(u,uname){
     const own=fake&&uname!==OWNER_USER?false:await ownerCheck(u);
     if(seq!==authSeq)return;
     S.isOwner=own;
-    if(S.isOwner){rememberLogin(OWNER_USER,u.email);S.me={id:u.uid,name:S.settings.ownerName||"المدير",role:"owner",username:OWNER_USER};if(!S.homeSeen){S.homeSeen=true;S.view="home"}startData();showApp();return}
+    if(S.isOwner){rememberLogin(OWNER_USER,u.email);S.me={id:u.uid,name:S.settings.ownerName||"المدير",role:"owner",username:OWNER_USER};startData();showApp();return}
     profUnsub=watchProfile(u,uname);
   });
 // The site moved from GitHub Pages to shahm-debts.app (the old address stops once the code repository goes private).
