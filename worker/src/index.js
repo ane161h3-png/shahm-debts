@@ -165,7 +165,8 @@ async function authorize(request, env) {
   const active = f.status && f.status.stringValue === "active";
   const editor = f.role && f.role.stringValue === "editor";
   if (!active || !editor) return { error: "هذي الخاصية للمدير والمحررين فقط.", status: 403 };
-  return { user, token };
+  // An editor the owner trusted with the items («يدير المواد» in the cashier) may also read item lists.
+  return { user, token, items: !!(f.items && f.items.booleanValue === true) };
 }
 
 function readBody(b) {
@@ -442,8 +443,8 @@ export default {
         return json({ error: "قراءات كثيرة ورا بعض. انتظر دقيقة وحاول." }, 429, cors);
       const input = readBody(await request.json().catch(() => null));
       if (input.error) return json({ error: input.error }, 400, cors);
-      // Only the owner adds items in the cashier app.
-      if (input.kind === "items" && !auth.owner) return json({ error: "إضافة المواد للمدير فقط." }, 403, cors);
+      // Items are added in the cashier by the owner and by an editor who manages the items (as in firestore.rules).
+      if (input.kind === "items" && !auth.owner && !auth.items) return json({ error: "إضافة المواد للمدير، أو للموظف اللي عنده «يدير المواد»." }, 403, cors);
 
       const useClaude = !!env.ANTHROPIC_API_KEY;
       const out = useClaude ? await readWithClaude(env, input) : await readWithGemini(env, input);
