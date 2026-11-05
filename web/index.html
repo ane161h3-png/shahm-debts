@@ -147,6 +147,12 @@ header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .sum-hero .s{font-size:13.5px;opacity:.85}
 .sum-hero .k .eye{margin-inline-start:auto;background:none;border:1px solid currentColor;color:inherit;border-radius:8px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:12.5px;cursor:pointer;opacity:.9}
 .sum-hero .k .eye svg{width:16px;height:16px}
+.list-head{display:flex;align-items:center;gap:8px}
+.list-head .eye,.balance-card .lbl .eye{margin-inline-start:auto;background:none;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:2px 8px;display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:12.5px;cursor:pointer}
+.balance-card .lbl{display:flex;align-items:center;gap:8px}
+.balance-card .lbl .eye{margin-inline-start:6px}
+.list-head .eye svg,.balance-card .lbl .eye svg{width:15px;height:15px}
+.eye .rv-left{min-width:2ch;display:inline-block;text-align:center}
 .masked{letter-spacing:.12em;opacity:.85}
 .sum-mini{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)}
 .sum-mini>div{padding:12px 14px;min-width:0}
@@ -680,9 +686,22 @@ const BRAND_MARK=document.querySelector("header.top .logo").innerHTML; // brand 
 const SESSION_KEY="shahm-session-v1",THEME_KEY="shahm-theme",CACHE_KEY="shahm-debts-cache-v1";
 /* Home-screen numbers the user chose to hide on this device (Settings > إخفاء الأرقام). S.reveal shows them until the next reload. */
 const HIDE_KEY="shahm-hide";
-const HIDE_ITEMS=[["total","مجموع الدين على الزبائن"],["owing","عدد الزبائن اللي عليهم دين"],["cust","عدد الزبائن"],["paid","المحصّل هذا الشهر"],["added","المضاف هذا الشهر"],["top","مبالغ أعلى الديون"],["sup","ديون الموردين (علينا)"]];
+const HIDE_ITEMS=[["total","مجموع الدين على الزبائن"],["list","أرصدة الزبائن بقائمة الحسابات"],["acct","الرصيد داخل صفحة الزبون"],["owing","عدد الزبائن اللي عليهم دين"],["cust","عدد الزبائن"],["paid","المحصّل هذا الشهر"],["added","المضاف هذا الشهر"],["top","مبالغ أعلى الديون"],["sup","ديون الموردين (علينا)"]];
 const hiddenNums=()=>{try{const v=JSON.parse(localStorage.getItem(HIDE_KEY)||"[]");return Array.isArray(v)?v:[]}catch(e){return []}};
 const setHidden=a=>{try{localStorage.setItem(HIDE_KEY,JSON.stringify(a))}catch(e){}};
+// How long «إظهار» shows hidden numbers before they hide again (seconds; 0 = until «إخفاء» or leaving the app).
+const REVEAL_KEY="shahm-reveal-for",REVEAL_OPTS=[[10,"10 ثواني"],[30,"30 ثانية"],[60,"دقيقة"],[300,"5 دقايق"],[0,"لحد ما أخفيها"]];
+const revealFor=()=>{try{const v=localStorage.getItem(REVEAL_KEY);return v===null?30:Number(v)||0}catch(e){return 30}};
+let revealT=null,revealTick=null;
+function setReveal(on){
+  clearTimeout(revealT);clearInterval(revealTick);revealT=revealTick=null;S.reveal=!!on;S.revealUntil=0;
+  const sec=revealFor();
+  if(on&&sec){S.revealUntil=Date.now()+sec*1000;revealT=setTimeout(()=>setReveal(false),sec*1000);
+    revealTick=setInterval(()=>{const left=Math.max(0,Math.ceil((S.revealUntil-Date.now())/1000));document.querySelectorAll(".eye .rv-left").forEach(e=>e.textContent=left)},1000)}
+  render();
+}
+// The eye button: shown wherever a hidden number is, so the numbers can be shown there for the chosen time.
+const eyeBtn=()=>hiddenNums().length?`<button class="eye" type="button" data-act="reveal" aria-pressed="${!!S.reveal}">${S.reveal?I.eyeOff+"إخفاء"+(S.revealUntil?` <span class="rv-left num">${Math.max(0,Math.ceil((S.revealUntil-Date.now())/1000))}</span>`:""):I.eye+"إظهار"}</button>`:"";
 const shown=(k,html)=>(TOTAL_KEYS.includes(k)&&!can("totals"))||(!S.reveal&&hiddenNums().includes(k))?'<span class="masked" aria-label="مخفي">••••</span>':html;
 /* What the owner lets each worker do (users/{uid}.perms, set only by the owner). A missing key means allowed, so old accounts keep working as before. */
 const PERMS=[["totals","يشوف المجموع الكلي والتقارير"],["edit","يعدّل ويحذف الحركات والزبائن"]];
@@ -1822,7 +1841,7 @@ function homeView(){
   const actDay0=shopDayRange(shopDay()).start,actToday=actAll.filter(a=>a.at>=actDay0).length,acts=actAll.slice(0,Math.max(60,actToday));
   return `<div style="display:flex;flex-direction:column;gap:14px">
   <section class="pane summary" aria-label="ملخص">
-    <div class="sum-hero"><div class="k">${I.wallet}مجموع الدين على الزبائن${hiddenNums().length?`<button class="eye" type="button" data-act="reveal" aria-pressed="${!!S.reveal}">${S.reveal?I.eyeOff+"إخفاء":I.eye+"إظهار"}</button>`:""}</div>
+    <div class="sum-hero"><div class="k">${I.wallet}مجموع الدين على الزبائن${eyeBtn()}</div>
       <div class="v">${shown("total",`<span class="num">${fmt(total)}</span><small>${CUR}</small>`)}</div>
       <div class="s">${shown("owing",`<span class="num">${owing}</span>`)} زبون عليهم دين</div></div>
     <div class="sum-mini">
@@ -1903,7 +1922,7 @@ function renderHomeTable(){
       <td class="h-sm num ct-ph">${c.phone?esc(c.phone):'<span class="ro-note">—</span>'}</td>
       <td class="h-sm">${x.lv?`<span class="prio p${x.lv}">${PRIO[x.lv]}</span>`:'<span class="prio p0">منتظم</span>'}</td>
       <td class="h-sm num">${p.count?esc(shortDate(msISO(p.last))):"—"}</td>
-      <td class="num ${p.bal>0?"amt-d":p.bal<0?"amt-p":""}">${shown("top",fmt(p.bal))}</td>
+      <td class="num ${p.bal>0?"amt-d":p.bal<0?"amt-p":""}">${shown("list",fmt(p.bal))}</td>
       <td class="h-sm num">${c.limit>0?fmt(c.limit):'<span class="ro-note">بدون</span>'}</td>
       <td><span class="ct-st ${sc}">${st}</span></td>
       <td class="ct-ops">${w?`<button type="button" class="ct-b q-pay" data-qpay="${esc(c.id)}" title="تسديد" aria-label="تسديد ${esc(c.name)}">${I.minus}</button><button type="button" class="ct-b q-debt" data-qdebt="${esc(c.id)}" title="دين" aria-label="دين على ${esc(c.name)}">${I.plus}</button>`:""}${l?`<a class="ct-b wa" href="${esc(l)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}" title="تذكير واتساب" aria-label="تذكير ${esc(c.name)}">${I.wa}</a>`:""}</td>
@@ -1977,10 +1996,10 @@ function renderList(){
     return `<li class="cust-row"><button class="cust" type="button" data-open="${esc(c.id)}" aria-current="${S.selected===c.id}">
       <span class="avatar" aria-hidden="true">${initial(c.name)}</span>
       <span class="meta"><span class="name">${esc(c.name)}${over?' <span class="chip warn" style="font-size:11px;padding:0 6px">تجاوز الحد</span>':""}${lk&&lk.locked?' <span class="chip debt" style="font-size:11px;padding:0 6px">مقفول</span>':""}</span><span class="sub">${esc(sub)}${dueMap.has(c.id)?` <span class="chip ${dueMap.get(c.id)<0?"debt":"warn"}" style="font-size:11px;padding:0 6px">${dueText(dueMap.get(c.id))}</span>`:""}</span></span>
-      <span class="chip ${cls}"><span class="num">${esc(label)}</span></span></button>
+      <span class="chip ${cls}">${shown("list",`<span class="num">${esc(label)}</span>`)}</span></button>
       ${canWrite()?`<span class="row-q"><button type="button" class="q-pay" data-qpay="${esc(c.id)}" aria-label="دفعة من ${esc(c.name)}" title="دفعة">${I.minus}</button><button type="button" class="q-debt" data-qdebt="${esc(c.id)}" aria-label="دين على ${esc(c.name)}" title="دين">${I.plus}</button></span>`:""}</li>`;
   }).join("");
-  ul.insertAdjacentHTML("afterbegin",`<li class="ro-note" style="padding:2px 10px 6px">${arr.length} ${S.kind==="supplier"?"مورد":"حساب"}</li>`);
+  ul.insertAdjacentHTML("afterbegin",`<li class="ro-note list-head" style="padding:2px 10px 6px">${arr.length} ${S.kind==="supplier"?"مورد":"حساب"}${hiddenNums().includes("list")?eyeBtn():""}</li>`);
   if(S.kind==="supplier"){const m=monthISO();let owe=0,buy=0,paid=0;
     for(const c of S.customers.values())if(isSup(c)){const b=per.get(c.id).bal;if(b>0)owe+=b}
     for(const t of S.txns.values()){const c=S.customers.get(t.customerId);if(c&&isSup(c)&&(t.date||"").startsWith(m))t.type==="debt"?buy+=t.amount:paid+=t.amount}
@@ -2002,6 +2021,7 @@ function ledgerFor(c){
 const PERIODS=[["all","كل الحركات"],["sincepay","من آخر دفعة"],["month","هذا الشهر"],["30","آخر 30 يوم"]];
 // The balance after each of the account's last 60 transactions, as a small line under the balance card.
 function balSpark(c){
+  if(!S.reveal&&hiddenNums().includes("acct"))return "";
   const rows=txnsOf(c.id);if(rows.length<2)return "";let b=0;const pts=rows.map(t=>(b+=t.type==="debt"?t.amount:-t.amount)).slice(-60);
   const W=300,H=56,P=4,mx=Math.max(0,...pts),mn=Math.min(0,...pts),sp=mx-mn||1,x=i=>P+i*(W-2*P)/(pts.length-1),y=v=>P+(mx-v)*(H-2*P)/sp;
   const line=pts.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" "),z=y(0).toFixed(1),last=pts[pts.length-1],col=last>0?"var(--debt)":"var(--paid)";
@@ -2033,7 +2053,7 @@ function renderDetail(){
       </div>
     </div>
     <div class="balance-card ${balCls}">
-      <div><div class="lbl">${balLbl}</div><div class="amt"><span class="num">${fmt(Math.abs(per.bal))}</span><small>${CUR}</small></div>
+      <div><div class="lbl">${balLbl}${hiddenNums().includes("acct")?eyeBtn():""}</div><div class="amt">${shown("acct",`<span class="num">${fmt(Math.abs(per.bal))}</span><small>${CUR}</small>`)}</div>
         <div class="limit-row">${sup?"":(()=>{const n=lockDaysOf(c),own=ownLock(c);if(!n&&!own&&!isAdmin())return "";
           if(c.lockNow)return `<span class="chip debt"><i class="lk">${I.lock}</i> مقفول هسه</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">تغيير القفل</button>`:""}`;
           return `<span class="chip ${n?"warn":"zero"}"><i class="lk">${I.lock}</i> ${n?"قفل بعد "+lockName(n):"بدون قفل"}${own?"":" (عام)"}</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">${n||own?"تغيير القفل":"+ قفل الحساب"}</button>`:""}`})()}${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup&&can("edit")?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
@@ -2057,13 +2077,13 @@ function renderDetail(){
     <div class="ledger">
       <div class="period"><h3>الحركات</h3><div style="display:flex;gap:8px;flex-wrap:wrap"><select id="period" aria-label="المدة">${PERIODS.map(([k,l])=>`<option value="${k}" ${S.period===k?"selected":""}>${l}</option>`).join("")}</select><button class="btn sm primary" type="button" data-act="custpdf">${I.pdf}تقرير PDF</button></div></div>
       ${L.list.length||L.from?`<div class="ledger-scroll"><table><thead><tr><th>التاريخ والبيان</th><th>${sup?"فاتورة":"دين"}</th><th>دفعة</th><th>الرصيد</th>${w?"<th></th>":""}</tr></thead><tbody>
-      ${L.from?`<tr class="edge"><td colspan="3">رصيد نهاية المدة · ${esc(shortDate(todayISO()))}</td><td class="run"><span class="num">${fmt(L.close)}</span></td>${w?"<td></td>":""}</tr>`:""}
+      ${L.from?`<tr class="edge"><td colspan="3">رصيد نهاية المدة · ${esc(shortDate(todayISO()))}</td><td class="run">${shown("acct",`<span class="num">${fmt(L.close)}</span>`)}</td>${w?"<td></td>":""}</tr>`:""}
       ${L.list.slice().reverse().map(({t,run})=>`<tr><td class="desc">${t.inv?`<b class="num">#${esc(t.inv)}</b> `:""}${esc(t.note||(t.type==="debt"?(sup?"بضاعة بالآجل":"مشتريات"):"دفعة"))}${t.photos&&t.photos.length?` <button class="pic-btn" type="button" data-act="viewpics" data-id="${esc(t.id)}" aria-label="عرض صورة القائمة">${I.camera}${t.photos.length>1?t.photos.length:""}</button>`:""}<span class="d">${esc(shortDate(t.date))}${txnTime(t)?" · "+esc(txnTime(t)):""}${t.by?" · "+esc(t.by):""}${t.waSent?` · <span class="wa-sent">✓ واتساب</span>`:""}</span></td>
         <td class="amt-d">${t.type==="debt"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
         <td class="amt-p">${t.type==="pay"?'<span class="num">'+fmt(t.amount)+"</span>":""}</td>
-        <td class="run"><span class="num">${fmt(run)}</span></td>
+        <td class="run">${shown("acct",`<span class="num">${fmt(run)}</span>`)}</td>
         ${w?`<td class="x">${!sup&&t.type==="pay"?`<button class="icon-btn rc-btn" type="button" title="سند قبض" aria-label="سند قبض لهذا التسديد" data-act="receipt" data-id="${esc(t.id)}">${I.pdf}</button>`:""}${!sup&&waNumber(c.phone)?`<button class="icon-btn wa-re" type="button" title="إرسال الرسالة مرة ثانية" aria-label="إرسال رسالة واتساب لهذه الحركة مرة ثانية" data-act="resendwa" data-id="${esc(t.id)}">${I.wa}</button>`:""}${can("edit")?`<button class="icon-btn" type="button" title="تعديل" aria-label="تعديل الحركة" data-act="edittx" data-id="${esc(t.id)}">${I.edit}</button><button class="icon-btn del" type="button" title="حذف" aria-label="حذف الحركة" data-act="deltx" data-id="${esc(t.id)}">${I.trash}</button>`:""}</td>`:""}</tr>`).join("")}
-      ${L.from?`<tr class="edge"><td colspan="3">رصيد بداية المدة · ${esc(shortDate(L.from))}</td><td class="run"><span class="num">${fmt(L.open)}</span></td>${w?"<td></td>":""}</tr>`:""}
+      ${L.from?`<tr class="edge"><td colspan="3">رصيد بداية المدة · ${esc(shortDate(L.from))}</td><td class="run">${shown("acct",`<span class="num">${fmt(L.open)}</span>`)}</td>${w?"<td></td>":""}</tr>`:""}
       </tbody></table></div>`:`<div class="empty"><b>لا توجد حركات</b>${w?"سجّل أول دين بالضغط على «دين».":""}</div>`}
       <div class="mini-sums" style="margin-top:8px"><span>${sup?"مشتريات المدة":"ديون المدة"}: <b class="num">${fmt(L.dSum)}</b></span><span>دفعات المدة: <b class="num">${fmt(L.pSum)}</b></span><span>عدد الحركات: <b class="num">${L.list.length}</b></span></div>
     </div>
@@ -2701,7 +2721,8 @@ function setPage(k){
     <p class="ro-note" style="margin:0">يشتغل بدون إنترنت، وأول ما يرجع الإنترنت ترسل التعديلات وتتزامن.</p>${introBtn}`;}
   if(k==="card")return bizPage();
   if(k==="hide"){const h=hiddenNums();
-    return `<h2>إخفاء أرقام الواجهة الرئيسية</h2><p class="lead">الرقم المخفي يظهر نقاط ••••. تكدر تشوفه مؤقتاً بزر «إظهار» بأعلى الواجهة. الإعداد خاص بهذا الجهاز فقط، والأرقام داخل صفحة كل زبون تبقى ظاهرة.</p>
+    return `<h2>إخفاء الأرقام</h2><p class="lead">الرقم المخفي يظهر نقاط ••••. تكدر تشوفه مؤقتاً بزر العين «إظهار» (بالواجهة، وفوق قائمة الحسابات، وبصفحة الزبون)، ويختفي وحده بعد المدة اللي تختارها. الإعداد خاص بهذا الجهاز فقط.</p>
+    <div class="toggle-row"><span>مدة الإظهار بعد ما تدوس العين</span><div class="seg" role="group" aria-label="مدة الإظهار">${REVEAL_OPTS.map(([v,t2])=>`<button type="button" data-revealfor="${v}" aria-pressed="${revealFor()===v}">${t2}</button>`).join("")}</div></div>
     ${HIDE_ITEMS.map(([k2,l])=>`<div class="toggle-row"><span>${l}</span><div class="seg" role="group" aria-label="${l}">${[["0","يظهر"],["1","مخفي"]].map(([v,t2])=>`<button type="button" data-hide="${k2}" data-v="${v}" aria-pressed="${h.includes(k2)===(v==="1")}">${t2}</button>`).join("")}</div></div>`).join("")}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" type="button" data-hideall="1">${I.eyeOff}إخفاء الكل</button><button class="btn" type="button" data-hideall="0">${I.eye}إظهار الكل</button></div>`}
   if(k==="notify"){const pr=notifPrefs(),has="Notification" in window,perm=has?Notification.permission:"denied";
@@ -4204,7 +4225,8 @@ document.addEventListener("click",e=>{
   const sp=t.closest("[data-set]");if(sp){S.setPage=sp.dataset.set||null;if(S.setPage&&window.innerWidth<=820){S.setAnim=S.setPage;render();accFocus()}else{render();window.scrollTo(0,0)}return}
   const nf=t.closest("[data-notif]");if(nf){const k=nf.dataset.notif,on=nf.dataset.v==="1";setNotif(k,on);if(NOTIF_ITEMS.some(x=>x[0]===k))pushKindsSave();if(on&&k==="sound")chime();if(on&&k==="saveFx")saveFx(false);if(k==="daily")dailyCheck();render();return}
   const hd=t.closest("[data-hide]");if(hd){const k=hd.dataset.hide,h=hiddenNums().filter(x=>x!==k);if(hd.dataset.v==="1")h.push(k);setHidden(h);render();return}
-  const ha=t.closest("[data-hideall]");if(ha){setHidden(ha.dataset.hideall==="1"?HIDE_ITEMS.map(x=>x[0]):[]);S.reveal=false;render();return}
+  const ha=t.closest("[data-hideall]");if(ha){setHidden(ha.dataset.hideall==="1"?HIDE_ITEMS.map(x=>x[0]):[]);setReveal(false);return}
+  const rvf=t.closest("[data-revealfor]");if(rvf){try{localStorage.setItem(REVEAL_KEY,rvf.dataset.revealfor)}catch(e){}setReveal(false);return}
   const th=t.closest("[data-theme-set]");if(th){const v=th.dataset.themeSet;try{localStorage.setItem(THEME_KEY,v)}catch(x){}applyTheme(v);render();return}
   const ph=t.closest("[data-ph]");if(ph){const ta=document.getElementById(ph.dataset.for);const s=ta.selectionStart??ta.value.length;ta.value=ta.value.slice(0,s)+"{"+ph.dataset.ph+"}"+ta.value.slice(ta.selectionEnd??s);ta.focus();return}
   const tr=t.closest("[data-tplreset]");if(tr){document.getElementById("tpl-"+tr.dataset.tplreset).value=DEFAULT_TPL[tr.dataset.tplreset];return}
@@ -4238,7 +4260,7 @@ document.addEventListener("click",e=>{
     case "warncsv":warnCsv();break;
     case "warnmore":S.rep.wlimit=(S.rep.wlimit||40)+40;render();break;
     case "alertcfg":if(isAdmin())alertCfgForm();break;
-    case "reveal":S.reveal=!S.reveal;render();break;
+    case "reveal":setReveal(!S.reveal);break;
     case "unlock":if(c&&canWrite()){const L=lockState(c);if(L&&L.locked)lockGate(c,L)}break;
     case "lockset":if(c&&isAdmin())lockSetForm(c);break;
     case "golocked":S.view="customers";S.kind="customer";S.filter="locked";S.selected=null;render();window.scrollTo(0,0);break;
@@ -4526,6 +4548,8 @@ function updCheck(force){
 if(!navigator.onLine)UPD.ver="offline";
 updCheck(true);
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")updCheck()});
+// Shown numbers hide again as soon as the app goes to the background.
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&S.reveal)setReveal(false)});
 document.addEventListener("resume",()=>updCheck());
 window.addEventListener("online",()=>updCheck(true));
 setInterval(()=>{if(document.visibilityState==="visible")updCheck(true)},30*60000);
