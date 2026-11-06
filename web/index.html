@@ -655,6 +655,37 @@ td.x{width:64px;white-space:nowrap}
   .btn:not(:disabled):active{transform:scale(.98)}
 }
 @media (prefers-reduced-motion:no-preference){.modal{animation:pop .16s ease-out}@keyframes pop{from{transform:translateY(8px);opacity:.6}}}
+
+/* Highest balances strip on home (topCards). */
+.top-cards{padding:12px 0 14px;overflow:hidden}
+.top-cards .section-title{padding:0 14px;margin-bottom:8px}
+.top-cards .section-title h2 svg{width:18px;height:18px;vertical-align:-3px;margin-inline-end:6px;color:var(--debt)}
+.tc-view{overflow:hidden;-webkit-mask-image:linear-gradient(to left,transparent,black 18px,black calc(100% - 18px),transparent);mask-image:linear-gradient(to left,transparent,black 18px,black calc(100% - 18px),transparent)}
+.tc-track,.tc-dup{display:flex;width:max-content}
+.tc-track{padding:4px 0}
+.tc{flex:none;width:168px;margin-inline-end:10px;display:flex;flex-direction:column;gap:4px;text-align:right;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:10px 12px;cursor:pointer}
+.tc.first{border-color:var(--debt)}
+.tc-top{display:flex;align-items:center;justify-content:space-between}
+.tc .avatar{width:32px;height:32px;font-size:14px}
+.tc-rank{font-family:var(--f-display);font-weight:800;font-size:13px;color:var(--muted)}
+.tc-name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tc-amt{font-family:var(--f-display);font-weight:800;font-size:20px;color:var(--debt);line-height:1.2}
+.tc-amt small{font-size:12px;font-weight:500;color:var(--muted)}
+.tc-bar{height:4px;border-radius:2px;background:var(--paper-2);overflow:hidden}.tc-bar i{display:block;height:100%;background:var(--debt);border-radius:2px}
+.tc-s{font-size:12px;color:var(--muted);white-space:nowrap}.tc-s.late{color:var(--debt)}
+.tc:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){
+  .tc-track{animation:tcDrift var(--tc-dur,40s) linear infinite}
+  @keyframes tcDrift{from{transform:translateX(0)}to{transform:translateX(50%)}}
+  .tc-view:hover .tc-track,.tc-view:active .tc-track,.tc-view:focus-within .tc-track{animation-play-state:paused}}
+@media (prefers-reduced-motion:reduce){.tc-view{overflow-x:auto;-webkit-mask-image:none;mask-image:none}.tc-dup,.tc[aria-hidden]{display:none}}
+/* Count-up numbers (countUps). */
+.cu{display:inline-block}
+.cu-badge{display:inline-block;vertical-align:middle;margin-inline-start:10px;font-family:var(--f-display);font-size:16px;font-weight:700;line-height:1;pointer-events:none;white-space:nowrap;direction:ltr;unicode-bidi:isolate}
+.cu-badge.cu-debt{color:var(--debt)}.cu-badge.cu-paid{color:var(--paid)}
+.sum-hero .cu-badge{color:inherit}
+@media (prefers-reduced-motion:no-preference){.cu-pop{animation:cuPop .55s ease-out}@keyframes cuPop{35%{transform:scale(1.08)}}
+  .cu-badge{animation:cuRise 1.6s ease-out forwards}@keyframes cuRise{0%{opacity:0;transform:translateY(8px)}15%{opacity:1}70%{opacity:1}100%{opacity:0;transform:translateY(-22px)}}}
 </style>
 </head>
 <body>
@@ -1770,6 +1801,7 @@ function render(){
   else if(S.view==="reminders")v.innerHTML=remindersView();
   else if(S.view==="reports"){v.innerHTML=reportsView();mountRepCharts()}
   else{v.innerHTML=settingsView();if($("#bizCv"))bizRedraw()}
+  countUps();
 }
 function navBtn([k,l,ic]){return `<button type="button" data-go="${k}" aria-current="${S.view===k?"page":"false"}">${ic}<span>${l}</span></button>`}
 
@@ -1831,6 +1863,26 @@ const ACT_TEXT=a=>{
     default:return esc(a.detail||"");
   }
 };
+/* The highest balances as cards in a strip at the top of home that drifts to the right on its own (a seamless loop: the
+   cards are drawn twice and the strip moves by one copy). Touching or hovering stops it; reduce-motion makes it a plain
+   swipeable row. Tapping a card opens the account. */
+function topCards(per,total){
+  const list=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal})).filter(x=>x.b>0).sort((a,b)=>b.b-a.b).slice(0,10);
+  if(list.length<2)return "";const late=lateInfo();
+  const card=(x,i,dup)=>{const L=late.get(x.c.id),pc=total?Math.max(4,Math.round(x.b/total*100)):0;
+    return `<button type="button" class="tc${i===0?" first":""}" data-open="${esc(x.c.id)}"${dup?' tabindex="-1" aria-hidden="true"':""} title="فتح حساب ${esc(x.c.name)}">
+      <span class="tc-top"><span class="tc-rank num">${i+1}</span><span class="avatar" aria-hidden="true">${initial(x.c.name)}</span></span>
+      <span class="tc-name">${esc(x.c.name)}</span>
+      <span class="tc-amt">${shown("top",`<span class="num">${fmt(x.b)}</span> <small>${CUR}</small>`)}</span>
+      <span class="tc-bar" aria-hidden="true"><i style="width:${pc}%"></i></span>
+      <span class="tc-s${L&&L.late?" late":""}">${!L?"&nbsp;":!L.days?(L.paid?"آخر تسديد اليوم":"دين من اليوم"):(L.paid?"آخر تسديد قبل ":"بدون تسديد من ")+'<span class="num">'+L.days+"</span> يوم"}</span></button>`};
+  // Each copy holds at least 8 cards so a short list still fills a wide screen while it drifts.
+  const reps=Math.ceil(8/list.length),hid=list.map((x,i)=>card(x,i,true)).join("");
+  const one=list.map((x,i)=>card(x,i,false)).join("")+hid.repeat(reps-1),two=hid.repeat(reps);
+  return `<section class="pane top-cards" aria-label="أعلى الأرصدة">
+    <div class="section-title"><h2>${I.trend}أعلى الأرصدة</h2><span class="ro-note">أعلى <span class="num">${list.length}</span> زبائن</span></div>
+    <div class="tc-view"><div class="tc-track" style="--tc-dur:${list.length*reps*6}s">${one}<span class="tc-dup">${two}</span></div></div></section>`;
+}
 function homeView(){
   const per=stats();const m=monthISO();let total=0,owing=0,mAdd=0,mPay=0;
   let supOwed=0;const custN=[...S.customers.values()].filter(c=>!isSup(c)).length;
@@ -1842,15 +1894,16 @@ function homeView(){
   return `<div style="display:flex;flex-direction:column;gap:14px">
   <section class="pane summary" aria-label="ملخص">
     <div class="sum-hero"><div class="k">${I.wallet}مجموع الدين على الزبائن${eyeBtn()}</div>
-      <div class="v">${shown("total",`<span class="num">${fmt(total)}</span><small>${CUR}</small>`)}</div>
-      <div class="s">${shown("owing",`<span class="num">${owing}</span>`)} زبون عليهم دين</div></div>
+      <div class="v">${shown("total",`<span class="num">${cu("total",total,"debt",1)}</span><small>${CUR}</small>`)}</div>
+      <div class="s">${shown("owing",`<span class="num">${cu("owing",owing,"debt")}</span>`)} زبون عليهم دين</div></div>
     <div class="sum-mini">
-      <div><div class="k">${I.users}الزبائن</div><div class="v num">${shown("cust",custN)}</div></div>
-      <div><div class="k">${I.check}المحصّل هذا الشهر</div><div class="v paid num">${shown("paid",fmt(mPay))}</div></div>
-      <div><div class="k">${I.trend}المضاف هذا الشهر</div><div class="v debt num">${shown("added",fmt(mAdd))}</div></div>
+      <div><div class="k">${I.users}الزبائن</div><div class="v num">${shown("cust",cu("cust",custN,""))}</div></div>
+      <div><div class="k">${I.check}المحصّل هذا الشهر</div><div class="v paid num">${shown("paid",cu("paid",mPay,"paid"))}</div></div>
+      <div><div class="k">${I.trend}المضاف هذا الشهر</div><div class="v debt num">${shown("added",cu("added",mAdd,"debt"))}</div></div>
     </div>
     <div class="sum-actions" role="group" aria-label="إجراءات سريعة">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="voice">${I.mic}بالصوت</button><button class="btn" type="button" data-act="newcust">زبون جديد</button>${SHOP?"":`<button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`}`:""}${can("totals")?`<button class="btn" type="button" data-act="monthrep">${I.trend}التقرير الشهري</button>`:""}<button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين${shown("owing",` (${owing})`)}</button></div>
   </section>
+  ${topCards(per,total)}
   <section class="pane card-pad home-search" aria-label="بحث عن زبون">
     <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="hq" type="search" placeholder="ابحث عن زبون أو مورد بالاسم أو الرقم" autocomplete="off" enterkeyhint="search" value="${esc(S.hq||"")}">${micBtn('class="s-mic" data-vsearch="hq"',"ابحث بالصوت")}</div>
@@ -2053,7 +2106,7 @@ function renderDetail(){
       </div>
     </div>
     <div class="balance-card ${balCls}">
-      <div><div class="lbl">${balLbl}${hiddenNums().includes("acct")?eyeBtn():""}</div><div class="amt">${shown("acct",`<span class="num">${fmt(Math.abs(per.bal))}</span><small>${CUR}</small>`)}</div>
+      <div><div class="lbl">${balLbl}${hiddenNums().includes("acct")?eyeBtn():""}</div><div class="amt">${shown("acct",`<span class="num">${cu("bal:"+c.id,Math.abs(per.bal),per.bal>=0?"debt":"paid",1)}</span><small>${CUR}</small>`)}</div>
         <div class="limit-row">${sup?"":(()=>{const n=lockDaysOf(c),own=ownLock(c);if(!n&&!own&&!isAdmin())return "";
           if(c.lockNow)return `<span class="chip debt"><i class="lk">${I.lock}</i> مقفول هسه</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">تغيير القفل</button>`:""}`;
           return `<span class="chip ${n?"warn":"zero"}"><i class="lk">${I.lock}</i> ${n?"قفل بعد "+lockName(n):"بدون قفل"}${own?"":" (عام)"}</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">${n||own?"تغيير القفل":"+ قفل الحساب"}</button>`:""}`})()}${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup&&can("edit")?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
@@ -2088,6 +2141,7 @@ function renderDetail(){
       <div class="mini-sums" style="margin-top:8px"><span>${sup?"مشتريات المدة":"ديون المدة"}: <b class="num">${fmt(L.dSum)}</b></span><span>دفعات المدة: <b class="num">${fmt(L.pSum)}</b></span><span>عدد الحركات: <b class="num">${L.list.length}</b></span></div>
     </div>
 </div>`;
+  countUps();
 }
 function openCustomer(id){S.hq="";S.view="customers";S.selected=id;const oc=S.customers.get(id);if(oc)S.kind=kindOf(oc);render();stPrefetch(oc);if(window.innerWidth<=820)window.scrollTo(0,0)}
 
@@ -2579,6 +2633,31 @@ function pushBlock(){
 const SET_PAGES=[["sub","اشتراكي والعروض",I.wallet,true],["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["security","الأمان والخصوصية",I.lock,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 /* Settings on phones: tapping a title opens its section under it (and closes the one that was open); tapping it again closes it. */
 const calmMotion=()=>{try{return matchMedia("(prefers-reduced-motion: reduce)").matches}catch(e){return false}};
+
+/* Numbers that count: a balance or total that changed since this device last showed it runs from the old number to the
+   new one, pops, and shows the change (+5,000) rising beside it. The first time a number is shown it just appears. */
+const cu=(k,v,up,badge)=>`<span class="cu" data-cu="${esc(k)}" data-v="${Math.round(Number(v)||0)}" data-up="${up||""}"${badge?' data-badge="1"':""}>${fmt(v)}</span>`;
+const CU=new Map(),CU_RUN=new Map(),CU_BADGE=new Map(),cuHost=el=>el.closest(".v,.amt")||el.parentElement;
+function countUps(){
+  for(const el of document.querySelectorAll("[data-cu]")){
+    const k=el.dataset.cu,v=+el.dataset.v,run=CU_RUN.get(k),bd=CU_BADGE.get(k);
+    // A live refresh can redraw the page mid-count: carry on in the new element and keep the badge beside it.
+    if(run&&run.to===v){run.el=el;el.textContent=fmt(run.now);if(run.pop)el.classList.add("cu-pop");if(bd&&bd.parentElement!==cuHost(el))cuHost(el).appendChild(bd);continue}
+    if(bd&&CU.get(k)===v){if(bd.parentElement!==cuHost(el))cuHost(el).appendChild(bd);continue}
+    const was=CU.get(k);CU.set(k,v);
+    if(was===undefined||was===v||document.hidden||calmMotion())continue;
+    const from=run?run.now:was,r={el,from,to:v,now:from,t0:performance.now(),dur:Math.min(1300,700+Math.log10(Math.abs(v-from)+1)*100)};
+    CU_RUN.set(k,r);el.textContent=fmt(from);
+    const tone=(v>was)===(el.dataset.up!=="paid")?"debt":"paid";
+    if(el.dataset.up){r.pop=1;el.classList.remove("cu-pop");void el.offsetWidth;el.classList.add("cu-pop")}
+    if(el.dataset.badge){const b=document.createElement("span");b.className="cu-badge"+(el.dataset.up?" cu-"+tone:"");
+      b.textContent=(v>was?"+":"−")+fmt(Math.abs(v-was));b.setAttribute("aria-hidden","true");
+      const old=CU_BADGE.get(k);if(old)old.remove();cuHost(el).appendChild(b);CU_BADGE.set(k,b);setTimeout(()=>{b.remove();if(CU_BADGE.get(k)===b)CU_BADGE.delete(k)},1700)}
+    const step=t=>{const p=Math.min(1,(t-r.t0)/r.dur),e=1-Math.pow(1-p,3);r.now=p<1?r.from+(r.to-r.from)*e:r.to;r.el.textContent=fmt(r.now);
+      if(p<1)requestAnimationFrame(step);else{CU_RUN.delete(k);r.el.classList.remove("cu-pop")}};
+    requestAnimationFrame(step);
+  }
+}
 function accFocus(){const it=document.querySelector(".acc-item.open");if(!it)return;const top=it.getBoundingClientRect().top+scrollY-72;
   if(Math.abs(top-scrollY)>8)window.scrollTo({top:Math.max(0,top),behavior:calmMotion()?"auto":"smooth"})}
 function setAcc(k){
