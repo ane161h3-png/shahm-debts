@@ -1863,11 +1863,11 @@ const ACT_TEXT=a=>{
     default:return esc(a.detail||"");
   }
 };
-/* The highest balances as cards in a strip at the top of home that drifts to the right on its own (a seamless loop: the
+/* Every customer who owes, highest balance first, as cards in a strip at the top of home that drifts to the right on its own (a seamless loop: the
    cards are drawn twice and the strip moves by one copy). Touching or hovering stops it; reduce-motion makes it a plain
    swipeable row. Tapping a card opens the account. */
 function topCards(per,total){
-  const list=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal})).filter(x=>x.b>0).sort((a,b)=>b.b-a.b).slice(0,10);
+  const list=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal})).filter(x=>x.b>0).sort((a,b)=>b.b-a.b);
   if(list.length<2)return "";const late=lateInfo();
   const card=(x,i,dup)=>{const L=late.get(x.c.id),pc=total?Math.max(4,Math.round(x.b/total*100)):0;
     return `<button type="button" class="tc${i===0?" first":""}" data-open="${esc(x.c.id)}"${dup?' tabindex="-1" aria-hidden="true"':""} title="فتح حساب ${esc(x.c.name)}">
@@ -1880,7 +1880,7 @@ function topCards(per,total){
   const reps=Math.ceil(8/list.length),hid=list.map((x,i)=>card(x,i,true)).join("");
   const one=list.map((x,i)=>card(x,i,false)).join("")+hid.repeat(reps-1),two=hid.repeat(reps);
   return `<section class="pane top-cards" aria-label="أعلى الأرصدة">
-    <div class="section-title"><h2>${I.trend}أعلى الأرصدة</h2><span class="ro-note">أعلى <span class="num">${list.length}</span> زبائن</span></div>
+    <div class="section-title"><h2>${I.trend}الزبائن حسب الرصيد</h2><span class="ro-note"><span class="num">${list.length}</span> زبون عليهم دين</span></div>
     <div class="tc-view"><div class="tc-track" style="--tc-dur:${list.length*reps*6}s">${one}<span class="tc-dup">${two}</span></div></div></section>`;
 }
 function homeView(){
