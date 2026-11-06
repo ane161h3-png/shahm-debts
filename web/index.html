@@ -656,6 +656,29 @@ td.x{width:64px;white-space:nowrap}
 }
 @media (prefers-reduced-motion:no-preference){.modal{animation:pop .16s ease-out}@keyframes pop{from{transform:translateY(8px);opacity:.6}}}
 
+/* Highest balances strip on home (topCards). */
+.top-cards{padding:12px 0 14px;overflow:hidden}
+.top-cards .section-title{padding:0 14px;margin-bottom:8px}
+.top-cards .section-title h2 svg{width:18px;height:18px;vertical-align:-3px;margin-inline-end:6px;color:var(--debt)}
+.tc-view{overflow:hidden;-webkit-mask-image:linear-gradient(to left,transparent,black 18px,black calc(100% - 18px),transparent);mask-image:linear-gradient(to left,transparent,black 18px,black calc(100% - 18px),transparent)}
+.tc-track,.tc-dup{display:flex;width:max-content}
+.tc-track{padding:4px 0}
+.tc{flex:none;width:168px;margin-inline-end:10px;display:flex;flex-direction:column;gap:4px;text-align:right;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:10px 12px;cursor:pointer}
+.tc.first{border-color:var(--debt)}
+.tc-top{display:flex;align-items:center;justify-content:space-between}
+.tc .avatar{width:32px;height:32px;font-size:14px}
+.tc-rank{font-family:var(--f-display);font-weight:800;font-size:13px;color:var(--muted)}
+.tc-name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tc-amt{font-family:var(--f-display);font-weight:800;font-size:20px;color:var(--debt);line-height:1.2}
+.tc-amt small{font-size:12px;font-weight:500;color:var(--muted)}
+.tc-bar{height:4px;border-radius:2px;background:var(--paper-2);overflow:hidden}.tc-bar i{display:block;height:100%;background:var(--debt);border-radius:2px}
+.tc-s{font-size:12px;color:var(--muted);white-space:nowrap}.tc-s.late{color:var(--debt)}
+.tc:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:no-preference){
+  .tc-track{animation:tcDrift var(--tc-dur,40s) linear infinite}
+  @keyframes tcDrift{from{transform:translateX(0)}to{transform:translateX(50%)}}
+  .tc-view:hover .tc-track,.tc-view:active .tc-track,.tc-view:focus-within .tc-track{animation-play-state:paused}}
+@media (prefers-reduced-motion:reduce){.tc-view{overflow-x:auto;-webkit-mask-image:none;mask-image:none}.tc-dup,.tc[aria-hidden]{display:none}}
 /* Count-up numbers (countUps). */
 .cu{display:inline-block}
 .cu-badge{display:inline-block;vertical-align:middle;margin-inline-start:10px;font-family:var(--f-display);font-size:16px;font-weight:700;line-height:1;pointer-events:none;white-space:nowrap;direction:ltr;unicode-bidi:isolate}
@@ -1840,6 +1863,26 @@ const ACT_TEXT=a=>{
     default:return esc(a.detail||"");
   }
 };
+/* The highest balances as cards in a strip at the top of home that drifts to the right on its own (a seamless loop: the
+   cards are drawn twice and the strip moves by one copy). Touching or hovering stops it; reduce-motion makes it a plain
+   swipeable row. Tapping a card opens the account. */
+function topCards(per,total){
+  const list=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal})).filter(x=>x.b>0).sort((a,b)=>b.b-a.b).slice(0,10);
+  if(list.length<2)return "";const late=lateInfo();
+  const card=(x,i,dup)=>{const L=late.get(x.c.id),pc=total?Math.max(4,Math.round(x.b/total*100)):0;
+    return `<button type="button" class="tc${i===0?" first":""}" data-open="${esc(x.c.id)}"${dup?' tabindex="-1" aria-hidden="true"':""} title="فتح حساب ${esc(x.c.name)}">
+      <span class="tc-top"><span class="tc-rank num">${i+1}</span><span class="avatar" aria-hidden="true">${initial(x.c.name)}</span></span>
+      <span class="tc-name">${esc(x.c.name)}</span>
+      <span class="tc-amt">${shown("top",`<span class="num">${fmt(x.b)}</span> <small>${CUR}</small>`)}</span>
+      <span class="tc-bar" aria-hidden="true"><i style="width:${pc}%"></i></span>
+      <span class="tc-s${L&&L.late?" late":""}">${!L?"&nbsp;":!L.days?(L.paid?"آخر تسديد اليوم":"دين من اليوم"):(L.paid?"آخر تسديد قبل ":"بدون تسديد من ")+'<span class="num">'+L.days+"</span> يوم"}</span></button>`};
+  // Each copy holds at least 8 cards so a short list still fills a wide screen while it drifts.
+  const reps=Math.ceil(8/list.length),hid=list.map((x,i)=>card(x,i,true)).join("");
+  const one=list.map((x,i)=>card(x,i,false)).join("")+hid.repeat(reps-1),two=hid.repeat(reps);
+  return `<section class="pane top-cards" aria-label="أعلى الأرصدة">
+    <div class="section-title"><h2>${I.trend}أعلى الأرصدة</h2><span class="ro-note">أعلى <span class="num">${list.length}</span> زبائن</span></div>
+    <div class="tc-view"><div class="tc-track" style="--tc-dur:${list.length*reps*6}s">${one}<span class="tc-dup">${two}</span></div></div></section>`;
+}
 function homeView(){
   const per=stats();const m=monthISO();let total=0,owing=0,mAdd=0,mPay=0;
   let supOwed=0;const custN=[...S.customers.values()].filter(c=>!isSup(c)).length;
@@ -1860,6 +1903,7 @@ function homeView(){
     </div>
     <div class="sum-actions" role="group" aria-label="إجراءات سريعة">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="voice">${I.mic}بالصوت</button><button class="btn" type="button" data-act="newcust">زبون جديد</button>${SHOP?"":`<button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`}`:""}${can("totals")?`<button class="btn" type="button" data-act="monthrep">${I.trend}التقرير الشهري</button>`:""}<button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين${shown("owing",` (${owing})`)}</button></div>
   </section>
+  ${topCards(per,total)}
   <section class="pane card-pad home-search" aria-label="بحث عن زبون">
     <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input id="hq" type="search" placeholder="ابحث عن زبون أو مورد بالاسم أو الرقم" autocomplete="off" enterkeyhint="search" value="${esc(S.hq||"")}">${micBtn('class="s-mic" data-vsearch="hq"',"ابحث بالصوت")}</div>
