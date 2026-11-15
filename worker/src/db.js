@@ -1,7 +1,8 @@
 // Each book's accounts and transactions in Cloudflare D1 (binding DB), to move off Firestore's daily limit.
 // Every account/transaction write goes to Firestore and here. Books listed in D1_READ (wrangler.toml: "all", or book ids
-// separated by commas) are read from here; the rest still read Firestore. Firestore stays the reference: once a day the
-// owner's device compares it with this copy and sends what differs.
+// separated by commas) are read from here; the rest still read Firestore. For a book on Firestore, Firestore is the reference: once a
+// day a writer's device sends D1 what differs. For a book read from here, the owner's device merges both ways once a day,
+// the newer save of each record winning, so Firestore stays a full fallback (see d1Merge in web/index.html).
 //   POST /db/push?tenant=X  body {ops: [[coll, id, data | null], ...]}  the book's writers: saves each record (null = deleted)
 //   GET  /db/pull?tenant=X&since=U  the book's members: records saved after U, oldest first, a page at a time (more: true);
 //                                   read: whether the app should show this book from here

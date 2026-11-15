@@ -1537,8 +1537,8 @@ async function cloudGet(key){
 }
 /* New database (Cloudflare D1, to move off Firestore's daily limit): every account/transaction write also goes to the
    worker (/db/push), kept in an outbox on this device until it arrives. Books the worker lists in D1_READ are read from
-   D1 (d1Read below); the rest still read Firestore. Firestore stays the reference: once a day a device that caught up
-   with it (when reading from D1, only the owner's, reading Firestore once) compares it with D1 and sends what differs. */
+   D1 (d1Read below); the rest still read Firestore. Once a day a device that caught up compares the two: on Firestore,
+   Firestore is the reference and D1 gets what differs; reading from D1, the owner's device merges both ways (d1Merge). */
 const d1Url=()=>window.AI_URL.replace(/\/$/,"")+"/db/",d1Key=()=>"d1out:"+bkTenant();
 let d1Out=new Map(),d1T=null,d1Off=false,d1Loaded="";
 const D1_LAST="shahm-d1-last",d1Last=v=>{try{if(v)localStorage.setItem(D1_LAST,JSON.stringify(v));else return JSON.parse(localStorage.getItem(D1_LAST)||"null")}catch(e){return null}};
@@ -1580,9 +1580,9 @@ async function d1Check(force){
   d1Check.tried=Date.now();
   try{
     if(d1Out.size){await d1Flush();if(d1Out.size)return} // our own unsent saves go first
-    let src={customers:S.customers,txns:S.txns};
-    if(S.d1Read){const got=await Promise.all(["customers","txns"].map(k=>db.collection(P(k)).get({source:"server"})));
-      src={customers:new Map(got[0].docs.map(d=>[d.id,unpack(d)[0]])),txns:new Map(got[1].docs.map(d=>[d.id,unpack(d)[0]]))}}
+    if(S.d1Read)await d1Merge(flag);
+    else{
+    const src={customers:S.customers,txns:S.txns};
     const remote=await d1Pull(),ops=[],recent=Date.now()-10*60e3;
     for(const [k,m] of [["customers",src.customers],["txns",src.txns]])for(const [id,x] of m){
       if(UT.get(id)===Infinity||d1Out.has(k+"|"+id))continue; // still on its way; the outbox has it
@@ -1595,8 +1595,42 @@ async function d1Check(force){
     for(let i=0;i<ops.length;i+=400){const r=await d1Send(ops.slice(i,i+400));if(!r.ok)throw new Error(r.j.error||"خطأ "+r.status)}
     d1Last({at:Date.now(),ok:true,c:src.customers.size,t:src.txns.size,fixed:ops.length});
     try{localStorage.setItem(flag,"1")}catch(e){}
+    }
   }catch(e){console.warn("d1 check",e);d1Last({...(d1Last()||{}),at:Date.now(),ok:false,msg:e.message||"تعذّر الاتصال"})}
   if(S.view==="settings")render();
+}
+/* When the book is read from D1, D1 is what everyone sees, so neither copy simply wins: for each record the newer save does
+   (Firestore's _u against D1's u, both server clocks). D1 gets what only Firestore has (a save that never reached the
+   worker); Firestore gets what only D1 has, so it stays a full, current fallback (the D1_READ kill switch shows it).
+   A delete is followed only when it is newer than the other copy's save; a record missing from Firestore with no delete
+   note there is written back, never dropped. Nothing is erased from D1 (a delete there keeps the row). */
+async function d1Merge(flag){
+  const got=await Promise.all(["customers","txns","gone"].map(k=>db.collection(P(k)).get({source:"server"})));
+  const fs={customers:new Map(),txns:new Map()},gone=new Map();
+  got[0].docs.forEach(d=>fs.customers.set(d.id,unpack(d)));got[1].docs.forEach(d=>fs.txns.set(d.id,unpack(d)));
+  for(const d of got[2].docs){const g=d.data();if(g&&fs[g.c])gone.set(g.c+"|"+g.id,stampMs(g._u))}
+  const remote=await d1Pull(),toD1=[],toFs=[],recent=Date.now()-10*60e3;
+  const keys=new Set([...remote.keys()]);for(const k of ["customers","txns"])for(const id of fs[k].keys())keys.add(k+"|"+id);
+    for(const key of keys){
+    if(d1Out.has(key))continue;
+    const [k,id]=key.split("|"),f=fs[k].get(id),r=remote.get(key),uF=f?f[1]:gone.get(key)||0,uD=r?r.u:0;
+    if(uF===Infinity||uF>recent||uD>recent)continue; // a save still settling: tomorrow's check takes it
+    const fx=f?plainRec(f[0]):null,dx=r&&r.d?r.d:null;
+    if(fx&&dx&&stableJson(fx)===stableJson(dx))continue
+    if(!fx&&!dx)continue;
+    if((fx&&!r)||uF>uD)toD1.push([k,id,fx]); // only in Firestore, or Firestore's save (or delete) is the newer one
+    else if(dx)toFs.push(["set",k,id,dx]);
+    else toFs.push(["del",k,id]); // deleted in D1 after Firestore's last save
+  }
+  for(let i=0;i<toD1.length;i+=400){const x=await d1Send(toD1.slice(i,i+400));if(!x.ok)throw new Error(x.j.error||"خطأ "+x.status)}
+  for(let i=0;i<toFs.length;i+=400){const b=db.batch();
+    for(const o of toFs.slice(i,i+400)){const ref=db.collection(P(o[1])).doc(o[2]);if(o[0]==="del"){b.delete(ref);goneNote(o[1],o[2])}else b.set(ref,stamped(o[3]))}
+    await b.commit()}
+  const live=new Set();for(const [key,r] of remote)if(r.d)live.add(key);
+  for(const [k,id,x] of toD1)x?live.add(k+"|"+id):live.delete(k+"|"+id);
+  let c=0,t=0;for(const key of live)key.startsWith("customers|")?c++:t++;
+  d1Last({at:Date.now(),ok:true,c,t,fixed:toD1.length,fsFixed:toFs.length,primary:true});
+  try{localStorage.setItem(flag,"1")}catch(e){}
 }
 /* Reading a book from D1 (when the worker lists it in D1_READ): this device keeps its copy (IndexedDB) and asks /db/pull
    only for what was saved after its mark. A live link (/db/live) says when any device saved, so changes show straight away;
@@ -2839,7 +2873,7 @@ function setPage(k){
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" data-act="savecats">حفظ الأصناف</button><button class="btn ghost" type="button" data-act="resetcats">رجوع للقائمة الافتراضية</button></div>`;
   if(k==="backup"){const lb=st.lastBackupAt;const sups=[...S.customers.values()].filter(isSup).length;
     return `<h2>النسخ الاحتياطي والاستعادة</h2>
-    <div class="banner info">بياناتك محفوظة على السحابة (Firebase)، فإذا حذفت البرنامج أو بدّلت الموبايل ثبّته من جديد وسجّل دخول وكل شي يرجع. ملف النسخة الاحتياطية للأمان الإضافي: إذا انحذف شي بالغلط تقدر ترجّعه منه.</div>
+    <div class="banner info">بياناتك محفوظة على السحابة (Cloudflare و Firebase)، فإذا حذفت البرنامج أو بدّلت الموبايل ثبّته من جديد وسجّل دخول وكل شي يرجع. ملف النسخة الاحتياطية للأمان الإضافي: إذا انحذف شي بالغلط تقدر ترجّعه منه.</div>
     <div class="tpl"><h3>${I.save}نسخة اليوم (النسخة + تقرير اليوم PDF)</h3>
       <span class="ro-note">تحفظ ملفين سوا: النسخة الاحتياطية، وتقرير شامل لليوم (حركات اليوم بأوقاتها، والمجاميع، وكل زبون وشكد عليه). اليوم يحسب من 2 الفجر لـ 2 الفجر، فإذا حفظت بعد نص الليل يبقى نفس يوم الشغل. وإذا عبرت 2 الفجر وما لحكت تحفظ، اضغط «نسخة أمس» وتنحفظ نسخة اليوم اللي فات بمجلده وتقريره.</span>
       ${FOLDER_OK?`<span class="ro-note">بالفلاش: إذا عندك مجلدات السنة الجاهزة (السنة ثم الشهر ثم اليوم)، أول مرة اختار مجلد <b>Shahm-Backups</b>، وبعدها كل يوم ينحفظ بمجلد يومه وحده بدون ما يسألك. البرنامج ما يسوي مجلدات.</span>`:""}
@@ -2848,9 +2882,9 @@ function setPage(k){
       <span class="ro-note">كل يوم أول ما ينفتح البرنامج على أي جهاز ويتزامن، تنحفظ نسخة كاملة على سحابة البرنامج بدون ما تسوي شي. تبقى نسخة كل يوم لمدة شهر، ونسخة أول كل شهر بلا نهاية. الاسترجاع يدمج المحذوف وما يمسح شي موجود.</span>
       ${(()=>{const l=bkLast();return l?`<span class="ro-note">آخر محاولة من هذا الجهاز: ${esc(timeAgo(l.at))} · ${l.ok?"✓ انحفظت":"ما انحفظت: "+esc(l.msg)}</span>`:""})()}
       <div id="cloudBk"><button class="btn" type="button" data-act="cloudlist">${I.back}عرض النسخ واسترجاعها</button></div></div>`:""}
-    ${window.AI_URL?`<div class="tpl"><h3>${I.save}قاعدة البيانات الجديدة (تجريبي)</h3>
-      <span class="ro-note">نسخة ثانية من الحسابات والحركات على Cloudflare، تنحفظ بيها كل حركة أول بأول، وكل يوم تتطابق مع البيانات الحالية. هذا تحضير للانتقال من Firebase، والبرنامج بعده يشتغل على Firebase مثل ما هو.</span>
-      ${(()=>{const l=d1Last();return l&&l.at?`<span class="ro-note">آخر مطابقة من هذا الجهاز: ${esc(timeAgo(l.at))} · ${l.ok?`✓ متطابقة (${fmt(l.c)} حساب · ${fmt(l.t)} حركة)${l.fixed?` · انرسل ${fmt(l.fixed)} سجل`:""}`:"ما تمت: "+esc(l.msg||"")}</span>`:""})()}
+    ${window.AI_URL?`<div class="tpl"><h3>${I.save}قاعدة البيانات (Cloudflare)</h3>
+      <span class="ro-note">${S.d1Read?"الحسابات والحركات تنقرا من قاعدة Cloudflare. كل حركة تنحفظ بيها وبـ Firebase سوا، فـ Firebase يبقى نسخة احتياط كاملة. كل يوم جهاز المدير يطابق الاثنين: أي سجل ناقص أو مختلف بوحدة ياخذ الأحدث من الثانية، وما ينمسح شي.":"نسخة ثانية من الحسابات والحركات على Cloudflare، تنحفظ بيها كل حركة أول بأول، وكل يوم تتطابق مع Firebase. هذا الدفتر بعده يقرا من Firebase."}</span>
+      ${(()=>{const l=d1Last();return l&&l.at?`<span class="ro-note">آخر مطابقة من هذا الجهاز: ${esc(timeAgo(l.at))} · ${l.ok?`✓ متطابقة (${fmt(l.c)} حساب · ${fmt(l.t)} حركة)${l.fixed?` · تصلّح ${fmt(l.fixed)} سجل بـ Cloudflare`:""}${l.fsFixed?` · تصلّح ${fmt(l.fsFixed)} سجل بـ Firebase`:""}`:"ما تمت: "+esc(l.msg||"")}</span>`:""})()}
       <div><button class="btn" type="button" data-act="d1check">فحص المطابقة هسه</button></div></div>`:""}
     <div class="tpl"><h3>${I.save}حفظ نسخة احتياطية</h3>
       <span class="ro-note">${lb?"آخر نسخة: "+esc(timeAgo(lb)):"لم تحفظ أي نسخة بعد"}</span>
