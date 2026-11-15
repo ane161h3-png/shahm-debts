@@ -638,6 +638,7 @@ s.was{color:var(--muted);font-weight:500;font-size:12px}
 <script src="../vendor/firebase-auth-compat.js"></script>
 <script src="../vendor/firebase-firestore-compat.js"></script>
 <script src="../config.js"></script>
+<script src="../support.js"></script>
 <script src="../vendor/capacitor.js"></script>
 <script>
 (function(){
@@ -5026,6 +5027,7 @@ function accountMenu(){
   openModal(`<h3>${esc(S.me.name)} <span class="role">${ROLE_LABEL[S.me.role]}${S.me.role==="editor"&&S.me.items?" · يدير المواد":""}</span></h3>
     <div class="menu">
       <a class="btn" href="${DEBTS_URL}">${I.book}فتح دفتر الديون</a>
+      ${supOn()?`<button class="btn" type="button" id="mSup">💬 الدعم الفني</button>`:""}
       ${canSell()?`<button class="btn" type="button" data-act="hw">${I.print}الطابعة والدرج والميزان</button>`:""}
       <button class="btn" type="button" data-act="prices">${I.bell}تغييرات الأسعار${prNew().length?` <span class="chip warn">جديد <span class="num">${prNew().length}</span></span>`:""}</button>
       <button class="btn keys-only" type="button" data-act="keys">${I.keypad}اختصارات الكيبورد${kbd("F1")}</button>
@@ -5040,8 +5042,14 @@ function accountMenu(){
     m.querySelector("#mOut").onclick=()=>{closeModal();signOut()};
     const mr=m.querySelector("#mRate");if(mr)mr.onclick=()=>rateForm();
     const mi=m.querySelector("#mItems");if(mi)mi.onclick=()=>itemsPermForm();
+    const ms=m.querySelector("#mSup");if(ms)ms.onclick=()=>{closeModal();supOpen()};
   });
 }
+/* Support chat (الدعم الفني, ../support.js): a shop's owner writes to this app's owner; the messages live in Cloudflare D1
+   through the worker. Only the shop's owner, never its workers. */
+const supOn=()=>!!(SHOP&&window.ShahmSupport&&window.AI_URL&&auth&&auth.currentUser&&auth.currentUser.uid===SHOP);
+function supOpen(){if(!supOn())return;if(!supOpen.done){ShahmSupport.init({base:window.AI_URL,token:()=>auth.currentUser.getIdToken(),side:"shop",push:false});supOpen.done=true}
+  ShahmSupport.open(SHOP,{title:"الدعم الفني"})}
 /* «يدير المواد»: the owner picks which editors (accounts approved in the debt book) may manage the items and prices.
    It is saved on the account (users/{uid}.items); the rules let only the owner set it, and only for an editor does it count. */
 function itemsPermForm(){

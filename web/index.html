@@ -780,6 +780,7 @@ td.x{width:64px;white-space:nowrap}
 <script src="vendor/firebase-firestore-compat.js"></script>
 <script src="vendor/capacitor.js"></script>
 <script src="config.js"></script>
+<script src="support.js"></script>
 <script>
 (function(){
 "use strict";
@@ -830,7 +831,7 @@ const monthEndISO=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.ge
 const monthEndLeft=()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,0).getDate()-d.getDate()}; // 0 on the last day
 const monthEndStart=()=>{const d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,1-MONTH_END_DAYS).getTime()};
 const S={customers:new Map(),txns:new Map(),accounts:new Map(),activity:[],settings:{},
-  me:null,isOwner:false,superOwner:false,shop:null,shops:new Map(),view:"home",kind:"customer",period:"all",remTab:"send",remFilter:"all",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,rep:{tab:"rep",per:"month",from:"",to:"",wf:"all",wlimit:40,pym:"",pmode:"month",pday:""},ht:{q:"",sort:"bal",f:"all"},ready:{c:false,t:false,a:false,s:false}};
+  me:null,isOwner:false,superOwner:false,shop:null,shops:new Map(),supUnread:0,view:"home",kind:"customer",period:"all",remTab:"send",remFilter:"all",selected:null,filter:"all",sort:"bal",q:"",actFilter:"all",setPage:null,rep:{tab:"rep",per:"month",from:"",to:"",wf:"all",wlimit:40,pym:"",pmode:"month",pday:""},ht:{q:"",sort:"bal",f:"all"},ready:{c:false,t:false,a:false,s:false}};
 let db=null,auth=null,unsubs=[],dataOn=false,flash=null,REG=null,installEvt=null;
 /* Shops: other shops sign up in this same app and each gets its own notebook under shops/{its owner's uid}.
    SHOP is the signed-in person's shop (null = this shop's own data at the root, as it always was); P() puts a path inside it.
@@ -1423,20 +1424,22 @@ function showLocked(title,msg,own){
   $("#gate").hidden=false;$("#app").hidden=true;$("#bottomNav").hidden=true;
   const ways=own?[[I.wa,"واتساب","wa","https://wa.me/"+SUPPORT.wa+"?text="+encodeURIComponent("السلام عليكم، أريد أجدد اشتراك محل «"+(S.shop&&S.shop.name||gateName()||"")+"» بديون الشهم.")],
     SUPPORT.tg?[I.tg,"تيليجرام","","https://t.me/"+SUPPORT.tg]:null,[I.call,"اتصال","","tel:"+SUPPORT.tel]].filter(Boolean):[];
+  const chat=own&&supOn()?`<button class="btn primary" type="button" id="lkSup">${I.wa}الدعم الفني (محادثة)</button>`:"";
   $("#gate").innerHTML=`<div class="lockd">
     <div class="lockd-top"><div class="lockd-bar"><button type="button" id="lkOut" aria-label="تسجيل الخروج">${I.out}</button><h1>${esc(title)}</h1><span style="width:40px"></span></div><div class="lockd-ic">${I.lockClock}</div></div>
     <div class="gate-card"><h2>${esc(title)}</h2><p class="msg">${esc(msg)}</p>
       <div class="banner info">${I.info}<span>${own?"جدّد الاشتراك ويرجع دفترك يفتح تلقائياً، وكل اللي سجلته محفوظ. تواصل وياي من الأزرار الجوة.":"صاحب المحل يجدد الاشتراك، وبعدها يرجع الدفتر يفتح لحاله."}</span></div></div>
-    ${ways.length?`<p class="lockd-help">لتجديد الاشتراك تواصل معنا</p><div class="lockd-ways">${ways.map(([ic,t,c,u])=>`<a class="btn ${c}" href="${esc(u)}" target="_blank" rel="noopener" data-ext="${esc(u)}">${ic}${t}</a>`).join("")}</div>`:""}
+    ${ways.length?`<p class="lockd-help">لتجديد الاشتراك تواصل معنا</p><div class="lockd-ways">${chat}${ways.map(([ic,t,c,u])=>`<a class="btn ${c}" href="${esc(u)}" target="_blank" rel="noopener" data-ext="${esc(u)}">${ic}${t}</a>`).join("")}</div>`:""}
   </div>`;
-  const g=$("#gate");g.querySelector("#lkOut").onclick=()=>signOut();
+  const g=$("#gate");g.querySelector("#lkOut").onclick=()=>signOut();const ls=g.querySelector("#lkSup");if(ls)ls.onclick=supOpen;
   g.querySelectorAll("[data-ext]").forEach(a=>a.addEventListener("click",e=>{if(!/^tel:/.test(a.dataset.ext)){e.preventDefault();openExternal(a.dataset.ext)}}));
 }
-function showWaiting(msg,kind,retry){
+function showWaiting(msg,kind,retry,sup){
   gateCard({sub:"",body:`<div class="banner ${kind||"warn"}">${esc(msg)}</div>
     ${retry?`<button class="btn primary block" type="button" id="wRetry">إعادة المحاولة</button>`:""}
+    ${sup&&supOn()?`<button class="btn block" type="button" id="wSup">${I.wa}الدعم الفني (محادثة)</button>`:""}
     <button class="btn block" type="button" id="wOut">تسجيل الخروج</button>`,
-    mount:g=>{g.querySelector("#wOut").onclick=()=>signOut();const r=g.querySelector("#wRetry");if(r)r.onclick=()=>location.reload()}});
+    mount:g=>{g.querySelector("#wOut").onclick=()=>signOut();const r=g.querySelector("#wRetry");if(r)r.onclick=()=>location.reload();const w=g.querySelector("#wSup");if(w)w.onclick=supOpen}});
 }
 // New passwords: 8 characters at least (older accounts keep signing in with theirs until they change it).
 const PW_MIN=8,MAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1466,7 +1469,7 @@ async function wipeLocal(){
 const FLASH_KEY="shahm-flash";
 function signOut(msg,kind){
   flash=msg?{msg,kind}:null;
-  stopData();S.me=null;
+  stopData();S.me=null;S.supUnread=0;supCheck.told=0;if(window.ShahmSupport&&ShahmSupport.isOpen())ShahmSupport.close();
   gateCard({sub:"جارِ تسجيل الخروج…",body:`<div class="spinner" aria-hidden="true"></div>`});
   wipeLocal().then(async wiped=>{
     if(wiped)try{if(msg)sessionStorage.setItem(FLASH_KEY,JSON.stringify(flash))}catch(e){}
@@ -1861,7 +1864,7 @@ function startData(){
   unsubs.push(db.doc(P("settings/main")).onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};
     if(SHOP&&S.isOwner&&S.shop&&!s.exists&&!s.metadata.fromCache)saveSettings({shopName:S.shop.name,ownerName:S.shop.ownerName,phone:S.shop.phone||""});try{if(shopName())localStorage.setItem(GATE_NAME_KEY,shopName());localStorage.setItem(GATE_TENANT_KEY,SHOP?"1":"0")}catch(e){}if(S.me&&S.me.role==="owner")S.me.name=S.settings.ownerName||"المدير";S.ready.s=true;render()},fail));
   if(S.isOwner){
-    unsubs.push(db.collection(P("users")).onSnapshot(s=>{S.accounts=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));S.ready.a=true;render()},fail));
+    unsubs.push(db.collection(P("users")).onSnapshot(s=>{S.accounts=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));S.ready.a=true;render();if(!s.metadata.fromCache)staffSync()},fail));
     if(S.superOwner)unsubs.push(db.doc("meta/trial").onSnapshot(s=>{S.trialDays=s.exists?Number(s.data().days)||0:0;if(S.view==="settings")render()},()=>{}));
     if(S.superOwner)unsubs.push(db.collection("shops").onSnapshot(s=>{S.shops=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));render();subTick()},fail));
     setTimeout(async()=>{try{const old=await db.collection(P("activity")).where("at","<",Date.now()-120*864e5).limit(100).get();for(const d of old.docs)d.ref.delete().catch(()=>{})}catch(e){}},8000);
@@ -1905,7 +1908,7 @@ function render(){
   $("#today").textContent=dayName(todayISO());
   $("#shopTitle").textContent="دفتر ديون "+shopName();document.title="دفتر ديون "+shopName();
   const mk=brandMark();if(mk!==render.mark){render.mark=mk;$("header.top .logo").innerHTML=mk}
-  const pending=[...S.accounts.values()].filter(a=>a.status==="pending").length+shopsPending();
+  const pending=[...S.accounts.values()].filter(a=>a.status==="pending").length+shopsPending()+(S.supUnread||0);
   const NV=NAV.filter(n=>n[0]!=="reports"||can("totals"));if(S.view==="reports"&&!can("totals"))S.view="home";
   $("#tabs").innerHTML=NV.map(([k,l,ic])=>`<button type="button" data-go="${k}" aria-current="${S.view===k?"page":"false"}">${ic}${l}${k==="settings"&&isAdmin()&&pending?` <span class="chip debt" style="padding:0 7px">${pending}</span>`:""}</button>`).join("");
   $("#bottomNav").innerHTML=NV.slice(0,2).map(navBtn).join("")+(canWrite()?`<button type="button" class="plus" data-act="quick" aria-label="إضافة دين">${I.plus}</button>`:"")+NV.slice(2).map(navBtn).join("");
@@ -1922,7 +1925,7 @@ function render(){
   else{v.innerHTML=settingsView();if($("#bizCv"))bizRedraw()}
   countUps();
 }
-function navBtn([k,l,ic]){return `<button type="button" data-go="${k}" aria-current="${S.view===k?"page":"false"}">${ic}<span>${l}</span></button>`}
+function navBtn([k,l,ic]){return `<button type="button" data-go="${k}" aria-current="${S.view===k?"page":"false"}">${ic}<span>${l}</span>${k==="settings"&&S.supUnread?`<span class="badge num">${S.supUnread}</span>`:""}</button>`}
 
 /* ---------- notifications: the home alerts live behind a bell in the header ---------- */
 function alertsHTML(){
@@ -2749,7 +2752,7 @@ function pushBlock(){
     :note("فعّله حتى يوصلك الإشعار مثل إشعارات البرامج، حتى لو البرنامج مسكّر.")+`<div><button class="btn primary sm" type="button" data-act="pushon">${I.bell}تفعيل الإشعار على الموبايل</button></div>`;
   return `<div class="tpl" style="margin-top:12px"><h3>${I.bell}إشعار على الموبايل</h3>${body}</div>`;
 }
-const SET_PAGES=[["sub","اشتراكي والعروض",I.wallet,true],["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["security","الأمان والخصوصية",I.lock,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
+const SET_PAGES=[["sub","اشتراكي والعروض",I.wallet,true],["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["support","الدعم الفني",I.wa,false],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["security","الأمان والخصوصية",I.lock,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 /* Settings on phones: tapping a title opens its section under it (and closes the one that was open); tapping it again closes it. */
 const calmMotion=()=>{try{return matchMedia("(prefers-reduced-motion: reduce)").matches}catch(e){return false}};
 
@@ -2789,11 +2792,11 @@ function setAcc(k){
   S.setPage=k;S.setAnim=k;render();accFocus();
 }
 function settingsView(){
-  const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner)&&(p[0]!=="sub"||(SHOP&&S.shop)));
+  const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner)&&(p[0]!=="sub"||(SHOP&&S.shop))&&(p[0]!=="support"||supOn()));
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
   const cur=S.setPage||(window.innerWidth>820?pages[0][0]:null);
   const pending=[...S.accounts.values()].filter(a=>a.status==="pending").length;
-  const extra=k=>`${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}${k==="shops"&&shopsPending()?`<span class="badge">${shopsPending()}</span>`:""}${k==="sub"&&S.shop.trial?`<span class="chip warn">تجريبي</span>`:""}`;
+  const extra=k=>`${k==="support"&&S.supUnread?`<span class="badge">${S.supUnread}</span>`:""}${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}${k==="shops"&&shopsPending()?`<span class="badge">${shopsPending()}</span>`:""}${k==="sub"&&S.shop.trial?`<span class="chip warn">تجريبي</span>`:""}`;
   // Phones: each section opens under its own title (an accordion), with a short slide; only the section just tapped animates.
   if(window.innerWidth<=820){const anim=S.setAnim;S.setAnim=null;
     return `<div class="pane set-acc">${pages.map(([k,l,ic])=>{const open=S.setPage===k;
@@ -2802,7 +2805,7 @@ function settingsView(){
       <button type="button" class="acc-head acc-out" data-act="logout">${I.out}<span class="acc-t">تسجيل الخروج</span></button></div>`}
   return `<div class="settings ${S.setPage?"open":""}">
     <nav class="pane set-menu-pane"><div class="set-menu">
-      ${pages.map(([k,l,ic])=>`<button type="button" data-set="${k}" aria-current="${cur===k}">${ic}${l}${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}${k==="shops"&&shopsPending()?`<span class="badge">${shopsPending()}</span>`:""}${k==="sub"&&S.shop.trial?`<span class="chip warn" style="margin-inline-start:auto">تجريبي</span>`:""}</button>`).join("")}
+      ${pages.map(([k,l,ic])=>`<button type="button" data-set="${k}" aria-current="${cur===k}">${ic}${l}${k==="support"&&S.supUnread?`<span class="badge">${S.supUnread}</span>`:""}${k==="users"&&pending?`<span class="badge">${pending}</span>`:""}${k==="shops"&&shopsPending()?`<span class="badge">${shopsPending()}</span>`:""}${k==="sub"&&S.shop.trial?`<span class="chip warn" style="margin-inline-start:auto">تجريبي</span>`:""}</button>`).join("")}
       <button type="button" data-act="logout" style="color:var(--debt)">${I.out}تسجيل الخروج</button>
     </div></nav>
     <section class="pane set-body-pane"><div class="set-body">${cur?`<button class="btn ghost set-back" type="button" data-set="">${I.back}رجوع</button>`+setPage(cur):""}</div></section>
@@ -2839,6 +2842,10 @@ function setPage(k){
       <div class="uperms" role="group" aria-label="صلاحيات ${esc(a.name)}">${PERMS.filter(([k2])=>k2!=="edit"||a.role!=="viewer").map(([k2,l])=>`<label class="wa-auto"><input type="checkbox" data-uperm="${k2}" data-id="${esc(a.id)}" ${!(a.perms&&a.perms[k2]===false)?"checked":""}>${l}</label>`).join("")}</div></div>`).join("")}`;
   }
   if(k==="shops")return shopsPage();
+  if(k==="support")return `<h2>الدعم الفني</h2><p class="lead">عندك مشكلة أو سؤال بالبرنامج؟ اكتبلنا هنا، ونرد عليك بنفس المحادثة. تگدر ترفق صورة للشاشة.</p>
+    ${S.supUnread?`<div class="banner info">💬 وصلك <b class="num">${S.supUnread}</b> ${S.supUnread===1?"رد جديد":"ردود جديدة"}.</div>`:""}
+    <div><button class="btn primary" type="button" data-act="support">${I.wa}فتح المحادثة</button></div>
+    <p class="ro-note">الدعم الفني لصاحب المحل. العمّال يراجعون صاحب المحل.</p>`;
   if(k==="wabiz")return waBizPage();
   if(k==="templates"){
     const t=st.templates||{};
@@ -4494,6 +4501,7 @@ document.addEventListener("click",e=>{
     case "notiftest":{const pr=notifPrefs();toast("🔴 علي سجّل دين 25,000 د.ع على فلاح");if(pr.sound)chime();
       if("Notification" in window&&Notification.permission==="granted"){const opt={body:"هذا إشعار تجربة",lang:"ar",dir:"rtl",icon:"icons/icon-192.png"};const sw=navigator.serviceWorker;(sw?sw.getRegistration().then(r=>r?r.showNotification("دفتر الديون",opt):new Notification("دفتر الديون",opt)):Promise.resolve(new Notification("دفتر الديون",opt))).catch(()=>{})}break}
     case "goshops":S.view="settings";S.setPage="shops";render();break;
+    case "support":supOpen();break;
     case "goaccount":S.view="settings";S.setPage="account";render();break;
     case "htpdf":custTableExport("pdf");break;
     case "htcsv":custTableExport("csv");break;
@@ -4702,6 +4710,23 @@ function shopAction(act,id){
   else if(act==="disable")confirmBox("إيقاف المحل",`محل ${x.name} وعماله ما يكدرون يفتحون الدفتر لحد ما ترجع تفعّله. بياناتهم ما تنحذف.`,"إيقاف",()=>{set({status:"disabled"});toast("انوقف المحل")});
   else if(act==="reject")confirmBox("رفض المحل",`ينحذف طلب ${x.name}. إذا صاحبه دخل بعدين يكدر يسجّل محله من جديد.`,"رفض",()=>{db.doc("shops/"+id).delete().catch(writeFail);toast("انرفض الطلب")});
 }
+/* ---------- support chat (الدعم الفني): a shop's owner writes to this app's owner (web/support.js; the messages live in
+   Cloudflare D1 through the worker, so they cost no Firestore reads). Only the shop's owner, never its workers. ---------- */
+const supOn=()=>!!(MULTI&&SHOP&&window.ShahmSupport&&window.AI_URL&&auth&&auth.currentUser&&auth.currentUser.uid===SHOP);
+function supInit(){if(!supOn())return false;if(!supInit.done){ShahmSupport.init({base:window.AI_URL,token:()=>auth.currentUser.getIdToken(),side:"shop",push:PUSH_OK});supInit.done=true}return true}
+function supOpen(){if(!supInit()){toast("الدعم الفني بعده ما متوفر.");return}
+  ShahmSupport.open(SHOP,{title:"الدعم الفني",onThread:t=>{const n=Number(t&&t.us)||0;if(n!==S.supUnread){S.supUnread=n;if(S.me&&!$("#app").hidden)render()}}})}
+// The reply count on Settings, checked when the book opens and when the app comes back to the screen.
+function supCheck(){if(!supInit()||ShahmSupport.isOpen())return;
+  ShahmSupport.me().then(j=>{const n=Number(j.thread&&j.thread.us)||0;if(n!==S.supUnread){S.supUnread=n;if(S.me&&!$("#app").hidden)render()}
+    if(n&&!supCheck.told&&S.me){supCheck.told=1;toast("💬 وصلك رد من الدعم الفني",{label:"فتح",onClick:supOpen})}}).catch(()=>{})}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.me)supCheck()});
+// A support reply's notification tapped while the book is open (sw.js passes its link here).
+if("serviceWorker" in navigator)navigator.serviceWorker.addEventListener("message",e=>{const u=e.data&&e.data.open;if(u&&/#support$/.test(u)&&supOn())supOpen()});
+// The shop's owner keeps the number of its workers on the shop (shops/{id}.staff), the only thing the app's owner sees of them.
+function staffSync(){if(!SHOP||!S.isOwner||!S.shop||!S.ready.a||auth.currentUser.uid!==SHOP)return;
+  const n=[...S.accounts.values()].filter(a=>a.status==="active").length;if(S.shop.staff===n)return;
+  db.doc("shops/"+SHOP).update({staff:n}).catch(()=>{})}
 function userAction(act,id){
   const a=S.accounts.get(id);
   if(act==="create"){accountForm();return}
@@ -4717,6 +4742,7 @@ if(NATIVE){
   // Links (WhatsApp, APK) open in the right app instead of inside the app window.
   document.addEventListener("click",e=>{const a=e.target.closest&&e.target.closest('a[href^="http"]');if(!a)return;e.preventDefault();plugin("AppLauncher").openUrl({url:a.href}).catch(()=>{location.href=a.href})},true);
   plugin("App").addListener("backButton",()=>{
+    if(window.ShahmSupport&&ShahmSupport.isOpen()){ShahmSupport.close();return}
     if($("#modalRoot").innerHTML){closeModal();return}
     if(S.me&&S.view==="customers"&&S.selected){S.selected=null;render();return}
     if(S.me&&S.view==="settings"&&S.setPage){S.setPage=null;render();return}
@@ -4790,7 +4816,7 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
     const shopOff=db.doc("shops/"+SHOP).onSnapshot({includeMetadataChanges:true},s=>{
       if(!s.exists){if(s.metadata.fromCache)return;close();showWaiting(own?"طلب محلك انرفض أو انحذف. تواصل ويا صاحب البرنامج.":"هذا المحل انحذف. راجع صاحب المحل.","bad");return}
       S.shop={...s.data(),id:s.id};
-      if(S.shop.status==="pending"){close();showWaiting(own?`تم تسجيل «${S.shop.name}» ✅ بانتظار التفعيل من صاحب البرنامج. أول ما يتفعّل يفتح دفترك تلقائياً.`:"المحل بعده ما متفعّل. راجع صاحب المحل.","warn");return}
+      if(S.shop.status==="pending"){close();showWaiting(own?`تم تسجيل «${S.shop.name}» ✅ بانتظار التفعيل من صاحب البرنامج. أول ما يتفعّل يفتح دفترك تلقائياً.`:"المحل بعده ما متفعّل. راجع صاحب المحل.","warn",false,own);return}
       if(S.shop.status==="expired"&&S.shop.until){close();showExpired(own);return}
       if(S.shop.status!=="active"){close();showLocked("الدفتر موقوف",own?"اشتراك محلك موقوف حالياً، وبياناتك كلها محفوظة.":"المحل موقوف. راجع صاحب المحل.",own);return}
       clearTimeout(enterShop.endT);
@@ -4802,6 +4828,7 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
         S.me={id:u.uid,name:S.settings.ownerName||S.shop.ownerName||"المدير",role:"owner",username:S.shop.username||uname};
         rememberLogin(S.me.username,u.email);
         startData();if(first||$("#app").hidden)showApp();else render();
+        if(first){supCheck();if(location.hash==="#support"){try{history.replaceState(null,"",location.pathname)}catch(e){}setTimeout(supOpen,300)}}
         return;
       }
       if(!profOff)profOff=watchProfile(u,uname);

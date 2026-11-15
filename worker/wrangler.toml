@@ -49,6 +49,12 @@ name = "ST_LIMIT"
 namespace_id = "1005"
 simple = { limit = 30, period = 60 }
 
+# At most 10 support-chat messages a minute per person (see src/support.js), so nobody can flood the owner.
+[[ratelimits]]
+name = "SUP_LIMIT"
+namespace_id = "1006"
+simple = { limit = 10, period = 60 }
+
 # Live updates between a book's devices: one Durable Object per book (see Live in src/db.js).
 [[durable_objects.bindings]]
 name = "LIVE"

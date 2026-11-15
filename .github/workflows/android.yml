@@ -53,6 +53,8 @@ jobs:
           cat capacitor.config.json
       - name: Create Android project
         run: |
+          # The owner's panel (web/admin/) is for the app's owner only: it opens on the website, never inside the store apps.
+          rm -rf web/admin
           npx cap add android
           npx @capacitor/assets generate --android --assetPath ${{ matrix.assets }} \
             --iconBackgroundColor '#0e5a3a' --iconBackgroundColorDark '#0e5a3a' \
