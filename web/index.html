@@ -4728,11 +4728,11 @@ function showPanelOnly(){
 function panelPage(){
   const o=S.ownerDoc||{},sep=!!o.admin;
   return `<h2>لوحة المالك</h2><p class="lead">لوحة إدارة المحلات والدعم الفني: <a href="${PANEL_URL}" target="_blank" rel="noopener" class="num">shahm-debts.app/admin</a>. تفتحها من اللابتوب أو الموبايل، وتثبّتها كتطبيق.</p>
-    ${sep?`<div class="banner ok">✅ اللوحة مفصولة: تفتح بحساب <b class="num" style="direction:ltr;unicode-bidi:isolate">${esc(o.adminLogin||"")}</b> بس. حسابك هذا يبقى لدفتر الشهم، وإدارة المحلات صارت من اللوحة.</div>
+    ${sep?`<div class="banner ok">✅ اللوحة مفصولة: تفتح بحساب <b class="num" style="direction:ltr;unicode-bidi:isolate">${esc(o.adminLogin||"")}</b> بس. حسابك هذا يبقى لدفتر الديون، وإدارة المحلات صارت من اللوحة.</div>
       <div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px"><b>نسيت رمز اللوحة أو تريد حساب ثاني؟</b><span class="ro-note">سوّي حساب لوحة جديد بإيميل أو رقم ثاني، والقديم يتوقف بنفس اللحظة.</span><div><button class="btn sm" type="button" data-act="panelmake">حساب لوحة جديد</button></div></div>
       <div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px"><b>إلغاء الفصل</b><span class="ro-note">ترجع اللوحة تفتح بحسابك هذا، وترجع صفحة «المحلات» هنا.</span><div><button class="btn sm danger-text" type="button" data-act="panelundo">إلغاء الفصل</button></div></div>`
     :`<div class="banner info">هسه اللوحة تفتح بنفس حسابك هذا. إذا تريدها بحساب منفصل (إيميل أو رقم، ورمز خاصين بيها)، سوّيه من هنا. بعدها:</div>
-      <ul class="steps" style="margin:0;padding-inline-start:20px;line-height:1.9"><li>حساب اللوحة يدير المحلات والدعم الفني، وما يفتح أي دفتر.</li><li>حسابك هذا يبقى لدفتر الشهم بس، وصفحة «المحلات» تنشال من هنا.</li><li>تگدر تفتح الاثنين سوا على نفس اللابتوب.</li><li>تگدر تلغي الفصل بأي وقت من هنا.</li></ul>
+      <ul class="steps" style="margin:0;padding-inline-start:20px;line-height:1.9"><li>حساب اللوحة يدير المحلات والدعم الفني، وما يفتح أي دفتر.</li><li>حسابك هذا يبقى لدفتر الديون بس، وصفحة «المحلات» تنشال من هنا.</li><li>تگدر تفتح الاثنين سوا على نفس اللابتوب.</li><li>تگدر تلغي الفصل بأي وقت من هنا.</li></ul>
       <div><button class="btn primary" type="button" data-act="panelmake">${I.lock}سوّي حساب اللوحة</button></div>`}`;
 }
 function panelForm(){
