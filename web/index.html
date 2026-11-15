@@ -3262,6 +3262,12 @@ function txnForm(type,existing,pre){
 }
 /* After a payment (or from its row in the ledger): the receipt voucher and the statement are built up front, so the share sheet
    opens straight from the button tap (phones require a fresh tap). The voucher goes as an image or a PDF. */
+// Put a PNG on the clipboard. Called straight from the tap (no await before write) so Safari allows it.
+function copyImage(blob){
+  try{if(!navigator.clipboard||!navigator.clipboard.write||!window.ClipboardItem)return Promise.reject(new Error("no clipboard"));
+    if(ClipboardItem.supports&&!ClipboardItem.supports("image/png"))return Promise.reject(new Error("no png"));
+    return navigator.clipboard.write([new ClipboardItem({"image/png":blob})])}catch(e){return Promise.reject(e)}
+}
 function sendStatementPdf(c,textLink,t){showReceipt(t,c,{fresh:true,textLink})}
 function showReceipt(t,c,o={}){
   const canShareFiles=NATIVE||(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)&&!!navigator.canShare);
@@ -3270,16 +3276,20 @@ function showReceipt(t,c,o={}){
     <p class="hint">${o.fresh?"تم تسجيل التسديد. ":""}${has?`المبلغ <b class="num">${fmt(t.amount)}</b> ${CUR} · `:""}الرصيد المتبقي: <b class="num">${fmt(has?balAround(t).after:balanceOf(c.id))}</b> ${CUR}</p>
     ${has?`<div class="rc-prev" id="rcPrev" aria-label="معاينة سند القبض"></div>`:""}
     <p class="hint" id="spState">جاري التجهيز…</p>
-    <div class="foot">${has?`<button class="btn wa" type="button" id="rcImg" disabled>${I.wa}إرسال السند صورة</button><button class="btn" type="button" id="rcPdf" disabled>${I.pdf}السند PDF</button>`:""}<button class="btn${has?"":" wa"}" type="button" id="spSend" disabled>${has?I.pdf:I.wa}${canShareFiles?"كشف الحساب PDF":"تنزيل الكشف وفتح واتساب"}</button>${o.textLink?`<button class="btn" type="button" id="spText">رسالة نصية فقط</button>`:""}<button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
-    let rc=null,st=null;const state=m.querySelector("#spState"),send=m.querySelector("#spSend"),bi=m.querySelector("#rcImg"),bp=m.querySelector("#rcPdf");
+    <div class="foot">${has?`<button class="btn wa" type="button" id="rcImg" disabled>${I.wa}إرسال السند صورة</button><button class="btn" type="button" id="rcCopy" disabled>${I.copy}نسخ صورة السند</button><button class="btn" type="button" id="rcPdf" disabled>${I.pdf}السند PDF</button>`:""}<button class="btn${has?"":" wa"}" type="button" id="spSend" disabled>${has?I.pdf:I.wa}${canShareFiles?"كشف الحساب PDF":"تنزيل الكشف وفتح واتساب"}</button>${o.textLink?`<button class="btn" type="button" id="spText">رسالة نصية فقط</button>`:""}<button class="btn" type="button" data-close>إغلاق</button></div>`,m=>{
+    let rc=null,st=null;const state=m.querySelector("#spState"),send=m.querySelector("#spSend"),bi=m.querySelector("#rcImg"),bp=m.querySelector("#rcPdf"),bc=m.querySelector("#rcCopy");
     const hint=()=>{state.textContent=canShareFiles?"اضغط إرسال، اختار واتساب، وبعدين اختار الزبون.":"ينزل الملف وينفتح واتساب على رقم الزبون، اسحب الملف للمحادثة."};
     const capSt=fillTpl("pay",c,{amount:0}).split("\n")[0]+"\nمرفق كشف حسابك. الرصيد المتبقي: "+fmt(balanceOf(c.id))+" "+CUR+"\n"+shopName();
     const out=async(name,blob,mime,cap)=>{try{const ok=await saveFile(name,blob,mime,cap);
       if(ok&&!canShareFiles&&c.phone)openExternal(waLink(c.phone,cap));if(ok)closeModal()}catch(e){console.warn(e);toast("تعذّر إرسال الملف.")}};
-    if(has)receiptFiles(t,c).then(r=>{rc=r;bi.disabled=false;if(r.pdf)bp.disabled=false;
+    if(has)receiptFiles(t,c).then(r=>{rc=r;bi.disabled=false;bc.disabled=false;if(r.pdf)bp.disabled=false;
       const img=new Image();img.alt="سند قبض";img.src=URL.createObjectURL(r.png);m.querySelector("#rcPrev").appendChild(img);hint()}).catch(e=>{console.warn(e);state.textContent="تعذّر تجهيز السند."});
     custPdf(c,{blob:true}).then(r=>{if(!r)throw 0;st=r;send.disabled=false;if(!has)hint()}).catch(()=>{if(!has)state.textContent="تعذّر تجهيز الكشف."});
     if(bi)bi.addEventListener("click",()=>rc&&out(rc.base+".png",rc.png,"image/png",receiptCaption(t,c)));
+    // Copy the voucher picture so it can be pasted straight into a WhatsApp chat; where the clipboard can't hold images, share or download it instead.
+    if(bc)bc.addEventListener("click",()=>{if(!rc)return;
+      copyImage(rc.png).then(()=>{bc.innerHTML=I.check+"انسخت الصورة";state.textContent="انسخت صورة السند. افتح محادثة الزبون بواتساب واضغط لصق.";toast("تم نسخ صورة السند")},
+        e=>{console.warn(e);toast("هذا الجهاز ما يسمح بنسخ الصور، فتحنالك الإرسال بدلها.");out(rc.base+".png",rc.png,"image/png",receiptCaption(t,c))})});
     if(bp)bp.addEventListener("click",()=>rc&&rc.pdf&&out(rc.base+".pdf",rc.pdf,"application/pdf",receiptCaption(t,c)));
     send.addEventListener("click",()=>st&&out(st.fname,st.blob,"application/pdf",capSt));
     const tx=m.querySelector("#spText");if(tx)tx.addEventListener("click",()=>{openExternal(o.textLink);closeModal()});
