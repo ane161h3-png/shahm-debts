@@ -6,6 +6,8 @@
 //   POST /db/push?tenant=X  body {ops: [[coll, id, data | null], ...]}  the book's writers: saves each record (null = deleted)
 //   GET  /db/pull?tenant=X&since=U  the book's members: records saved after U, oldest first, a page at a time (more: true);
 //                                   read: whether the app should show this book from here
+//   POST /db/seeded?tenant=X  the book's writers: a device's daily check found D1 holding the whole book (it compared
+//                             it with Firestore and sent what differed). Only then is the book read from here.
 //   GET  /db/live?tenant=X  (WebSocket, login sent as the protocol "bearer, <token>") the book's members: a message {u}
 //                           after every save, so the app pulls what changed straight away (see Live below)
 // tenant is a shop's id (its owner's uid) or "main" for the root book. Who may read or write follows firestore.rules
@@ -32,6 +34,8 @@ export async function schema(env) {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS ctr (t TEXT PRIMARY KEY, u INTEGER NOT NULL)"),
     // An account's own records, for the statement link a customer opens (src/statement.js).
     env.DB.prepare("CREATE INDEX IF NOT EXISTS docs_cust ON docs (t, c, json_extract(d, '$.customerId'))"),
+    // Books whose D1 copy a full check has filled (see seeded below); main was filled before this table existed.
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS books (t TEXT PRIMARY KEY, seeded INTEGER NOT NULL) WITHOUT ROWID"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS stlinks (t TEXT NOT NULL, cid TEXT NOT NULL, k TEXT NOT NULL UNIQUE, nm TEXT, at INTEGER NOT NULL, by TEXT, PRIMARY KEY (t, cid)) WITHOUT ROWID"),
   ]);
   schemaReady = true;
@@ -92,6 +96,10 @@ function shapeOk(c, id, d) {
 }
 
 const readOn = (env, tenant) => { const l = String(env.D1_READ || "").split(",").map(x => x.trim()); return l.includes("all") || l.includes(tenant); };
+// Listed in D1_READ and filled: a shop listed (through "all") before any of its devices ran a full check keeps reading
+// Firestore until one has, so nobody ever opens a half-copied book. A new shop's first check (nothing to copy) fills it.
+const readsHere = async (env, tenant) => readOn(env, tenant)
+  && (tenant === "main" || !!(await env.DB.prepare("SELECT 1 AS x FROM books WHERE t = ?").bind(tenant).first("x")));
 
 // One per book: holds the open live links of its devices and tells them when something was saved. Idle links hibernate
 // (no cost), and the keep-alive ping is answered without waking it.
@@ -128,7 +136,13 @@ export async function handleDb(request, env, json, cors) {
     const since = Math.max(0, Math.floor(Number(url.searchParams.get("since")) || 0));
     const { results } = await env.DB.prepare("SELECT c, id, d, u, del FROM docs WHERE t = ? AND u > ? ORDER BY u LIMIT ?").bind(tenant, since, PAGE + 1).all();
     const more = results.length > PAGE, rows = results.slice(0, PAGE).map(x => [x.c, x.id, x.del ? null : JSON.parse(x.d), x.u]);
-    return json({ rows, more, u: rows.length ? rows[rows.length - 1][3] : since, read: readOn(env, tenant) }, 200, cors);
+    return json({ rows, more, u: rows.length ? rows[rows.length - 1][3] : since, read: await readsHere(env, tenant) }, 200, cors);
+  }
+
+  if (what === "seeded" && request.method === "POST") {
+    if (a.role === "viewer") return json({ error: "ما عندك صلاحية لهذا التعديل." }, 403, cors);
+    await env.DB.prepare("INSERT OR IGNORE INTO books (t, seeded) VALUES (?, ?)").bind(tenant, Date.now()).run();
+    return json({ ok: true }, 200, cors);
   }
 
   if (what === "push" && request.method === "POST") {
