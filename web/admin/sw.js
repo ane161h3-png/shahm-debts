@@ -1,6 +1,6 @@
 // Offline shell for the owner's panel (admin/), apart from the debt book's worker (../sw.js) and the cashier's (../pos/sw.js).
 // The page always tries the network first; the rest is served from cache and refreshed in the background.
-const CACHE = "shahm-admin-v1";
+const CACHE = "shahm-admin-v2";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "../config.js", "../support.js",
   "../vendor/firebase-app-compat.js", "../vendor/firebase-auth-compat.js", "../vendor/firebase-firestore-compat.js",
