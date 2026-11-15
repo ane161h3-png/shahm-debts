@@ -4737,7 +4737,7 @@ function panelPage(){
 }
 function panelForm(){
   if(!S.isOwner||SHOP)return;
-  openModal(`<h3>حساب لوحة المالك</h3><p class="hint">اختار إيميل (أو رقم هاتف) ورمز خاصين باللوحة. تدخل بيهم على shahm-debts.app/admin. لازم ما يكون مستخدم بحساب ثاني.</p>
+  openModal(`<h3>حساب لوحة المالك</h3><p class="hint">اختار إيميل (أو رقم هاتف) ورمز خاصين باللوحة. تدخل بيهم على shahm-debts.app/admin. لازم ما يكون مستخدم بحساب ثاني. إذا اخترت إيميل، يوصلك عليه رابط تأكيد، والفصل يصير بعد ما تأكده.</p>
     <form id="pnF" class="field" style="gap:10px" novalidate>
       <div class="field"><label for="pnPh">البريد الإلكتروني (أو رقم الهاتف)</label><input id="pnPh" type="email" inputmode="email" maxlength="100" style="direction:ltr;text-align:right" placeholder="name@gmail.com" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
       <div class="field"><label for="pnPw">الرمز (كلمة المرور)</label><div class="pw"><input id="pnPw" type="password" autocomplete="new-password"><button type="button" data-showpw="pnPw">إظهار</button></div><span class="help">${PW_MIN} أحرف على الأقل. احفظه، ما ينعرض مرة ثانية.</span></div>
@@ -4757,11 +4757,35 @@ function panelForm(){
         const sec=firebase.apps.find(x=>x.name==="sec")||firebase.initializeApp(window.FIREBASE_CONFIG,"sec");
         const sa=sec.auth();try{await sa.setPersistence(firebase.auth.Auth.Persistence.NONE)}catch(x){}
         if(window.FIREBASE_EMULATOR&&!sec._emu){sec._emu=1;sa.useEmulator("http://127.0.0.1:9099",{disableWarnings:true});sec.firestore().useEmulator("127.0.0.1",8080)}
-        const cred=await sa.createUserWithEmailAndPassword(mail?ph:emailOf(ph),pw);await sa.signOut();
-        const patch={admin:cred.user.uid,adminLogin:ph,adminAt:Date.now()};
-        stopShops();await db.doc("settings/owner").update(patch);
-        S.ownerDoc={...(S.ownerDoc||{}),...patch};S.superOwner=false;S.shops=new Map();
-        closeModal();render();log("edit","account",{detail:`فصل لوحة المالك بحساب ${ph}`});toast("✓ انفصلت اللوحة. ادخل لها بالحساب والرمز الجديدين.",{label:"فتح اللوحة",href:PANEL_URL});
+        let user;
+        try{user=(await sa.createUserWithEmailAndPassword(mail?ph:emailOf(ph),pw)).user}
+        catch(x){
+          // An e-mail account made here before but never confirmed: the same e-mail and password pick it up again.
+          if(!(mail&&x&&x.code==="auth/email-already-in-use"))throw x;
+          try{user=(await sa.signInWithEmailAndPassword(ph,pw)).user}catch(y){throw x}
+          if(user.uid===auth.currentUser.uid||S.accounts.has(user.uid)||S.shops.has(user.uid)){await sa.signOut();throw x}
+        }
+        const finish=async()=>{
+          await sa.signOut().catch(()=>{});
+          const patch={admin:user.uid,adminLogin:ph,adminAt:Date.now()};
+          stopShops();await db.doc("settings/owner").update(patch);
+          S.ownerDoc={...(S.ownerDoc||{}),...patch};S.superOwner=false;S.shops=new Map();
+          closeModal();render();log("edit","account",{detail:`فصل لوحة المالك بحساب ${ph}`});toast("✓ انفصلت اللوحة. ادخل لها بالحساب والرمز الجديدين.",{label:"فتح اللوحة",href:PANEL_URL});
+        };
+        if(!mail||user.emailVerified){await finish();return}
+        // An e-mail: nothing is separated until its owner opens the confirmation link sent to it.
+        sa.languageCode="ar";
+        const send=()=>user.sendEmailVerification({url:PANEL_URL});
+        await send();
+        const f=m.querySelector("#pnF");
+        f.innerHTML=`<div class="banner info">📧 بعثنا رابط تأكيد على <b style="direction:ltr;unicode-bidi:isolate">${esc(ph)}</b>. افتح الإيميل واضغط الرابط (إذا ما لگيته، شوف مجلد Spam أو الرسائل غير المرغوب فيها)، وبعدين ارجع هنا واضغط «أكّدت».</div>
+          <p class="err" id="pnErr"></p>
+          <div class="foot"><button class="btn primary" type="button" id="pnOk">أكّدت</button><button class="btn" type="button" id="pnRe">إعادة إرسال الرابط</button><button class="btn" type="button" data-close>إلغاء</button></div>`;
+        const er=f.querySelector("#pnErr");
+        f.querySelector("#pnRe").onclick=async ev=>{ev.target.disabled=true;er.textContent="";try{await send();toast("✓ انبعث رابط جديد")}catch(x){er.textContent=x&&x.code==="auth/too-many-requests"?"انتظر دقيقة قبل ما تطلب رابط ثاني.":authMsg(x)}setTimeout(()=>{ev.target.disabled=false},30000)};
+        f.querySelector("#pnOk").onclick=async ev=>{const b2=ev.target;b2.disabled=true;er.textContent="";
+          try{await user.reload();if(!user.emailVerified){er.textContent="الإيميل ما تأكد بعد. اضغط الرابط اللي وصلك، وبعدين ارجع اضغط «أكّدت».";b2.disabled=false;return}await finish()}
+          catch(x){b2.disabled=false;er.textContent=authMsg(x)}};
       }catch(x){btn.disabled=false;err.textContent=x&&x.code==="auth/email-already-in-use"?(mail?"هذا الإيميل مستخدم بحساب ثاني. اختار إيميل ثاني.":"هذا الرقم مستخدم بحساب ثاني. اختار رقم ثاني."):authMsg(x)}
     }));
 }
