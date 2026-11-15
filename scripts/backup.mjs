@@ -22,6 +22,7 @@ const cfgSrc = readFileSync(new URL("../web/config.js", import.meta.url), "utf8"
 const sandbox = { window: {} };
 vm.runInNewContext(cfgSrc, sandbox);
 const cfg = sandbox.window.FIREBASE_CONFIG;
+const D1_URL = (process.env.D1_URL || sandbox.window.AI_URL || "").replace(/\/$/, "");
 const AUTH_URL = process.env.AUTH_URL || "https://identitytoolkit.googleapis.com";
 const DB_URL = process.env.FIRESTORE_URL || "https://firestore.googleapis.com";
 const TG_URL = process.env.TELEGRAM_URL || "https://api.telegram.org";
@@ -109,6 +110,30 @@ async function readIds(token, coll, ids) {
     for (const x of j) if (x.found) out.push({ id: x.found.name.split("/").pop(), ...fields(x.found.fields || {}) });
   }
   return out;
+}
+
+// The main book's accounts and transactions from the new database (Cloudflare D1, see worker/src/db.js) when the worker
+// reads the book from there (D1_READ): all of it in a few requests, with no Firestore reads. null (and the old Firestore
+// reads run) when the worker doesn't read the book from D1 or can't be reached.
+async function d1Book(token) {
+  if (!D1_URL) return null;
+  try {
+    const rows = new Map();
+    let since = 0;
+    for (;;) {
+      const r = await fetch(`${D1_URL}/db/pull?tenant=main&since=${since}`, { headers: { Authorization: "Bearer " + token } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+      if (!j.read) { console.log("D1: the worker still reads this book from Firestore."); return null; }
+      for (const [c, id, d] of j.rows) rows.set(c + "|" + id, [c, id, d]);
+      since = j.u;
+      if (!j.more) break;
+    }
+    const out = { customers: [], txns: [] };
+    for (const [c, id, d] of rows.values()) if (d && out[c]) out[c].push({ ...d, id });
+    console.log(`D1: ${out.customers.length} accounts, ${out.txns.length} transactions.`);
+    return out;
+  } catch (e) { console.warn("D1 not reachable, reading Firestore:", e.message); return null; }
 }
 
 // The cashier's collections are newer than the backup account's rules may be: until firestore.rules is published
@@ -350,7 +375,7 @@ async function sendFile(name, data, type, caption, quiet) {
 // with a promise due (with their transactions, for the balance). The full backup file and the cashier sales come with the
 // daily run, so a day of reports costs a few hundred reads instead of the whole database twelve times.
 const MAX_PROMISES = 40;
-async function periodic(token) {
+async function periodic(token, book) {
   const now = new Date();
   const manual = process.env.MANUAL === "true";
   const end = slotEnd(now, manual);
@@ -358,19 +383,22 @@ async function periodic(token) {
   const from = Math.min(end - SLOT, dayStart);
   const today = isoDay(now.getTime());
   const [txns, settings, activity, promised] = await Promise.all([
-    readSince(token, "txns", "createdAt", from), readDoc(token, "settings/main"), readSince(token, "activity", "at", from),
-    query(token, "customers", "promise.date", "LESS_THAN_OR_EQUAL", { stringValue: today }),
+    book ? book.txns.filter(t => Number(t.createdAt) >= from) : readSince(token, "txns", "createdAt", from),
+    readDoc(token, "settings/main"), readSince(token, "activity", "at", from),
+    book ? book.customers.filter(c => c.promise && c.promise.date && c.promise.date <= today)
+      : query(token, "customers", "promise.date", "LESS_THAN_OR_EQUAL", { stringValue: today }),
   ]);
   const due = promised.filter(c => c.kind !== "supplier").slice(0, MAX_PROMISES);
   const bal = new Map();
   let promiseTxns = 0;
   await Promise.all(due.map(async c => {
-    const list = await query(token, "txns", "customerId", "EQUAL", { stringValue: c.id });
+    const list = book ? book.txns.filter(t => t.customerId === c.id) : await query(token, "txns", "customerId", "EQUAL", { stringValue: c.id });
     promiseTxns += list.length;
     bal.set(c.id, list.reduce((a, t) => a + (t.type === "debt" ? 1 : -1) * (Number(t.amount) || 0), 0));
   }));
   const known = new Set(due.map(c => c.id));
-  const customers = [...due, ...await readIds(token, "customers", [...new Set(txns.map(t => t.customerId).filter(id => id && !known.has(id)))])];
+  const named = [...new Set(txns.map(t => t.customerId).filter(id => id && !known.has(id)))];
+  const customers = [...due, ...(book ? book.customers.filter(c => named.includes(c.id)) : await readIds(token, "customers", named))];
   const chat = env("TELEGRAM_CHAT_ID");
   const rep = periodicReport(customers, txns, activity, settings, now, manual, bal);
   // Quiet slots (usually at night) get a silent one-line message.
@@ -504,11 +532,20 @@ async function dayOnly(token, now) {
 async function main() {
   const mode = (process.env.MODE || "daily").trim();
   const token = await signIn();
-  if (mode === "periodic") return periodic(token);
-  if (mode === "daily" && new Date(Date.now() + BAGHDAD).getUTCDay() !== FULL_WEEKDAY) return dayOnly(token, new Date());
+  const book = await d1Book(token);
+  if (mode === "periodic") return periodic(token, book);
+  const friday = new Date(Date.now() + BAGHDAD).getUTCDay() === FULL_WEEKDAY;
+  if (mode === "daily" && !friday && !book) return dayOnly(token, new Date());
+  // With the book in D1 the backup file goes out every night with every account and transaction (they cost no Firestore
+  // reads). The activity log and the cashier's records still come from Firestore: only the day's on most nights, all of
+  // them on Fridays and with mode full or backup.
+  const light = mode === "daily" && !friday, from = bizDayStart(reportDay(new Date()));
+  const opt = p => p.catch(e => (console.warn("Skipping:", e.message), []));
+  const part = (coll, field) => light ? opt(readSince(token, coll, field, from)) : readOptional(token, coll);
   const [customers, txns, activity, settings, sales, products, shifts, stocktakes] = await Promise.all([
-    readAll(token, "customers"), readAll(token, "txns"), readAll(token, "activity"), readDoc(token, "settings/main"),
-    readOptional(token, "sales"), readOptional(token, "products"), readOptional(token, "shifts"), readOptional(token, "stocktakes"),
+    book ? book.customers : readAll(token, "customers"), book ? book.txns : readAll(token, "txns"),
+    light ? readSince(token, "activity", "at", from) : readAll(token, "activity"), readDoc(token, "settings/main"),
+    part("sales", "at"), readOptional(token, "products"), part("shifts", "closedAt"), part("stocktakes", "at"),
   ]);
   const now = new Date();
   // Files are named after the working day they close (the 2 AM run closes yesterday's day).
@@ -534,6 +571,7 @@ async function main() {
     `💰 مجموع الديون: ${fmt(owed)} د.ع (${owing} زبون)`,
     `🔐 بصمة البيانات: ${print.code} (ديون مسجلة ${fmt(print.debt)} · تسديدات ${fmt(print.pay)})`,
     `✓ الملف انقرأ بعد الحفظ وطابق: نفس الحسابات والحركات`,
+    `🗄️ المصدر: ${book ? "قاعدة Cloudflare" : "Firebase"}${light ? " · سجل النشاط ومبيعات الكاشير لليوم بس (الكاملة كل جمعة)" : ""}`,
     `للاستعادة: الإعدادات ← النسخ الاحتياطي ← اختيار ملف النسخة`,
   ].join("\n");
   const name = mode === "backup" ? `نسخة-ديون-${slug}-${isoDay(now.getTime())}-قبل-التحديث.json` : `نسخة-ديون-${slug}-${day}.json`;
