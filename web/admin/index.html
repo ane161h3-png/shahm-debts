@@ -411,7 +411,7 @@ function settingsView(){
       <p class="ro-note">لما يكتب صاحب محل، توصلك رسالة على بوت Telegram (نفس بوت النسخ الاحتياطي)، وإشعار على هذا الجهاز إذا فعّلته.</p>
       <div class="row">${ShahmSupport.pushOk()?(ShahmSupport.pushIsOn()?`<span class="chip paid">مفعّل على هذا الجهاز</span><button class="btn sm" type="button" data-push="off">إيقاف</button>`:`<button class="btn primary sm" type="button" data-push="on">${I.bell} تفعيل على هذا الجهاز</button>`):`<span class="ro-note">هذا المتصفح ما يدعم الإشعارات.</span>`}</div></section>
     <section class="panel"><h2>الحساب</h2>
-      <p class="ro-note">${S.root?"اللوحة تفتح بحسابك الرئيسي (نفس حساب دفتر الشهم). تگدر تسوّيلها حساب منفصل برقم ورمز خاصين من تطبيق الديون › الإعدادات › «لوحة المالك».":"اللوحة تفتح بحسابها المنفصل. الرقم يتغير من تطبيق الديون › الإعدادات › «لوحة المالك» (حساب لوحة جديد)."}</p>
+      <p class="ro-note">${S.root?"اللوحة تفتح بحسابك الرئيسي (نفس حساب دفتر الشهم). تگدر تسوّيلها حساب منفصل برقم ورمز خاصين من تطبيق الديون › الإعدادات › «لوحة المالك».":"اللوحة تفتح بحسابها المنفصل. الحساب يتغير من تطبيق الديون › الإعدادات › «لوحة المالك» (حساب لوحة جديد)."}</p>
       <form id="pwF" class="row" novalidate style="align-items:flex-end">
         <div class="field" style="flex:1 1 170px"><label for="pwCur">الرمز الحالي</label><input id="pwCur" type="password" autocomplete="current-password"></div>
         <div class="field" style="flex:1 1 170px"><label for="pwNew">الرمز الجديد</label><input id="pwNew" type="password" autocomplete="new-password" placeholder="8 أحرف على الأقل"></div>

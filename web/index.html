@@ -4728,41 +4728,41 @@ function showPanelOnly(){
 function panelPage(){
   const o=S.ownerDoc||{},sep=!!o.admin;
   return `<h2>لوحة المالك</h2><p class="lead">لوحة إدارة المحلات والدعم الفني: <a href="${PANEL_URL}" target="_blank" rel="noopener" class="num">shahm-debts.app/admin</a>. تفتحها من اللابتوب أو الموبايل، وتثبّتها كتطبيق.</p>
-    ${sep?`<div class="banner ok">✅ اللوحة مفصولة: تفتح بحساب الرقم <b class="num">${esc(o.adminLogin||"")}</b> بس. حسابك هذا يبقى لدفتر الشهم، وإدارة المحلات صارت من اللوحة.</div>
-      <div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px"><b>نسيت رمز اللوحة أو تريد رقم ثاني؟</b><span class="ro-note">سوّي حساب لوحة جديد برقم ثاني، والقديم يتوقف بنفس اللحظة.</span><div><button class="btn sm" type="button" data-act="panelmake">حساب لوحة جديد</button></div></div>
+    ${sep?`<div class="banner ok">✅ اللوحة مفصولة: تفتح بحساب <b class="num" style="direction:ltr;unicode-bidi:isolate">${esc(o.adminLogin||"")}</b> بس. حسابك هذا يبقى لدفتر الشهم، وإدارة المحلات صارت من اللوحة.</div>
+      <div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px"><b>نسيت رمز اللوحة أو تريد حساب ثاني؟</b><span class="ro-note">سوّي حساب لوحة جديد بإيميل أو رقم ثاني، والقديم يتوقف بنفس اللحظة.</span><div><button class="btn sm" type="button" data-act="panelmake">حساب لوحة جديد</button></div></div>
       <div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px"><b>إلغاء الفصل</b><span class="ro-note">ترجع اللوحة تفتح بحسابك هذا، وترجع صفحة «المحلات» هنا.</span><div><button class="btn sm danger-text" type="button" data-act="panelundo">إلغاء الفصل</button></div></div>`
-    :`<div class="banner info">هسه اللوحة تفتح بنفس حسابك هذا. إذا تريدها بحساب منفصل (رقم ورمز خاصين بيها)، سوّيه من هنا. بعدها:</div>
+    :`<div class="banner info">هسه اللوحة تفتح بنفس حسابك هذا. إذا تريدها بحساب منفصل (إيميل أو رقم، ورمز خاصين بيها)، سوّيه من هنا. بعدها:</div>
       <ul class="steps" style="margin:0;padding-inline-start:20px;line-height:1.9"><li>حساب اللوحة يدير المحلات والدعم الفني، وما يفتح أي دفتر.</li><li>حسابك هذا يبقى لدفتر الشهم بس، وصفحة «المحلات» تنشال من هنا.</li><li>تگدر تفتح الاثنين سوا على نفس اللابتوب.</li><li>تگدر تلغي الفصل بأي وقت من هنا.</li></ul>
       <div><button class="btn primary" type="button" data-act="panelmake">${I.lock}سوّي حساب اللوحة</button></div>`}`;
 }
 function panelForm(){
   if(!S.isOwner||SHOP)return;
-  openModal(`<h3>حساب لوحة المالك</h3><p class="hint">اختار رقم ورمز خاصين باللوحة. تدخل بيهم على shahm-debts.app/admin. الرقم لازم ما يكون مستخدم بحساب ثاني.</p>
+  openModal(`<h3>حساب لوحة المالك</h3><p class="hint">اختار إيميل (أو رقم هاتف) ورمز خاصين باللوحة. تدخل بيهم على shahm-debts.app/admin. لازم ما يكون مستخدم بحساب ثاني.</p>
     <form id="pnF" class="field" style="gap:10px" novalidate>
-      <div class="field"><label for="pnPh">رقم الهاتف</label><input id="pnPh" inputmode="tel" maxlength="20" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx" autocomplete="off"></div>
+      <div class="field"><label for="pnPh">البريد الإلكتروني (أو رقم الهاتف)</label><input id="pnPh" type="email" inputmode="email" maxlength="100" style="direction:ltr;text-align:right" placeholder="name@gmail.com" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
       <div class="field"><label for="pnPw">الرمز (كلمة المرور)</label><div class="pw"><input id="pnPw" type="password" autocomplete="new-password"><button type="button" data-showpw="pnPw">إظهار</button></div><span class="help">${PW_MIN} أحرف على الأقل. احفظه، ما ينعرض مرة ثانية.</span></div>
       <div class="field"><label for="pnPw2">أعد الرمز</label><input id="pnPw2" type="password" autocomplete="new-password"></div>
       <p class="err" id="pnErr"></p>
       <div class="foot"><button class="btn primary" type="submit" id="pnGo2">إنشاء وفصل</button><button class="btn" type="button" data-close>إلغاء</button></div>
     </form>`,m=>m.querySelector("#pnF").addEventListener("submit",async e=>{e.preventDefault();
-      const err=m.querySelector("#pnErr"),btn=m.querySelector("#pnGo2"),ph=phoneId(m.querySelector("#pnPh").value),pw=m.querySelector("#pnPw").value;
-      if(!/^\d{10,15}$/.test(ph)){err.textContent="اكتب رقم هاتف صحيح، مثل 07701234567.";return}
+      const err=m.querySelector("#pnErr"),btn=m.querySelector("#pnGo2"),raw=normDigits(m.querySelector("#pnPh").value).trim().toLowerCase(),mail=raw.includes("@"),ph=mail?raw:phoneId(raw),pw=m.querySelector("#pnPw").value;
+      if(mail?!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ph)||ph.endsWith("@"+DOMAIN):!/^\d{10,15}$/.test(ph)){err.textContent="اكتب إيميل صحيح مثل name@gmail.com، أو رقم هاتف مثل 07701234567.";return}
       if(pw.length<PW_MIN){err.textContent=`الرمز ${PW_MIN} أحرف على الأقل.`;return}
       if(pw!==m.querySelector("#pnPw2").value){err.textContent="الرمزين مو نفس الشي.";return}
       btn.disabled=true;err.textContent="";
       // The rules that know the panel's own account must be published first, or the new account could not reach the shops.
       try{await db.doc("meta/rules-v5").get({source:"server"})}catch(x){btn.disabled=false;err.textContent=x&&x.code==="permission-denied"?"انشر قواعد firestore.rules الجديدة من Firebase أول، وبعدها ارجع سوّيه.":"تحقق من الإنترنت وحاول مرة ثانية.";return}
       try{
-        const taken=await db.doc("logins/"+ph).get({source:"server"});if(taken.exists){btn.disabled=false;err.textContent="هذا الرقم مستخدم بحساب ثاني. اختار رقم ثاني.";return}
+        const taken=mail?null:await db.doc("logins/"+ph).get({source:"server"});if(taken&&taken.exists){btn.disabled=false;err.textContent="هذا الرقم مستخدم بحساب ثاني. اختار رقم ثاني.";return}
         const sec=firebase.apps.find(x=>x.name==="sec")||firebase.initializeApp(window.FIREBASE_CONFIG,"sec");
         const sa=sec.auth();try{await sa.setPersistence(firebase.auth.Auth.Persistence.NONE)}catch(x){}
         if(window.FIREBASE_EMULATOR&&!sec._emu){sec._emu=1;sa.useEmulator("http://127.0.0.1:9099",{disableWarnings:true});sec.firestore().useEmulator("127.0.0.1",8080)}
-        const cred=await sa.createUserWithEmailAndPassword(emailOf(ph),pw);await sa.signOut();
+        const cred=await sa.createUserWithEmailAndPassword(mail?ph:emailOf(ph),pw);await sa.signOut();
         const patch={admin:cred.user.uid,adminLogin:ph,adminAt:Date.now()};
         stopShops();await db.doc("settings/owner").update(patch);
         S.ownerDoc={...(S.ownerDoc||{}),...patch};S.superOwner=false;S.shops=new Map();
-        closeModal();render();log("edit","account",{detail:`فصل لوحة المالك بحساب الرقم ${ph}`});toast("✓ انفصلت اللوحة. ادخل لها بالرقم والرمز الجديدين.",{label:"فتح اللوحة",href:PANEL_URL});
-      }catch(x){btn.disabled=false;err.textContent=x&&x.code==="auth/email-already-in-use"?"هذا الرقم مستخدم بحساب ثاني. اختار رقم ثاني.":authMsg(x)}
+        closeModal();render();log("edit","account",{detail:`فصل لوحة المالك بحساب ${ph}`});toast("✓ انفصلت اللوحة. ادخل لها بالحساب والرمز الجديدين.",{label:"فتح اللوحة",href:PANEL_URL});
+      }catch(x){btn.disabled=false;err.textContent=x&&x.code==="auth/email-already-in-use"?(mail?"هذا الإيميل مستخدم بحساب ثاني. اختار إيميل ثاني.":"هذا الرقم مستخدم بحساب ثاني. اختار رقم ثاني."):authMsg(x)}
     }));
 }
 function stopShops(){try{stopShops.u&&stopShops.u()}catch(e){}stopShops.u=null}
