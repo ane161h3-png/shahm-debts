@@ -1593,6 +1593,9 @@ async function d1Check(force){
     // by another device and hasn't reached this one yet.
     for(const [key,r] of remote){if(!r.d||r.u>recent||d1Out.has(key))continue;const [k,id]=key.split("|");if(!src[k].has(id))ops.push([k,id,null])}
     for(let i=0;i<ops.length;i+=400){const r=await d1Send(ops.slice(i,i+400));if(!r.ok)throw new Error(r.j.error||"خطأ "+r.status)}
+    // D1 now holds the whole book: the worker may read it from there (D1_READ) from the next start.
+    const sd=await fetch(d1Url()+"seeded?tenant="+encodeURIComponent(bkTenant()),{method:"POST",headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
+    if(!sd.ok)throw new Error("خطأ "+sd.status);
     d1Last({at:Date.now(),ok:true,c:src.customers.size,t:src.txns.size,fixed:ops.length});
     try{localStorage.setItem(flag,"1")}catch(e){}
     }
