@@ -849,7 +849,7 @@ function showLogin(msg){
       <p class="err" id="lErr"></p>
       <button class="btn primary block" type="submit" id="lGo">دخول</button>
     </form>
-    <div class="gate-foot">نسيت كلمة المرور؟ استرجعها من <a href="${DEBTS_URL}">دفتر الديون</a>.</div>
+    <div class="gate-foot"><a href="${DEBTS_URL}#forgot">نسيت كلمة المرور؟</a></div>
     <div class="gate-foot">ما عندك حساب؟ سوّيه من <a href="${DEBTS_URL}">دفتر الديون</a> والمدير يفعّله.</div>`,
   mount:g=>{
     g.querySelectorAll("[data-showpw]").forEach(b=>b.addEventListener("click",()=>{const i=document.getElementById(b.dataset.showpw);const s=i.type==="password";i.type=s?"text":"password";b.textContent=s?"إخفاء":"إظهار"}));
