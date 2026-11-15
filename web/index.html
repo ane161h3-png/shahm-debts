@@ -874,7 +874,7 @@ async function ownerCheck(u){
   let cached=null;try{cached=localStorage.getItem(OWNER_KEY)}catch(e){}
   try{
     const s=await db.doc("settings/owner").get();
-    if(s.exists&&s.data().uid){try{localStorage.setItem(OWNER_KEY,s.data().uid)}catch(e){}return {owner:s.data().uid===u.uid,known:true}}
+    if(s.exists&&s.data().uid){try{localStorage.setItem(OWNER_KEY,s.data().uid)}catch(e){}S.ownerDoc=s.data();return {owner:s.data().uid===u.uid,known:true,admin:s.data().admin||""}}
     if(!s.metadata.fromCache)return {owner:orig,known:false};
   }catch(e){if(e&&e.code==="permission-denied")return {owner:false,known:true}}
   return {owner:cached?cached===u.uid:orig,known:!!cached}; // offline: last owner this device saw
@@ -1866,7 +1866,7 @@ function startData(){
   if(S.isOwner){
     unsubs.push(db.collection(P("users")).onSnapshot(s=>{S.accounts=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));S.ready.a=true;render();if(!s.metadata.fromCache)staffSync()},fail));
     if(S.superOwner)unsubs.push(db.doc("meta/trial").onSnapshot(s=>{S.trialDays=s.exists?Number(s.data().days)||0:0;if(S.view==="settings")render()},()=>{}));
-    if(S.superOwner)unsubs.push(db.collection("shops").onSnapshot(s=>{S.shops=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));render();subTick()},fail));
+    if(S.superOwner){stopShops.u=db.collection("shops").onSnapshot(s=>{S.shops=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));render();subTick()},fail);unsubs.push(stopShops.u)}
     setTimeout(async()=>{try{const old=await db.collection(P("activity")).where("at","<",Date.now()-120*864e5).limit(100).get();for(const d of old.docs)d.ref.delete().catch(()=>{})}catch(e){}},8000);
   }
 }
@@ -2752,7 +2752,7 @@ function pushBlock(){
     :note("فعّله حتى يوصلك الإشعار مثل إشعارات البرامج، حتى لو البرنامج مسكّر.")+`<div><button class="btn primary sm" type="button" data-act="pushon">${I.bell}تفعيل الإشعار على الموبايل</button></div>`;
   return `<div class="tpl" style="margin-top:12px"><h3>${I.bell}إشعار على الموبايل</h3>${body}</div>`;
 }
-const SET_PAGES=[["sub","اشتراكي والعروض",I.wallet,true],["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["support","الدعم الفني",I.wa,false],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["security","الأمان والخصوصية",I.lock,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
+const SET_PAGES=[["sub","اشتراكي والعروض",I.wallet,true],["shop","معلومات المتجر",I.store,true],["card","بطاقة عمل المحل",I.wallet,false],["users","المستخدمين",I.users,true],["templates","قوالب الرسائل",I.wa,true],["wabiz","واتساب الأعمال",I.wa,false],["cats","أصناف المواد",I.edit,true],["lock","قفل الحسابات",I.lock,true],["backup","النسخ الاحتياطي والاستعادة",I.save,true],["shops","المحلات",I.store,true],["panel","لوحة المالك",I.lock,true],["support","الدعم الفني",I.wa,false],["notify","الإشعارات",I.bell,false],["account","حسابي",I.users,false],["security","الأمان والخصوصية",I.lock,false],["install","تثبيت البرنامج",I.phone,false],["look","المظهر",I.moon,false],["hide","إخفاء الأرقام",I.eye,false]];
 /* Settings on phones: tapping a title opens its section under it (and closes the one that was open); tapping it again closes it. */
 const calmMotion=()=>{try{return matchMedia("(prefers-reduced-motion: reduce)").matches}catch(e){return false}};
 
@@ -2792,7 +2792,7 @@ function setAcc(k){
   S.setPage=k;S.setAnim=k;render();accFocus();
 }
 function settingsView(){
-  const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner)&&(p[0]!=="sub"||(SHOP&&S.shop))&&(p[0]!=="support"||supOn()));
+  const pages=SET_PAGES.filter(p=>(!p[3]||isAdmin())&&(p[0]!=="shops"||S.superOwner)&&(p[0]!=="sub"||(SHOP&&S.shop))&&(p[0]!=="support"||supOn())&&(p[0]!=="panel"||(MULTI&&!SHOP&&S.isOwner)));
   if(S.setPage&&!pages.some(p=>p[0]===S.setPage))S.setPage=null;
   const cur=S.setPage||(window.innerWidth>820?pages[0][0]:null);
   const pending=[...S.accounts.values()].filter(a=>a.status==="pending").length;
@@ -2842,6 +2842,7 @@ function setPage(k){
       <div class="uperms" role="group" aria-label="صلاحيات ${esc(a.name)}">${PERMS.filter(([k2])=>k2!=="edit"||a.role!=="viewer").map(([k2,l])=>`<label class="wa-auto"><input type="checkbox" data-uperm="${k2}" data-id="${esc(a.id)}" ${!(a.perms&&a.perms[k2]===false)?"checked":""}>${l}</label>`).join("")}</div></div>`).join("")}`;
   }
   if(k==="shops")return shopsPage();
+  if(k==="panel")return panelPage();
   if(k==="support")return `<h2>الدعم الفني</h2><p class="lead">عندك مشكلة أو سؤال بالبرنامج؟ اكتبلنا هنا، ونرد عليك بنفس المحادثة. تگدر ترفق صورة للشاشة.</p>
     ${S.supUnread?`<div class="banner info">💬 وصلك <b class="num">${S.supUnread}</b> ${S.supUnread===1?"رد جديد":"ردود جديدة"}.</div>`:""}
     <div><button class="btn primary" type="button" data-act="support">${I.wa}فتح المحادثة</button></div>
@@ -4502,6 +4503,8 @@ document.addEventListener("click",e=>{
       if("Notification" in window&&Notification.permission==="granted"){const opt={body:"هذا إشعار تجربة",lang:"ar",dir:"rtl",icon:"icons/icon-192.png"};const sw=navigator.serviceWorker;(sw?sw.getRegistration().then(r=>r?r.showNotification("دفتر الديون",opt):new Notification("دفتر الديون",opt)):Promise.resolve(new Notification("دفتر الديون",opt))).catch(()=>{})}break}
     case "goshops":S.view="settings";S.setPage="shops";render();break;
     case "support":supOpen();break;
+    case "panelmake":panelForm();break;
+    case "panelundo":panelUndo();break;
     case "goaccount":S.view="settings";S.setPage="account";render();break;
     case "htpdf":custTableExport("pdf");break;
     case "htcsv":custTableExport("csv");break;
@@ -4710,6 +4713,65 @@ function shopAction(act,id){
   else if(act==="disable")confirmBox("إيقاف المحل",`محل ${x.name} وعماله ما يكدرون يفتحون الدفتر لحد ما ترجع تفعّله. بياناتهم ما تنحذف.`,"إيقاف",()=>{set({status:"disabled"});toast("انوقف المحل")});
   else if(act==="reject")confirmBox("رفض المحل",`ينحذف طلب ${x.name}. إذا صاحبه دخل بعدين يكدر يسجّل محله من جديد.`,"رفض",()=>{db.doc("shops/"+id).delete().catch(writeFail);toast("انرفض الطلب")});
 }
+/* ---------- the owner's panel's own account (Settings > لوحة المالك, the owner only) ----------
+   The panel (web/admin/) opens with the owner's account, unless the owner makes it its own account here: a phone number and
+   password the owner picks. That account then manages the shops (isAdmin in firestore.rules) and opens nothing else; this
+   owner's account keeps the Shahm book only, and can take the shops back at any time («إلغاء الفصل»). */
+const PANEL_URL="https://shahm-debts.app/admin/";
+async function panelAccount(u){try{const s=await db.doc("settings/owner").get();return !!(s.exists&&s.data().admin===u.uid)}catch(e){return false}}
+function showPanelOnly(){
+  gateCard({sub:"",body:`<div class="banner info">هذا حساب <b>لوحة المالك</b>. يفتح لوحة إدارة المحلات والدعم الفني بس، ودفتر الديون يفتح بحسابك الثاني.</div>
+    <a class="btn primary block" href="${NATIVE?"#":PANEL_URL}" id="pnGo">فتح لوحة المالك</a>
+    <button class="btn block" type="button" id="pnOut">تسجيل الخروج</button>`,
+    mount:g=>{g.querySelector("#pnOut").onclick=()=>signOut();g.querySelector("#pnGo").onclick=e=>{if(NATIVE){e.preventDefault();openExternal(PANEL_URL)}}}});
+}
+function panelPage(){
+  const o=S.ownerDoc||{},sep=!!o.admin;
+  return `<h2>لوحة المالك</h2><p class="lead">لوحة إدارة المحلات والدعم الفني: <a href="${PANEL_URL}" target="_blank" rel="noopener" class="num">shahm-debts.app/admin</a>. تفتحها من اللابتوب أو الموبايل، وتثبّتها كتطبيق.</p>
+    ${sep?`<div class="banner ok">✅ اللوحة مفصولة: تفتح بحساب <b class="num" style="direction:ltr;unicode-bidi:isolate">${esc(o.adminLogin||"")}</b> بس. حسابك هذا يبقى لدفتر الشهم، وإدارة المحلات صارت من اللوحة.</div>
+      <div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px"><b>نسيت رمز اللوحة أو تريد حساب ثاني؟</b><span class="ro-note">سوّي حساب لوحة جديد بإيميل أو رقم ثاني، والقديم يتوقف بنفس اللحظة.</span><div><button class="btn sm" type="button" data-act="panelmake">حساب لوحة جديد</button></div></div>
+      <div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px"><b>إلغاء الفصل</b><span class="ro-note">ترجع اللوحة تفتح بحسابك هذا، وترجع صفحة «المحلات» هنا.</span><div><button class="btn sm danger-text" type="button" data-act="panelundo">إلغاء الفصل</button></div></div>`
+    :`<div class="banner info">هسه اللوحة تفتح بنفس حسابك هذا. إذا تريدها بحساب منفصل (إيميل أو رقم، ورمز خاصين بيها)، سوّيه من هنا. بعدها:</div>
+      <ul class="steps" style="margin:0;padding-inline-start:20px;line-height:1.9"><li>حساب اللوحة يدير المحلات والدعم الفني، وما يفتح أي دفتر.</li><li>حسابك هذا يبقى لدفتر الشهم بس، وصفحة «المحلات» تنشال من هنا.</li><li>تگدر تفتح الاثنين سوا على نفس اللابتوب.</li><li>تگدر تلغي الفصل بأي وقت من هنا.</li></ul>
+      <div><button class="btn primary" type="button" data-act="panelmake">${I.lock}سوّي حساب اللوحة</button></div>`}`;
+}
+function panelForm(){
+  if(!S.isOwner||SHOP)return;
+  openModal(`<h3>حساب لوحة المالك</h3><p class="hint">اختار إيميل (أو رقم هاتف) ورمز خاصين باللوحة. تدخل بيهم على shahm-debts.app/admin. لازم ما يكون مستخدم بحساب ثاني.</p>
+    <form id="pnF" class="field" style="gap:10px" novalidate>
+      <div class="field"><label for="pnPh">البريد الإلكتروني (أو رقم الهاتف)</label><input id="pnPh" type="email" inputmode="email" maxlength="100" style="direction:ltr;text-align:right" placeholder="name@gmail.com" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
+      <div class="field"><label for="pnPw">الرمز (كلمة المرور)</label><div class="pw"><input id="pnPw" type="password" autocomplete="new-password"><button type="button" data-showpw="pnPw">إظهار</button></div><span class="help">${PW_MIN} أحرف على الأقل. احفظه، ما ينعرض مرة ثانية.</span></div>
+      <div class="field"><label for="pnPw2">أعد الرمز</label><input id="pnPw2" type="password" autocomplete="new-password"></div>
+      <p class="err" id="pnErr"></p>
+      <div class="foot"><button class="btn primary" type="submit" id="pnGo2">إنشاء وفصل</button><button class="btn" type="button" data-close>إلغاء</button></div>
+    </form>`,m=>m.querySelector("#pnF").addEventListener("submit",async e=>{e.preventDefault();
+      const err=m.querySelector("#pnErr"),btn=m.querySelector("#pnGo2"),raw=normDigits(m.querySelector("#pnPh").value).trim().toLowerCase(),mail=raw.includes("@"),ph=mail?raw:phoneId(raw),pw=m.querySelector("#pnPw").value;
+      if(mail?!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ph)||ph.endsWith("@"+DOMAIN):!/^\d{10,15}$/.test(ph)){err.textContent="اكتب إيميل صحيح مثل name@gmail.com، أو رقم هاتف مثل 07701234567.";return}
+      if(pw.length<PW_MIN){err.textContent=`الرمز ${PW_MIN} أحرف على الأقل.`;return}
+      if(pw!==m.querySelector("#pnPw2").value){err.textContent="الرمزين مو نفس الشي.";return}
+      btn.disabled=true;err.textContent="";
+      // The rules that know the panel's own account must be published first, or the new account could not reach the shops.
+      try{await db.doc("meta/rules-v5").get({source:"server"})}catch(x){btn.disabled=false;err.textContent=x&&x.code==="permission-denied"?"انشر قواعد firestore.rules الجديدة من Firebase أول، وبعدها ارجع سوّيه.":"تحقق من الإنترنت وحاول مرة ثانية.";return}
+      try{
+        const taken=mail?null:await db.doc("logins/"+ph).get({source:"server"});if(taken&&taken.exists){btn.disabled=false;err.textContent="هذا الرقم مستخدم بحساب ثاني. اختار رقم ثاني.";return}
+        const sec=firebase.apps.find(x=>x.name==="sec")||firebase.initializeApp(window.FIREBASE_CONFIG,"sec");
+        const sa=sec.auth();try{await sa.setPersistence(firebase.auth.Auth.Persistence.NONE)}catch(x){}
+        if(window.FIREBASE_EMULATOR&&!sec._emu){sec._emu=1;sa.useEmulator("http://127.0.0.1:9099",{disableWarnings:true});sec.firestore().useEmulator("127.0.0.1",8080)}
+        const cred=await sa.createUserWithEmailAndPassword(mail?ph:emailOf(ph),pw);await sa.signOut();
+        const patch={admin:cred.user.uid,adminLogin:ph,adminAt:Date.now()};
+        stopShops();await db.doc("settings/owner").update(patch);
+        S.ownerDoc={...(S.ownerDoc||{}),...patch};S.superOwner=false;S.shops=new Map();
+        closeModal();render();log("edit","account",{detail:`فصل لوحة المالك بحساب ${ph}`});toast("✓ انفصلت اللوحة. ادخل لها بالحساب والرمز الجديدين.",{label:"فتح اللوحة",href:PANEL_URL});
+      }catch(x){btn.disabled=false;err.textContent=x&&x.code==="auth/email-already-in-use"?(mail?"هذا الإيميل مستخدم بحساب ثاني. اختار إيميل ثاني.":"هذا الرقم مستخدم بحساب ثاني. اختار رقم ثاني."):authMsg(x)}
+    }));
+}
+function stopShops(){try{stopShops.u&&stopShops.u()}catch(e){}stopShops.u=null}
+function panelUndo(){
+  confirmBox("إلغاء الفصل","ترجع لوحة المالك وإدارة المحلات لحسابك هذا، وحساب اللوحة المنفصل يتوقف (يبقى موجود بس ما يفتح شي).","إلغاء الفصل",()=>{
+    db.doc("settings/owner").update({admin:firebase.firestore.FieldValue.delete(),adminLogin:firebase.firestore.FieldValue.delete(),adminAt:firebase.firestore.FieldValue.delete()})
+      .then(()=>{log("edit","account",{detail:"ألغى فصل لوحة المالك"});toast("رجعت اللوحة لحسابك. افتح البرنامج من جديد حتى ترجع صفحة «المحلات».");setTimeout(()=>location.reload(),1800)},writeFail)});
+}
+
 /* ---------- support chat (الدعم الفني): a shop's owner writes to this app's owner (web/support.js; the messages live in
    Cloudflare D1 through the worker, so they cost no Firestore reads). Only the shop's owner, never its workers. ---------- */
 const supOn=()=>!!(MULTI&&SHOP&&window.ShahmSupport&&window.AI_URL&&auth&&auth.currentUser&&auth.currentUser.uid===SHOP);
@@ -4923,7 +4985,8 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
     if(fake&&uname===OWNER_USER||!fake)gateCard({sub:"جارِ التحقق من الحساب…",body:`<div class="spinner" aria-hidden="true"></div>`});
     const oc=fake&&uname!==OWNER_USER?{owner:false,known:false}:await ownerCheck(u);
     if(seq!==authSeq)return;
-    S.isOwner=oc.owner;S.superOwner=MULTI&&oc.owner;
+    // The shops are managed by the owner, unless the owner gave the panel its own account (settings/owner.admin).
+    S.isOwner=oc.owner;S.superOwner=MULTI&&oc.owner&&!(oc.admin&&oc.admin!==u.uid);
     if(S.isOwner){
       rememberLogin(OWNER_USER,u.email);
       // Record which account is the owner, so the made-up admin@ login stops counting once the owner moves to a real e-mail.
@@ -4933,6 +4996,9 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
       startData();showApp();return;
     }
     spin("جارِ التحقق من الحساب…");
+    // The owner's panel's own account opens only the panel, never a debt book.
+    if(MULTI&&await panelAccount(u)){if(seq!==authSeq)return;showPanelOnly();return}
+    if(seq!==authSeq)return;
     profUnsub=watchProfile(u,uname);
   });
 // The site moved from GitHub Pages to shahm-debts.app (the old address stops once the code repository goes private).

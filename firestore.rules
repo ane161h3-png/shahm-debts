@@ -11,6 +11,10 @@ service cloud.firestore {
         ? get(ownerDoc()).data.uid == request.auth.uid
         : request.auth.token.email == 'admin@shahm-debts.app');
     }
+    // The owner's panel (web/admin/) may run under its own account: settings/owner.admin, set only by the owner. Then that
+    // account, and no longer the owner, manages the shops; without it the owner does, as before. Nobody else is either.
+    function adminUid() { return exists(ownerDoc()) ? get(ownerDoc()).data.get('admin', '') : ''; }
+    function isAdmin() { return signedIn() && (adminUid() != '' ? adminUid() == request.auth.uid : isOwner()); }
     function hasProf() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
     function prof() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function active() { return isOwner() || (hasProf() && prof().status == 'active'); }
@@ -51,15 +55,18 @@ service cloud.firestore {
       allow update, delete: if isOwner();
     }
     match /settings/{id}  {
-      allow read: if active();
+      // The panel's account reads only settings/owner, to know it is the panel's account.
+      allow read: if active() || (id == 'owner' && signedIn() && resource.data.get('admin', '') == request.auth.uid);
       allow write: if isOwner() && (id != 'owner' || (request.resource != null && request.resource.data.uid is string));
     }
     // Readable only once these rules are published: rules-v2 lets the owner change e-mail, rules-v3 lets the app read only
     // what changed (it needs the gone notes below), rules-v4 opens the cashier for shops.
     match /meta/{id} {
-      allow get: if signedIn() && id in ['rules-v2', 'rules-v3', 'rules-v4', 'trial'];
+      allow get: if signedIn() && id in ['rules-v2', 'rules-v3', 'rules-v4', 'rules-v5', 'trial', 'prices'];
       // trial: how many days a newly registered shop opens by itself (0 = waits for this owner, as before).
-      allow write: if isOwner() && id == 'trial' && d().keys().hasOnly(['days', 'at']) && d().days is int && d().days >= 0 && d().days <= 90;
+      // prices: the subscription prices the panel remembers. rules-v5: the panel can have its own account (isAdmin).
+      allow write: if isAdmin() && ((id == 'trial' && d().keys().hasOnly(['days', 'at']) && d().days is int && d().days >= 0 && d().days <= 90)
+        || (id == 'prices' && d().keys().hasOnly(['p', 'at']) && d().p is map && d().p.size() <= 20));
     }
     // A deleted account or transaction leaves a note here, so the devices that keep their own copy drop it too (rules-v3).
     match /gone/{id} {
@@ -170,7 +177,7 @@ service cloud.firestore {
 
     // ---------- Other shops (one app, many shops) ----------
     // Each shop that signs up in the app gets its own notebook under shops/{s}, where s is its owner's uid. It opens only
-    // once this app's owner (isOwner) sets its status to 'active'; 'disabled' or a passed end date (until) closes it again
+    // once this app's owner (isAdmin: the owner, or the panel's own account) sets its status to 'active'; 'disabled' or a passed end date (until) closes it again
     // without deleting anything.
     // Nobody in another shop can read or write this shop's data at the root, and this owner has no access to theirs.
     // memberOf/{uid} only says which shop an account opens: each account writes its own, and it grants nothing by itself.
@@ -217,19 +224,19 @@ service cloud.firestore {
         && str(d().shop, 128) && d().shop.size() > 0 && d().at is number;
     }
     match /shops/{s} {
-      allow get: if isOwner() || sOwner(s) || (signedIn() && exists(sProfPath(s)));
-      allow list: if isOwner();
+      allow get: if isAdmin() || sOwner(s) || (signedIn() && exists(sProfPath(s)));
+      allow list: if isAdmin();
       // A new shop waits for this owner (pending), or opens by itself for the free trial this owner set in meta/trial,
       // never longer than that: its end (until) is checked against the server clock.
       allow create: if sOwner(s) && d().keys().hasOnly(['id', 'owner', 'name', 'ownerName', 'phone', 'username', 'status', 'createdAt', 'trial', 'until'])
         && d().id == s && d().owner == s && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30)
         && str(d().username, 40) && d().createdAt is number
         && ((d().status == 'pending' && !('trial' in d()) && !('until' in d())) || (d().status == 'active' && d().trial == true && trialOk(d().until)));
-      allow update: if isOwner() || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['name', 'ownerName', 'phone', 'username'])
+      allow update: if isAdmin() || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['name', 'ownerName', 'phone', 'username'])
         && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30) && str(d().username, 40))
         // How many workers it has (the owner's panel shows the number, never who they are), kept by the shop's owner.
         || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['staff']) && d().staff is int && d().staff >= 0 && d().staff <= 500);
-      allow delete: if isOwner();
+      allow delete: if isAdmin();
 
       match /customers/{id} {
         allow read: if sReader(s);

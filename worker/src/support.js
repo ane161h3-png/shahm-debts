@@ -11,7 +11,8 @@
 //   POST /support/sub   {e, p, a} | {off, e}  the caller's device wants (or no longer wants) a phone notification
 //   GET  /support/live?shop=X | shop=*        (WebSocket, login sent as the protocol "bearer, <token>") a message after
 //                                             every change: X's conversation, or (the owner) all of them
-// Who is who: the owner is the uid in settings/owner (as in firestore.rules); a shop's owner is the account whose uid is
+// Who is who: the owner is the uid in settings/owner, or the panel's own account settings/owner.admin once the owner set one
+// (isAdmin in firestore.rules); a shop's owner is the account whose uid is
 // the shop's id (shops/{uid} exists), whatever the shop's state, so a stopped or ended shop can still ask for help.
 // A shop's workers and anyone else get 403. A message is never edited or deleted by anyone.
 import { sendPush } from "./push.js";
@@ -58,8 +59,9 @@ async function who(request, env) {
   const get = async p => { const x = await fetch(`${docs}/${p}`, { headers: { Authorization: "Bearer " + token } }); return { status: x.status, doc: x.ok ? await x.json().catch(() => null) : null }; };
   const uid = user.localId;
   let w;
-  const o = await get("settings/owner"), ownerUid = field(o.doc, "uid");
-  if (ownerUid ? ownerUid === uid : o.status === 404 && user.email === env.OWNER_EMAIL) w = { uid, admin: true };
+  // The panel's own account (settings/owner.admin) when the owner set one, otherwise the owner (as isAdmin in firestore.rules).
+  const o = await get("settings/owner"), ownerUid = field(o.doc, "uid"), adminUid = field(o.doc, "admin");
+  if (adminUid ? adminUid === uid : ownerUid ? ownerUid === uid : o.status === 404 && user.email === env.OWNER_EMAIL) w = { uid, admin: true };
   else {
     const s = await get(`shops/${uid}`);
     w = s.doc && validTenant(uid) && uid !== "main" ? { uid, shop: uid, name: String(field(s.doc, "name") || "").slice(0, 100) }

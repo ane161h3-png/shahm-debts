@@ -222,7 +222,7 @@ const I={
 };
 
 let auth,db;
-const S={shops:new Map(),threads:new Map(),trialDays:0,settings:{},tab:"shops",q:"",f:"all",sort:"end",ownerName:"",liveOn:false};
+const S={shops:new Map(),threads:new Map(),trialDays:0,settings:{},prices:{},root:false,tab:"shops",q:"",f:"all",sort:"end",ownerName:"",liveOn:false};
 const unsubs=[];let stopLive=null;
 
 function toast(t,ms=3200){document.querySelectorAll(".toast").forEach(x=>x.remove());const d=document.createElement("div");d.className="toast";d.setAttribute("role","status");d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),ms)}
@@ -254,8 +254,10 @@ const liveThreads=()=>[...S.threads.values()].filter(t=>S.shops.has(t.shop));
 const unread=id=>{const t=S.threads.get(id);return t?Number(t.ua)||0:0};
 const PLANS=[["1","شهر",1],["3","3 أشهر",3],["6","6 أشهر",6],["12","سنة",12],["none","دائمي",0],["date","تاريخ مخصص",0],["trial","تجربة",0]];
 function addMonths(ms,n){const d=new Date(ms),day=d.getDate();d.setMonth(d.getMonth()+n);if(d.getDate()<day)d.setDate(0);return d.getTime()}
-const ownerName=()=>S.settings.ownerName||"المدير";
-function log(detail){const a={id:uid(),at:Date.now(),kind:"edit",what:"account",by:ownerName(),byRole:"owner",detail};try{db.collection("activity").doc(a.id).set(a).catch(()=>{})}catch(e){}}
+const ownerName=()=>S.settings.ownerName||"المالك";
+// The Shahm book's activity log: written only when the panel runs under the owner's own account (the panel's own account
+// has no place in that book).
+function log(detail){if(!S.root)return;const a={id:uid(),at:Date.now(),kind:"edit",what:"account",by:ownerName(),byRole:"owner",detail};try{db.collection("activity").doc(a.id).set(a).catch(()=>{})}catch(e){}}
 
 /* ---------- gate ---------- */
 const MARK=document.querySelector(".top .logo").innerHTML;
@@ -284,10 +286,14 @@ async function signInAny(id,pw){
   if(moved){try{return await auth.signInWithEmailAndPassword(moved,pw)}catch(e){if(!/invalid-credential|user-not-found|wrong-password|invalid-login/.test(e.code||""))throw e}}
   return auth.signInWithEmailAndPassword(id+"@"+DOMAIN,pw);
 }
-// The owner is the uid in settings/owner; until that exists, the original admin@ login (firestore.rules decide the same).
+/* Who may open the panel (isAdmin in firestore.rules): the panel's own account (settings/owner.admin) once the owner made
+   one in the debt book (Settings > لوحة المالك); until then the owner (settings/owner.uid, or the original admin@ login).
+   "moved": the owner's own account after the panel got its own. */
 async function isOwner(u){
-  try{const s=await db.doc("settings/owner").get({source:"server"});
-    if(s.exists&&s.data().uid)return s.data().uid===u.uid;
+  try{const s=await db.doc("settings/owner").get({source:"server"}),o=s.exists?s.data():{};
+    if(o.admin){S.root=false;return o.admin===u.uid?true:o.uid===u.uid?"moved":false}
+    S.root=true;
+    if(o.uid)return o.uid===u.uid;
     return u.email===OWNER_USER+"@"+DOMAIN}
   catch(e){if(e&&e.code==="permission-denied")return false;throw e}
 }
@@ -297,7 +303,8 @@ function start(){
   const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied"){denied();return}toast(e&&e.code==="resource-exhausted"?"خلص حد القراءة اليومي المجاني. يرجع الساعة 10 الصبح.":"تعذّر قراءة البيانات. تحقق من الإنترنت.",5000)};
   unsubs.push(db.collection("shops").onSnapshot(s=>{S.shops=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));render();tick()},fail));
   unsubs.push(db.doc("meta/trial").onSnapshot(s=>{S.trialDays=s.exists?Number(s.data().days)||0:0;if(S.tab==="settings")render()},()=>{}));
-  db.doc("settings/main").get().then(s=>{S.settings=s.exists?s.data():{};},()=>{});
+  if(S.root)db.doc("settings/main").get().then(s=>{S.settings=s.exists?s.data():{};if(!Object.keys(S.prices).length)S.prices=S.settings.subPrices||{}},()=>{});
+  db.doc("meta/prices").get().then(s=>{if(s.exists&&s.data().p)S.prices=s.data().p},()=>{});
   ShahmSupport.init({base:window.AI_URL,token:()=>auth.currentUser.getIdToken(),side:"admin",push:true});
   loadThreads();
   stopLive=ShahmSupport.liveAll(ev=>{
@@ -403,6 +410,12 @@ function settingsView(){
     <section class="panel"><h2>إشعارات الرسائل</h2>
       <p class="ro-note">لما يكتب صاحب محل، توصلك رسالة على بوت Telegram (نفس بوت النسخ الاحتياطي)، وإشعار على هذا الجهاز إذا فعّلته.</p>
       <div class="row">${ShahmSupport.pushOk()?(ShahmSupport.pushIsOn()?`<span class="chip paid">مفعّل على هذا الجهاز</span><button class="btn sm" type="button" data-push="off">إيقاف</button>`:`<button class="btn primary sm" type="button" data-push="on">${I.bell} تفعيل على هذا الجهاز</button>`):`<span class="ro-note">هذا المتصفح ما يدعم الإشعارات.</span>`}</div></section>
+    <section class="panel"><h2>الحساب</h2>
+      <p class="ro-note">${S.root?"اللوحة تفتح بحسابك الرئيسي (نفس حساب دفتر الشهم). تگدر تسوّيلها حساب منفصل برقم ورمز خاصين من تطبيق الديون › الإعدادات › «لوحة المالك».":"اللوحة تفتح بحسابها المنفصل. الحساب يتغير من تطبيق الديون › الإعدادات › «لوحة المالك» (حساب لوحة جديد)."}</p>
+      <form id="pwF" class="row" novalidate style="align-items:flex-end">
+        <div class="field" style="flex:1 1 170px"><label for="pwCur">الرمز الحالي</label><input id="pwCur" type="password" autocomplete="current-password"></div>
+        <div class="field" style="flex:1 1 170px"><label for="pwNew">الرمز الجديد</label><input id="pwNew" type="password" autocomplete="new-password" placeholder="8 أحرف على الأقل"></div>
+        <button class="btn" type="submit">تغيير الرمز</button></form><p class="err" id="pwErr"></p></section>
     <section class="panel"><h2>تثبيت اللوحة</h2><p class="ro-note">من Chrome: القائمة ⋮ › «إضافة إلى الشاشة الرئيسية». ومن iPhone: زر المشاركة › «إضافة إلى الشاشة الرئيسية». تنفتح كتطبيق مستقل عن الدفتر والكاشير.</p></section>
     <section class="panel"><h2>الخصوصية</h2><p class="ro-note">هذي اللوحة تشوف حالة المحل واشتراكه ورسائل الدعم بس. ديون المحلات ومبيعاتهم ما تنقرا من هنا، وقواعد قاعدة البيانات تمنعها.</p></section>`;
 }
@@ -431,7 +444,7 @@ function act(a,id){
 }
 function subForm(id){
   const x=S.shops.get(id);if(!x)return;
-  const prices=S.settings.subPrices||{},s=state(x),tDays=S.trialDays||15;
+  const prices=S.prices||{},s=state(x),tDays=S.trialDays||15;
   const base=Math.max(Date.now(),x.until&&x.status==="active"&&!x.trial?x.until:0);
   openModal(`<h3>${s==="pending"?"موافقة وتفعيل":"تجديد الاشتراك"}: ${esc(x.name)}</h3>
     <p class="hint">${s==="pending"?"اختار المدة اللي دفع عليها، وينفتح دفتره هسه.":x.trial&&x.status==="active"?`بالتجربة لحد ${dmy(x.until)}. الاشتراك المدفوع يبدأ من اليوم.`:x.until&&x.status==="active"&&!expired(x)?`ينتهي حالياً ${dmy(x.until)}. التمديد يبدأ من نهايته.`:"يبدأ من اليوم."}</p>
@@ -459,7 +472,7 @@ function subForm(id){
       const entry={at:Date.now(),plan,label,from:t?(plan==="trial"?Math.max(Date.now(),x.until||0):base):Date.now(),to:t,amount:Math.round(amount||0),by:ownerName(),...(note?{note}:{})};
       db.doc("shops/"+id).update({status:"active",activatedAt:x.activatedAt||Date.now(),until:t,trial:plan==="trial",subs:firebase.firestore.FieldValue.arrayUnion(entry)})
         .then(()=>{toast(t?`انفعّل ${x.name} لحد ${dmy(t)}`:`انفعّل ${x.name} تفعيل دائمي`);log(`اشتراك محل ${x.name}: ${label}${t?" إلى "+dmy(t):""}${amount?" بمبلغ "+fmt(amount):""}${note?" ("+note+")":""}`)},writeFail);
-      if(amount>0&&!["date","trial"].includes(plan)&&prices[plan]!==Math.round(amount)){S.settings.subPrices={...prices,[plan]:Math.round(amount)};db.doc("settings/main").set({subPrices:S.settings.subPrices},{merge:true}).catch(()=>{})}
+      if(amount>0&&!["date","trial"].includes(plan)&&prices[plan]!==Math.round(amount)){S.prices={...prices,[plan]:Math.round(amount)};db.doc("meta/prices").set({p:S.prices,at:Date.now()}).catch(()=>{})}
       closeModal()});
   });
 }
@@ -502,7 +515,12 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("input",e=>{if(e.target.id==="q"){S.q=e.target.value;render()}});
 document.addEventListener("change",e=>{if(e.target.id==="sort"){S.sort=e.target.value;render()}});
-document.addEventListener("submit",e=>{if(e.target.id==="trialF"){e.preventDefault();const n=Number(normDigits($("#trialN").value));if(!Number.isInteger(n)||n<0||n>90){toast("اكتب رقم من 0 إلى 90.");return}setTrial(n)}});
+document.addEventListener("submit",async e=>{
+  if(e.target.id==="pwF"){e.preventDefault();const er=$("#pwErr"),cur=$("#pwCur").value,nw=$("#pwNew").value;er.textContent="";
+    if(nw.length<8){er.textContent="الرمز الجديد 8 أحرف على الأقل.";return}
+    try{const u=auth.currentUser;await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,cur));await u.updatePassword(nw);$("#pwCur").value="";$("#pwNew").value="";toast("✓ تغيّر الرمز")}
+    catch(x){er.textContent=/wrong-password|invalid-credential|invalid-login/.test(x&&x.code||"")?"الرمز الحالي غلط.":"ما تغيّر الرمز. حاول مرة ثانية."}return}
+  if(e.target.id==="trialF"){e.preventDefault();const n=Number(normDigits($("#trialN").value));if(!Number.isInteger(n)||n<0||n>90){toast("اكتب رقم من 0 إلى 90.");return}setTrial(n)}});
 function setTrial(n){db.doc("meta/trial").set({days:n,at:Date.now()}).then(()=>toast(n?`المحلات الجديدة تنفتح ${n} يوم تجربة`:"المحلات الجديدة تنتظر موافقتك"),writeFail)}
 $("#outBtn").addEventListener("click",()=>confirmBox("تسجيل الخروج","تطلع من لوحة المالك على هذا الجهاز.","خروج",()=>{stop();auth.signOut()},"primary"));
 $("#bellBtn").addEventListener("click",()=>{S.tab="settings";render()});
@@ -516,7 +534,9 @@ window.addEventListener("hashchange",()=>{if(auth&&auth.currentUser&&!$("#app").
 (async function boot(){
   try{const th=localStorage.getItem("shahm-theme");if(th==="light"||th==="dark")document.documentElement.dataset.theme=th}catch(e){}
   if(!window.FIREBASE_CONFIG||!window.firebase){gate("ما گدرت أحمّل البرنامج. تحقق من الإنترنت.",true);return}
-  firebase.initializeApp(window.FIREBASE_CONFIG);auth=firebase.auth();db=firebase.firestore();
+  // Its own Firebase app name, so its sign-in is kept apart from the debt book's on the same browser: the panel's account
+  // and the Shahm book's account stay signed in side by side.
+  const app=firebase.initializeApp(window.FIREBASE_CONFIG,"admin");auth=app.auth();db=app.firestore();
   if(window.FIREBASE_EMULATOR){auth.useEmulator("http://127.0.0.1:9099",{disableWarnings:true});db.useEmulator("127.0.0.1",8080)}
   gate();
   auth.onAuthStateChanged(async u=>{
@@ -524,6 +544,7 @@ window.addEventListener("hashchange",()=>{if(auth&&auth.currentUser&&!$("#app").
     if(!u){if($("#gate").hidden||!$("#gate").innerHTML)gate();return}
     $("#gate").innerHTML=`<div class="box" style="max-width:320px;text-align:center">جاري التحقق…</div>`;
     let ok=false;try{ok=await isOwner(u)}catch(e){gate("تعذّر التحقق من الحساب. تحقق من الإنترنت.",true);return}
+    if(ok==="moved"){await auth.signOut().catch(()=>{});gate("اللوحة صارت بحساب منفصل. ادخل برقم ورمز حساب اللوحة.",true);return}
     if(!ok){await auth.signOut().catch(()=>{});gate("ما عندك صلاحية تفتح لوحة المالك. سجّلنا خروجك.",true);return}
     $("#gate").hidden=true;$("#gate").innerHTML="";$("#app").hidden=false;
     $("#sub").textContent=u.email&&!u.email.endsWith("@"+DOMAIN)?u.email:"ديون الشهم";
