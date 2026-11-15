@@ -868,6 +868,15 @@ async function signInAny(id,pw){
 /* A phone number someone moved their account to (Settings > حسابي > رقم الهاتف): logins/{number} points it at the account's
    own login (its first number@domain), which never changes, so the new number signs in to the same account. */
 async function aliasOf(id){try{const s=await db.doc("logins/"+id).get();return s.exists&&s.data().email||""}catch(e){return ""}}
+/* An account that moved to a real e-mail (linked in Settings, or given at sign-up) no longer signs in as number@domain:
+   point its number at the e-mail, so the number keeps working on any device. Once per device and e-mail. */
+async function syncPhoneLogin(user,u){
+  if(!u||isFakeEmail(u.email)||!u.email||!/^\d{10,15}$/.test(user||""))return;
+  const k="shahm-lsync:"+u.uid+":"+user+":"+u.email;try{if(localStorage.getItem(k))return}catch(e){}
+  try{const r=db.doc("logins/"+user),s=await r.get({source:"server"});
+    if(!s.exists||(s.data().uid===u.uid&&s.data().email!==u.email))await r.set({email:u.email,uid:u.uid,at:Date.now()});
+    try{localStorage.setItem(k,"1")}catch(e){}}catch(e){}
+}
 // The owner is the uid in settings/owner; until that exists, the original admin@ login (firestore.rules does the same).
 async function ownerCheck(u){
   const orig=isFakeEmail(u.email)&&u.email.split("@")[0]===OWNER_USER;
@@ -1327,15 +1336,14 @@ function authMsg(e){const c=(e&&e.code)||"";
 }
 function showLogin(msg,kind){
   $("#gate").hidden=false;$("#app").hidden=true;$("#bottomNav").hidden=true;
-  const nm=gateName(),tab=showLogin.tab||"user";
+  const nm=gateName();
   $("#gate").innerHTML=`<div class="gate-login">
     <div class="gate-hero"><div class="logo">${brandMark()}</div><div><b>أهلاً بك!</b><span>${nm?"سجل ديون "+esc(nm):"ديون الشهم"}: كل دين وتسديد محفوظ ومرتب.</span></div></div>
-    <div class="gate-title"><h1>تسجيل الدخول</h1><p>اكتب رقم هاتفك (أو اسم المستخدم) أو بريدك وكلمة المرور</p></div>
+    <div class="gate-title"><h1>تسجيل الدخول</h1><p>ادخل برقم هاتفك أو إيميلك (أو اسم المستخدم) وكلمة المرور</p></div>
     <div class="gate-card">
     ${msg?`<div class="banner ${kind||"bad"}">${esc(msg)}</div>`:""}
-    <div class="seg" role="group" aria-label="طريقة الدخول"><button type="button" data-ltab="user" aria-pressed="${tab==="user"}">${I.person}الرقم أو اسم المستخدم</button><button type="button" data-ltab="mail" aria-pressed="${tab==="mail"}">${I.at}بريد</button></div>
     <form id="lf" class="field" style="gap:12px" novalidate>
-      <div class="field"><label for="lUser" id="lUserL"></label><div class="ifield" id="lUserW"><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right"></div></div>
+      <div class="field"><label for="lUser">رقم الهاتف أو الإيميل</label><div class="ifield" id="lUserW">${I.person}<input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" inputmode="email" placeholder="07xx xxx xxxx أو name@gmail.com" style="direction:ltr;text-align:right"></div><span class="help">أو اسم المستخدم إذا عندك واحد.</span></div>
       <div class="field"><label for="lPw">كلمة المرور</label><div class="ifield pw">${I.lock}<input id="lPw" type="password" autocomplete="current-password" placeholder="••••••••"><button type="button" class="pw-eye" data-showpw="lPw" aria-label="إظهار كلمة المرور">${I.eye}</button></div></div>
       <div class="gate-row"><button class="linkish" type="button" id="toForgot">نسيت كلمة المرور؟</button></div>
       <p class="err" id="lErr"></p>
@@ -1344,42 +1352,94 @@ function showLogin(msg,kind){
     <div class="gate-foot">${MULTI?`محل جديد؟ <button class="linkish" type="button" id="toReg">سجّل محلك</button>`:`ليس لديك حساب؟ <button class="linkish" type="button" id="toReg">إنشاء حساب</button>`}</div>
     </div></div>`;
   const g=$("#gate"),inp=$("#lUser");
-  const setTab=t=>{showLogin.tab=t;g.querySelectorAll("[data-ltab]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.ltab===t)));
-    const mail=t==="mail";$("#lUserL").textContent=mail?"البريد الإلكتروني":"رقم الهاتف أو اسم المستخدم";inp.placeholder=mail?"name@example.com":"07xx xxx xxxx";
-    inp.type=mail?"email":"text";inp.inputMode=mail?"email":"text";const w=$("#lUserW");const old=w.querySelector("svg");if(old)old.remove();w.insertAdjacentHTML("afterbegin",mail?I.mail:I.person)};
-  setTab(tab);g.querySelectorAll("[data-ltab]").forEach(b=>b.onclick=()=>{setTab(b.dataset.ltab);inp.focus()});
+  // One field for every way in: the icon follows what is typed (an e-mail, or a number / username).
+  let icMail=false;inp.addEventListener("input",()=>{const m=inp.value.includes("@");if(m===icMail)return;icMail=m;const w=$("#lUserW"),old=w.querySelector("svg");if(old)old.remove();w.insertAdjacentHTML("afterbegin",m?I.mail:I.person)});
   wirePw(g);g.querySelector("#toReg").onclick=()=>showRegister();g.querySelector("#toForgot").onclick=()=>showForgot(inp.value);
   g.querySelector("#lf").addEventListener("submit",async e=>{
     e.preventDefault();const raw=normDigits(inp.value).trim().toLowerCase(),u=looksPhone(raw)?phoneId(raw):raw,p=$("#lPw").value;const err=$("#lErr"),btn=$("#lGo");
-    if(!u||!p){err.textContent=showLogin.tab==="mail"?"اكتب البريد وكلمة المرور.":"اكتب رقم الهاتف أو اسم المستخدم وكلمة المرور.";return}
+    if(!u||!p){err.textContent="اكتب رقم الهاتف أو الإيميل، وكلمة المرور.";return}
     if(!/^[a-z0-9_.]{3,30}$/.test(u)&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u)){err.textContent="اسم المستخدم أو كلمة المرور غير صحيحة.";return}
     btn.disabled=true;btn.innerHTML="جارِ الدخول…";
     try{await signInAny(u,p)}catch(x){err.textContent=authMsg(x)+(badLogin(x)&&!u.includes("@")?" إذا ربطت إيميلك، ادخل بالإيميل.":"");btn.disabled=false;btn.innerHTML=I.enter+"تسجيل الدخول"}
   });
   setTimeout(()=>inp.focus(),30);
 }
-// Password reset works only for accounts that linked a real e-mail (Settings > حسابي); Firebase sends the link.
+/* Forgot the password: the account is found by its number, e-mail or username, and a link goes to the e-mail linked to it
+   (only an account with a real e-mail can get one). The link opens this page (handleAction below), where the new password
+   is set, once Firebase's e-mail action link points here (Authentication > Templates > customize action URL); until then
+   it opens Firebase's own page, which does the same. */
+async function resetMailOf(id){
+  id=normDigits(id||"").trim().toLowerCase();if(!id)return "";
+  if(id.includes("@"))return id;
+  if(looksPhone(id))id=phoneId(id);
+  const m=loginMap()[id];if(m&&!isFakeEmail(m))return m;
+  if(/^\d{10,15}$/.test(id)){const a=await aliasOf(id);if(a&&!isFakeEmail(a))return a}
+  return "";
+}
 function showForgot(prefill){
-  prefill=normDigits(prefill||"").trim().toLowerCase();
-  const guess=prefill.includes("@")?prefill:(loginMap()[prefill]||"");
-  gateCard({sub:"استرجاع كلمة المرور",body:`
+  prefill=normDigits(prefill||"").trim();
+  gateCard({sub:"نسيت كلمة المرور",body:`
     <form id="ff" class="field" style="gap:12px" novalidate>
-      <div class="field"><label for="fMail">الإيميل المربوط بحسابك</label><input id="fMail" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" style="direction:ltr;text-align:right" value="${esc(guess)}"></div>
+      <div class="field"><label for="fMail">رقم الهاتف أو الإيميل</label><input id="fMail" autocomplete="username" autocapitalize="none" spellcheck="false" inputmode="email" style="direction:ltr;text-align:right" placeholder="07xx xxx xxxx أو name@gmail.com" value="${esc(prefill)}"></div>
       <p class="err" id="fErr"></p>
-      <button class="btn primary block" type="submit" id="fGo">دز رابط تغيير كلمة المرور</button>
+      <button class="btn primary block" type="submit" id="fGo">دز رابط التحقق على إيميلي</button>
     </form>
-    <p class="ro-note">يشتغل بس إذا ربطت إيميلك من الإعدادات ← حسابي. إذا ما ربطته: المستخدم يطلب من المدير يحذف حسابه ويسوي واحد جديد.</p>
+    <p class="ro-note">يوصلك رابط تحقق على الإيميل المربوط بحسابك. تفتحه، وتكتب كلمة مرور جديدة، وترجع تدخل بيها. يشتغل إذا حسابك مربوط بإيميل (الإعدادات ← الأمان والخصوصية). إذا مو مربوط: اطلب من صاحب المحل أو المدير.</p>
     <div class="gate-foot"><button class="linkish" type="button" id="toLogin">رجوع لتسجيل الدخول</button></div>`,
   mount:g=>{
     g.querySelector("#toLogin").onclick=()=>showLogin();
     g.querySelector("#ff").addEventListener("submit",async e=>{
-      e.preventDefault();const m=$("#fMail").value.trim().toLowerCase(),err=$("#fErr"),btn=$("#fGo");
-      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)||isFakeEmail(m)){err.textContent="اكتب إيميلك الحقيقي.";return}
+      e.preventDefault();const v=$("#fMail").value,err=$("#fErr"),btn=$("#fGo");err.textContent="";
+      if(!v.trim()){err.textContent="اكتب رقم هاتفك أو إيميلك.";return}
       btn.disabled=true;btn.textContent="جارِ الإرسال…";
-      try{auth.languageCode="ar";await auth.sendPasswordResetEmail(m);showLogin("إذا الإيميل مربوط بحساب، راح يوصلك رابط لتغيير كلمة المرور. شوف البريد المزعج (Spam) هم.","info")}
-      catch(x){err.textContent=x&&x.code==="auth/user-not-found"?"هذا الإيميل مو مربوط بأي حساب.":authMsg(x);btn.disabled=false;btn.textContent="دز رابط تغيير كلمة المرور"}
+      const done=()=>{btn.disabled=false;btn.textContent="دز رابط التحقق على إيميلي"};
+      try{
+        const m=await resetMailOf(v);
+        if(!m||isFakeEmail(m)||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)){err.textContent="هذا الحساب ما مربوط بإيميل، أو الرقم غلط. اكتب الإيميل نفسه إذا تعرفه، أو اطلب من صاحب المحل أو المدير.";done();return}
+        auth.languageCode="ar";await auth.sendPasswordResetEmail(m,{url:location.origin+location.pathname});
+        const hid=v.includes("@")?m:m.replace(/^(.{2}).*(@.*)$/,"$1•••$2");
+        showLogin(`إذا الحساب موجود، وصلك رابط تحقق على ${hid}. افتحه واكتب كلمة مرور جديدة. شوف البريد المزعج (Spam) هم.`,"info");
+      }catch(x){err.textContent=x&&x.code==="auth/user-not-found"?"هذا الإيميل مو مربوط بأي حساب.":x&&x.code==="auth/too-many-requests"?"طلبات كثيرة. انتظر شوية وحاول.":authMsg(x);done()}
     });
   }});
+}
+/* The e-mail links (new password, confirming an e-mail) open here: ?mode=…&oobCode=… */
+const ACTION=(()=>{try{const q=new URLSearchParams(location.search);const mode=q.get("mode"),code=q.get("oobCode");return mode&&code?{mode,code,cont:q.get("continueUrl")||""}:null}catch(e){return null}})();
+function clearAction(){try{history.replaceState(null,"",location.pathname+location.hash)}catch(e){}}
+async function handleAction(a){
+  const back=`<div class="gate-foot"><button class="linkish" type="button" id="toLogin">رجوع لتسجيل الدخول</button></div>`;
+  const cont=(()=>{try{const c=new URL(a.cont);return c.origin===location.origin?c.href:""}catch(e){return ""}})();
+  const fail=x=>gateCard({sub:"",body:`<div class="banner bad">${x&&/expired|invalid-action-code/.test(x.code||"")?"الرابط انتهى أو انستعمل قبل. اطلب رابط جديد.":esc(authMsg(x))}</div>${back}`,mount:g=>{g.querySelector("#toLogin").onclick=()=>{clearAction();showLogin()}}});
+  gateCard({sub:"جارِ التحقق من الرابط…",body:`<div class="spinner" aria-hidden="true"></div>`});
+  if(a.mode==="resetPassword"){
+    let mail;try{mail=await auth.verifyPasswordResetCode(a.code)}catch(x){fail(x);return}
+    gateCard({sub:"كلمة مرور جديدة",body:`<form id="rp" class="field" style="gap:12px" novalidate>
+      <p class="hint" style="margin:0">للحساب <b style="direction:ltr;unicode-bidi:isolate">${esc(mail)}</b></p>
+      <div class="field"><label for="rpPw">كلمة المرور الجديدة</label><div class="ifield pw">${I.lock}<input id="rpPw" type="password" autocomplete="new-password"><button type="button" class="pw-eye" data-showpw="rpPw" aria-label="إظهار كلمة المرور">${I.eye}</button></div><span class="help">${PW_MIN} أحرف على الأقل.</span></div>
+      <div class="field"><label for="rpPw2">أعد كلمة المرور</label><div class="ifield pw">${I.lock}<input id="rpPw2" type="password" autocomplete="new-password"></div></div>
+      <p class="err" id="rpErr"></p>
+      <button class="btn primary block" type="submit" id="rpGo">حفظ كلمة المرور</button></form>${back}`,
+      mount:g=>{wirePw(g);g.querySelector("#toLogin").onclick=()=>{clearAction();showLogin()};
+        g.querySelector("#rp").addEventListener("submit",async e=>{e.preventDefault();const pw=$("#rpPw").value,err=$("#rpErr"),b=$("#rpGo");
+          if(pw.length<PW_MIN){err.textContent=`كلمة المرور ${PW_MIN} أحرف على الأقل.`;return}
+          if(pw!==$("#rpPw2").value){err.textContent="الكلمتين مو نفس الشي.";return}
+          b.disabled=true;
+          try{await auth.confirmPasswordReset(a.code,pw);clearAction();
+            if(cont&&cont!==location.origin+location.pathname||auth.currentUser){gateCard({sub:"",body:`<div class="banner ok">✓ تغيّرت كلمة المرور.</div><a class="btn primary block" href="${esc(cont||location.pathname)}">متابعة</a>`});return}
+            showLogin("✓ تغيّرت كلمة المرور. ادخل بيها هسه.","ok");setTimeout(()=>{const i=$("#lUser");if(i&&!i.value)i.value=mail},30)}
+          catch(x){b.disabled=false;err.textContent=x&&/weak-password/.test(x.code||"")?"كلمة المرور ضعيفة. اختار وحدة أطول.":x&&/expired|invalid-action-code/.test(x.code||"")?"الرابط انتهى. اطلب رابط جديد من «نسيت كلمة المرور».":authMsg(x)}})}});
+    return;
+  }
+  if(["verifyEmail","verifyAndChangeEmail","recoverEmail"].includes(a.mode)){
+    try{await auth.applyActionCode(a.code)}catch(x){fail(x);return}
+    clearAction();
+    const msg=a.mode==="recoverEmail"?"✓ رجع إيميلك القديم للحساب. إذا ما انت اللي غيّرته، غيّر كلمة المرور هسه.":"✓ تأكد الإيميل. هسه تگدر تدخل بيه، وتسترجع كلمة المرور إذا نسيتها.";
+    if(auth.currentUser)await auth.currentUser.reload().catch(()=>{});
+    if(cont&&cont!==location.origin+location.pathname||auth.currentUser){gateCard({sub:"",body:`<div class="banner ok">${msg}</div><a class="btn primary block" href="${esc(cont||location.pathname)}">متابعة</a>`});return}
+    showLogin(msg,"ok");
+    return;
+  }
+  clearAction();
 }
 function showRegister(){
   gateCard({sub:MULTI?"سجّل محلك، وبعد التفعيل يفتح دفترك":"أنشئ حسابك، وبعدها المدير يفعّله",body:`
@@ -3638,8 +3698,8 @@ async function changePhone(){
     await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,pw));
     const taken=await db.doc("logins/"+ph).get({source:"server"});
     if(taken.exists&&taken.data().uid!==u.uid){err.textContent="هذا الرقم مسجّل بحساب ثاني.";btn.disabled=false;return}
-    // A login on a real e-mail keeps signing in with it; only a number login needs the pointer.
-    const base=isFakeEmail(u.email)?u.email:"";
+    // The new number points at the account's login (its first number@domain, or the real e-mail it moved to).
+    const base=u.email;
     if(base&&base!==emailOf(ph))await db.doc("logins/"+ph).set({email:base,uid:u.uid,at:Date.now()});
     if(SHOP&&S.isOwner)await db.doc("shops/"+SHOP).update({phone:ph,username:ph});
     else await db.doc(P("users")+"/"+u.uid).update({username:ph,phone:ph});
@@ -4737,7 +4797,7 @@ function panelPage(){
 }
 function panelForm(){
   if(!S.isOwner||SHOP)return;
-  openModal(`<h3>حساب لوحة المالك</h3><p class="hint">اختار إيميل (أو رقم هاتف) ورمز خاصين باللوحة. تدخل بيهم على shahm-debts.app/admin. لازم ما يكون مستخدم بحساب ثاني.</p>
+  openModal(`<h3>حساب لوحة المالك</h3><p class="hint">اختار إيميل (أو رقم هاتف) ورمز خاصين باللوحة. تدخل بيهم على shahm-debts.app/admin. لازم ما يكون مستخدم بحساب ثاني. إذا اخترت إيميل، يوصلك عليه رابط تأكيد، والفصل يصير بعد ما تأكده.</p>
     <form id="pnF" class="field" style="gap:10px" novalidate>
       <div class="field"><label for="pnPh">البريد الإلكتروني (أو رقم الهاتف)</label><input id="pnPh" type="email" inputmode="email" maxlength="100" style="direction:ltr;text-align:right" placeholder="name@gmail.com" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
       <div class="field"><label for="pnPw">الرمز (كلمة المرور)</label><div class="pw"><input id="pnPw" type="password" autocomplete="new-password"><button type="button" data-showpw="pnPw">إظهار</button></div><span class="help">${PW_MIN} أحرف على الأقل. احفظه، ما ينعرض مرة ثانية.</span></div>
@@ -4757,11 +4817,35 @@ function panelForm(){
         const sec=firebase.apps.find(x=>x.name==="sec")||firebase.initializeApp(window.FIREBASE_CONFIG,"sec");
         const sa=sec.auth();try{await sa.setPersistence(firebase.auth.Auth.Persistence.NONE)}catch(x){}
         if(window.FIREBASE_EMULATOR&&!sec._emu){sec._emu=1;sa.useEmulator("http://127.0.0.1:9099",{disableWarnings:true});sec.firestore().useEmulator("127.0.0.1",8080)}
-        const cred=await sa.createUserWithEmailAndPassword(mail?ph:emailOf(ph),pw);await sa.signOut();
-        const patch={admin:cred.user.uid,adminLogin:ph,adminAt:Date.now()};
-        stopShops();await db.doc("settings/owner").update(patch);
-        S.ownerDoc={...(S.ownerDoc||{}),...patch};S.superOwner=false;S.shops=new Map();
-        closeModal();render();log("edit","account",{detail:`فصل لوحة المالك بحساب ${ph}`});toast("✓ انفصلت اللوحة. ادخل لها بالحساب والرمز الجديدين.",{label:"فتح اللوحة",href:PANEL_URL});
+        let user;
+        try{user=(await sa.createUserWithEmailAndPassword(mail?ph:emailOf(ph),pw)).user}
+        catch(x){
+          // An e-mail account made here before but never confirmed: the same e-mail and password pick it up again.
+          if(!(mail&&x&&x.code==="auth/email-already-in-use"))throw x;
+          try{user=(await sa.signInWithEmailAndPassword(ph,pw)).user}catch(y){throw x}
+          if(user.uid===auth.currentUser.uid||S.accounts.has(user.uid)||S.shops.has(user.uid)){await sa.signOut();throw x}
+        }
+        const finish=async()=>{
+          await sa.signOut().catch(()=>{});
+          const patch={admin:user.uid,adminLogin:ph,adminAt:Date.now()};
+          stopShops();await db.doc("settings/owner").update(patch);
+          S.ownerDoc={...(S.ownerDoc||{}),...patch};S.superOwner=false;S.shops=new Map();
+          closeModal();render();log("edit","account",{detail:`فصل لوحة المالك بحساب ${ph}`});toast("✓ انفصلت اللوحة. ادخل لها بالحساب والرمز الجديدين.",{label:"فتح اللوحة",href:PANEL_URL});
+        };
+        if(!mail||user.emailVerified){await finish();return}
+        // An e-mail: nothing is separated until its owner opens the confirmation link sent to it.
+        sa.languageCode="ar";
+        const send=()=>user.sendEmailVerification({url:PANEL_URL});
+        await send();
+        const f=m.querySelector("#pnF");
+        f.innerHTML=`<div class="banner info">📧 بعثنا رابط تأكيد على <b style="direction:ltr;unicode-bidi:isolate">${esc(ph)}</b>. افتح الإيميل واضغط الرابط (إذا ما لگيته، شوف مجلد Spam أو الرسائل غير المرغوب فيها)، وبعدين ارجع هنا واضغط «أكّدت».</div>
+          <p class="err" id="pnErr"></p>
+          <div class="foot"><button class="btn primary" type="button" id="pnOk">أكّدت</button><button class="btn" type="button" id="pnRe">إعادة إرسال الرابط</button><button class="btn" type="button" data-close>إلغاء</button></div>`;
+        const er=f.querySelector("#pnErr");
+        f.querySelector("#pnRe").onclick=async ev=>{ev.target.disabled=true;er.textContent="";try{await send();toast("✓ انبعث رابط جديد")}catch(x){er.textContent=x&&x.code==="auth/too-many-requests"?"انتظر دقيقة قبل ما تطلب رابط ثاني.":authMsg(x)}setTimeout(()=>{ev.target.disabled=false},30000)};
+        f.querySelector("#pnOk").onclick=async ev=>{const b2=ev.target;b2.disabled=true;er.textContent="";
+          try{await user.reload();if(!user.emailVerified){er.textContent="الإيميل ما تأكد بعد. اضغط الرابط اللي وصلك، وبعدين ارجع اضغط «أكّدت».";b2.disabled=false;return}await finish()}
+          catch(x){b2.disabled=false;er.textContent=authMsg(x)}};
       }catch(x){btn.disabled=false;err.textContent=x&&x.code==="auth/email-already-in-use"?(mail?"هذا الإيميل مستخدم بحساب ثاني. اختار إيميل ثاني.":"هذا الرقم مستخدم بحساب ثاني. اختار رقم ثاني."):authMsg(x)}
     }));
 }
@@ -4888,7 +4972,7 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
       if(own){
         const first=!S.me;S.isOwner=true;
         S.me={id:u.uid,name:S.settings.ownerName||S.shop.ownerName||"المدير",role:"owner",username:S.shop.username||uname};
-        rememberLogin(S.me.username,u.email);
+        rememberLogin(S.me.username,u.email);syncPhoneLogin(S.me.username,u);
         startData();if(first||$("#app").hidden)showApp();else render();
         if(first){supCheck();if(location.hash==="#support"){try{history.replaceState(null,"",location.pathname)}catch(e){}setTimeout(supOpen,300)}}
         return;
@@ -4962,7 +5046,7 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
       if(p.status==="disabled"){stopData();S.me=null;showWaiting("تم إيقاف هذا الحساب. راجع المدير.","bad");return}
       const first=!S.me;
       S.me={id:u.uid,name:p.name||uname,role:p.role==="editor"?"editor":"viewer",username:p.username||uname,perms:p.perms||{}};
-      rememberLogin(S.me.username,u.email);
+      rememberLogin(S.me.username,u.email);syncPhoneLogin(S.me.username,u);
       startData();if(first||$("#app").hidden)showApp();else render();
     },e=>{console.warn(e);
       // Already open from the device's copy: keep working and say why it isn't updating, rather than locking people out.
@@ -4970,10 +5054,12 @@ try{if(sessionStorage.getItem("shahm-updated")){sessionStorage.removeItem("shahm
       showWaiting(readErrMsg(e),"bad",true)});
   }
   auth.onAuthStateChanged(async u=>{
+    if(ACTION&&!handleAction.on){handleAction.on=1;handleAction(ACTION);return}
+    if(ACTION&&new URLSearchParams(location.search).get("oobCode"))return;
     if(profUnsub){profUnsub();profUnsub=null}
     const seq=++authSeq;
     SHOP=null;S.shop=null;S.superOwner=false;
-    if(!u){stopData();S.me=null;S.isOwner=false;const f=flash;flash=null;showLogin(f&&f.msg,f&&f.kind);return}
+    if(!u){stopData();S.me=null;S.isOwner=false;const f=flash;flash=null;if(location.hash==="#forgot"){try{history.replaceState(null,"",location.pathname)}catch(e){}showForgot("");return}showLogin(f&&f.msg,f&&f.kind);return}
     const fake=isFakeEmail(u.email),uname=fake?u.email.split("@")[0]:"";
     if(MULTI){
       spin("جارِ التحقق من الحساب…");

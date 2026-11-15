@@ -269,6 +269,7 @@ function gate(msg,bad){
       ${msg?`<div class="banner ${bad?"bad":"info"}" role="alert">${esc(msg)}</div>`:""}
       <div class="field"><label for="lUser">اسم المستخدم أو الإيميل أو الرقم</label><input id="lUser" autocomplete="username" dir="ltr" style="text-align:right" required></div>
       <div class="field"><label for="lPw">كلمة المرور</label><input id="lPw" type="password" autocomplete="current-password" dir="ltr" style="text-align:right" required></div>
+      <div style="text-align:start;margin-top:-4px"><a href="../#forgot" style="font-size:13px">نسيت كلمة المرور؟</a></div>
       <p class="err" id="lErr" role="alert"></p>
       <button class="btn primary" type="submit" id="lGo" style="min-height:46px">دخول</button>
       <p class="ro-note" style="margin:0;text-align:center">تنفتح لحساب مالك البرنامج فقط.</p>
