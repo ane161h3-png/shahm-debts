@@ -8,6 +8,7 @@ import { handlePush, vapidPublic } from "./push.js";
 import { handleBackup } from "./backup.js";
 import { handleDb, Live } from "./db.js";
 import { handleStatement } from "./statement.js";
+import { handleSupport } from "./support.js";
 export { Live };
 
 const MAX_IMAGES = 4;
@@ -406,7 +407,7 @@ export default {
     ctx.waitUntil(dispatchReport(env));
   },
 
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const cors = corsFor(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     if (new URL(request.url).pathname === "/push") {
@@ -422,6 +423,10 @@ export default {
     if (new URL(request.url).pathname.startsWith("/db/")) {
       try { return await handleDb(request, env, json, cors); }
       catch (e) { console.error(e); return json({ error: "تعذّر الاتصال بقاعدة البيانات الجديدة." }, 502, cors); }
+    }
+    if (new URL(request.url).pathname.startsWith("/support/")) {
+      try { return await handleSupport(request, env, json, cors, ctx); }
+      catch (e) { console.error(e); return json({ error: "تعذّر الاتصال بالدعم الفني. حاول مرة ثانية." }, 502, cors); }
     }
     if (new URL(request.url).pathname === "/st") {
       try { return await handleStatement(request, env, json, cors); }

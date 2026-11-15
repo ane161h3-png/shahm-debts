@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<!-- Same rule as the debt book: the page talks only to itself, Firebase (Google) and the app's worker. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.google.com; font-src 'self' data:; connect-src 'self' data: blob: https://*.googleapis.com https://*.google.com https://shahm-ai.hydrzyd83.workers.dev wss://shahm-ai.hydrzyd83.workers.dev; frame-src https://*.firebaseapp.com https://*.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>لوحة المالك · ديون الشهم</title>
+<meta name="theme-color" content="#0e5a3a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="../icons/icon-192.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="لوحة المالك">
+<link rel="stylesheet" href="../vendor/fonts/fonts.css">
+<style>
+/* The owner's panel: the shops that subscribe and the support chat with their owners. Same brand tokens as web/index.html (BRAND.md). */
+:root{
+  --bg:#f4f2ec; --paper:#ffffff; --paper-2:#f8f6f1; --line:#e3ded3; --ink:#1c2421; --muted:#5e6660;
+  --accent:#0e5a3a; --accent-ink:#fff7e8; --accent-soft:#dceee3; --debt:#c2301e; --debt-soft:#fce9e5; --paid:#4a7f12; --paid-soft:#edf5e0; --warn:#a55f00; --warn-soft:#fdf0dc;
+  --shadow:0 1px 2px rgba(28,36,33,.06),0 8px 24px rgba(28,36,33,.07); --shadow-fab:0 6px 18px rgba(14,90,58,.35);
+  --brand-orange:#f39a1e; --brand-tomato:#e2412b; --brand-leaf:#7bc043; --brand-cream:#fff7e8; --brand-deep:#083b26;
+  --f-brand:"Lalezar","Tajawal",sans-serif;
+  --f-display:"Tajawal","IBM Plex Sans Arabic",Tahoma,sans-serif;
+  --f-body:"IBM Plex Sans Arabic","Tajawal",Tahoma,"Segoe UI",sans-serif;
+  --r:14px; --r-ctl:10px; --r-modal:18px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1512; --paper:#172019; --paper-2:#1e2921; --line:#2c3830; --ink:#ecf1ec; --muted:#9aa59d;
+  --accent:#5fc48c; --accent-ink:#06200f; --accent-soft:#1b3527; --debt:#ff8a78; --debt-soft:#3a1f1b; --paid:#a6d86a; --paid-soft:#243319; --warn:#f5b654; --warn-soft:#3a2c14;
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); --shadow-fab:0 6px 18px rgba(0,0,0,.45); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1512; --paper:#172019; --paper-2:#1e2921; --line:#2c3830; --ink:#ecf1ec; --muted:#9aa59d;
+  --accent:#5fc48c; --accent-ink:#06200f; --accent-soft:#1b3527; --debt:#ff8a78; --debt-soft:#3a1f1b; --paid:#a6d86a; --paid-soft:#243319; --warn:#f5b654; --warn-soft:#3a2c14;
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.3); --shadow-fab:0 6px 18px rgba(0,0,0,.45); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{min-height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;direction:rtl}
+button,input,textarea,select{font:inherit;color:inherit}
+.num{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate;display:inline-block}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+h1,h2,h3{text-wrap:balance}
+.logo{width:44px;height:44px;border-radius:13px;background:var(--brand-cream);color:var(--brand-deep);display:grid;place-items:center;flex:none}
+.logo svg{width:74%;height:74%;display:block}
+.btn{border:1px solid var(--line);background:var(--paper);padding:9px 14px;border-radius:var(--r-ctl);cursor:pointer;font-family:var(--f-display);font-weight:700;display:inline-flex;align-items:center;gap:6px;justify-content:center;text-decoration:none;color:var(--ink);white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.sm{padding:6px 11px;font-size:14px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.paid{background:var(--paid);border-color:var(--paid);color:var(--paper)}
+.btn.debt{background:var(--debt);border-color:var(--debt);color:var(--paper)}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.danger-text{color:var(--debt)}
+.btn:disabled{opacity:.55;cursor:default}
+.btn svg{width:18px;height:18px}
+.chip{font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;font-family:var(--f-display);display:inline-flex;align-items:center;gap:4px}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}.chip.paid{background:var(--paid-soft);color:var(--paid)}
+.chip.debt{background:var(--debt-soft);color:var(--debt)}.chip.info{background:var(--accent-soft);color:var(--accent)}.chip.mute{background:var(--paper-2);color:var(--muted);border:1px solid var(--line)}
+.badge{min-width:20px;height:20px;padding:0 6px;border-radius:99px;background:var(--debt);color:var(--paper);font:700 12px/20px var(--f-display);text-align:center;display:inline-block}
+.banner{border-radius:12px;padding:10px 14px;font-size:14px}
+.banner.bad{background:var(--debt-soft);color:var(--debt)}.banner.info{background:var(--accent-soft);color:var(--accent)}.banner.warn{background:var(--warn-soft);color:var(--warn)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:600;font-size:14px}
+.field input,.field select,.field textarea,.search{border:1px solid var(--line);border-radius:var(--r-ctl);padding:10px 12px;background:var(--paper);min-height:44px}
+.field input:focus,.field select:focus,.field textarea:focus,.search:focus{outline:2px solid var(--accent);outline-offset:0;border-color:transparent}
+.help,.ro-note{color:var(--muted);font-size:13px}
+.err{color:var(--debt);font-size:14px;margin:0;min-height:1em}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{border:1px solid var(--line);background:var(--paper);border-radius:99px;padding:6px 12px;cursor:pointer;font:600 14px var(--f-display);color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+.chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+/* gate */
+.gate{min-height:100vh;display:grid;place-items:center;padding:24px 16px}
+.gate-card{width:100%;max-width:420px;display:flex;flex-direction:column;gap:16px}
+.hero{display:flex;align-items:center;gap:14px;padding:18px;border-radius:22px;color:var(--brand-cream);background:linear-gradient(110deg,color-mix(in srgb,var(--brand-orange) 28%,var(--brand-deep)),var(--brand-deep) 70%);box-shadow:var(--shadow)}
+.hero .logo{width:56px;height:56px;border-radius:16px}
+.hero b{display:block;font-family:var(--f-display);font-size:22px;font-weight:800}
+.hero span{font-size:14px;opacity:.85}
+.box{background:var(--paper);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:22px;display:flex;flex-direction:column;gap:14px}
+
+/* app */
+.top{position:sticky;top:0;z-index:20;background:var(--accent);color:var(--accent-ink);box-shadow:var(--shadow)}
+.top-in{max-width:1240px;margin:auto;display:flex;align-items:center;gap:12px;padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top))}
+.top h1{margin:0;font-family:var(--f-display);font-weight:800;font-size:19px;line-height:1.2}
+.top small{display:block;opacity:.8;font-size:12.5px}
+.top .grow{flex:1;min-width:0}
+.ib{border:0;background:transparent;color:inherit;width:42px;height:42px;border-radius:12px;display:grid;place-items:center;cursor:pointer;position:relative}
+.ib:hover{background:rgba(255,255,255,.12)}.ib svg{width:22px;height:22px}
+.ib .badge{position:absolute;top:2px;inset-inline-end:0}
+.tabs{max-width:1240px;margin:auto;display:flex;gap:4px;padding:0 12px}
+.tabs button{border:0;background:none;color:inherit;opacity:.78;padding:10px 14px;font:700 15px var(--f-display);cursor:pointer;border-bottom:3px solid transparent;display:inline-flex;gap:6px;align-items:center}
+.tabs button[aria-current="page"]{opacity:1;border-bottom-color:var(--brand-orange)}
+main{max-width:1240px;margin:auto;padding:16px 16px 40px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.stat{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;text-align:start;cursor:pointer;display:flex;flex-direction:column;gap:2px;box-shadow:var(--shadow);border-inline-start:4px solid var(--c,var(--accent))}
+.stat:hover{border-color:var(--c,var(--accent))}
+.stat[aria-pressed="true"]{outline:2px solid var(--c,var(--accent));outline-offset:-1px}
+.stat .v{font-family:var(--f-display);font-size:28px;font-weight:800;line-height:1.1;color:var(--c,var(--ink))}
+.stat .l{color:var(--muted);font-size:13.5px;font-weight:600}
+.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.tools .search{flex:1 1 240px;min-width:0}
+.tools select{border:1px solid var(--line);border-radius:var(--r-ctl);padding:9px 10px;background:var(--paper);min-height:44px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:14px;display:flex;flex-direction:column;gap:10px;position:relative;animation:cin .25s ease both}
+@keyframes cin{from{opacity:0;transform:translateY(6px)}}
+.card.st-pending{border-top:4px solid var(--warn)}.card.st-active{border-top:4px solid var(--paid)}.card.st-trial{border-top:4px solid var(--brand-orange)}
+.card.st-expired,.card.st-disabled{border-top:4px solid var(--debt)}
+.card-h{display:flex;gap:10px;align-items:flex-start}
+.av{width:42px;height:42px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font:400 22px var(--f-brand);flex:none}
+.card-h .nm{flex:1;min-width:0}
+.card-h b{display:block;font-family:var(--f-display);font-size:17px;font-weight:800;overflow-wrap:anywhere;line-height:1.3}
+.card-h .who{color:var(--muted);font-size:13.5px}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;font-size:13.5px}
+.facts div{display:flex;flex-direction:column;min-width:0}
+.facts span{color:var(--muted);font-size:12px}
+.facts b{font-weight:600;overflow-wrap:anywhere}
+.left{font-family:var(--f-display);font-weight:800}
+.left.soon{color:var(--warn)}.left.end{color:var(--debt)}.left.ok{color:var(--paid)}
+.bar{height:6px;background:var(--paper-2);border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+.bar i{display:block;height:100%;background:var(--paid);border-radius:99px;transition:width .4s}
+.bar i.soon{background:var(--warn)}.bar i.end{background:var(--debt)}
+.acts{display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:10px}
+.cb{position:relative;width:38px;height:38px;flex:none;border-radius:10px;border:1px solid var(--line);background:var(--paper);color:var(--accent);display:grid;place-items:center;cursor:pointer}
+.cb:hover{border-color:var(--accent)}.cb svg{width:20px;height:20px}.cb .badge{position:absolute;top:-8px;inset-inline-start:-8px}
+.empty{text-align:center;color:var(--muted);padding:40px 16px;background:var(--paper);border:1px dashed var(--line);border-radius:var(--r)}
+.empty b{display:block;color:var(--ink);font-family:var(--f-display);font-size:18px;margin-bottom:4px}
+.threads{display:flex;flex-direction:column;gap:8px;max-width:780px}
+.thr{display:flex;gap:12px;align-items:center;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;cursor:pointer;text-align:start;width:100%}
+.thr:hover{border-color:var(--accent)}
+.thr .grow{flex:1;min-width:0}.thr b{font-family:var(--f-display);font-size:16px}
+.thr .last{color:var(--muted);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thr.unread .last{color:var(--ink);font-weight:600}
+.thr time{font-size:12px;color:var(--muted);white-space:nowrap}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;max-width:780px;margin-bottom:12px}
+.panel h2{margin:0;font-family:var(--f-display);font-size:18px}
+.panel p{margin:0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* modal */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;display:flex;align-items:center;justify-content:center;padding:10px;animation:fade .15s}
+@keyframes fade{from{opacity:0}}
+.modal{background:var(--paper);border-radius:var(--r-modal);width:100%;max-width:480px;box-shadow:0 20px 50px rgba(0,0,0,.3);padding:18px;display:flex;flex-direction:column;gap:12px;max-height:calc(100% - 20px);overflow:auto;animation:pop .2s ease}
+.modal.wide{max-width:680px}
+@keyframes pop{from{transform:scale(.97);opacity:0}}
+.modal h3{margin:0;font-family:var(--f-display);font-size:19px}
+.modal .hint{margin:-4px 0 0;color:var(--muted);font-size:13.5px}
+.foot{display:flex;gap:8px;flex-wrap:wrap}
+.hist{width:100%;border-collapse:collapse;font-size:13.5px}
+.hist th,.hist td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:start;vertical-align:top}
+.hist th{color:var(--muted);font-weight:600;font-size:12.5px}
+.dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.dl div{background:var(--paper-2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column}
+.dl span{color:var(--muted);font-size:12px}.dl b{font-weight:700;overflow-wrap:anywhere}
+.toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;z-index:99;font-size:14px;box-shadow:var(--shadow);max-width:calc(100% - 32px);animation:fade .2s}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--brand-leaf);display:inline-block;margin-inline-end:4px;box-shadow:0 0 0 3px rgba(123,192,67,.25)}
+.live-dot.off{background:var(--muted);box-shadow:none}
+@media (max-width:760px){
+  .stats{grid-template-columns:1fr 1fr}
+  .stat .v{font-size:24px}
+  .grid{grid-template-columns:1fr}
+  .tabs button{padding:10px 10px;font-size:14px}
+  .top h1{font-size:17px}
+  .chips.scroll{flex-wrap:nowrap;overflow-x:auto;margin-inline:-16px;padding-inline:16px;scrollbar-width:none}.chips.scroll button{flex:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="gate" class="gate"></div>
+<div id="app" hidden>
+  <header class="top">
+    <div class="top-in">
+      <div class="logo" aria-hidden="true"><svg viewBox="1.0 -81.5 108.7 108.7" aria-hidden="true"><path d="M107.7 -21.2Q107.7 -15.9 106.6 -11Q105.5 -6.1 103.5 -2.9Q96.3 0.3 90.4 0.3Q85.9 0.3 82.2 -1.6Q78.6 -3.4 76.1 -7H75.3Q73.2 -3.7 69.7 -1.7Q66.1 0.3 62 0.3H61.9Q61.5 6.6 59.9 11.8Q58.3 17 55.7 20.6Q41.5 24.8 30.8 24.8Q16.8 24.8 9.9 18.9Q3 12.9 3 2Q3 -9.1 9.4 -24.3L23.2 -19.8Q19.6 -9.9 19.6 -4Q19.6 1.3 22.5 3.9Q25.3 6.4 31.2 6.4Q36.5 6.4 46.3 4Q45.7 -2.6 44 -9.8Q42.2 -17 40.5 -21.6L55 -27.7L55.8 -27.3Q56.4 -22.7 58.6 -20.2Q60.7 -17.8 63.5 -17.8Q66.7 -17.8 69.6 -20.9Q72.4 -23.9 73.5 -29.2L81.8 -27.9Q81.7 -27.1 81.7 -25.6Q81.7 -17.7 88.2 -17.7Q90 -17.7 93.4 -18.5Q92.5 -22.3 91.2 -26Q90 -29.7 89.7 -30.5L105.8 -34.2Q107.7 -28.2 107.7 -21.2Z" fill="currentColor"/><circle cx="45.2" cy="-45.8" r="8.6" fill="#F39A1E"/><ellipse cx="42.2" cy="-49.1" rx="1.9" ry="1.2" transform="rotate(-30 42.2 -49.1)" fill="#fff" fill-opacity=".5"/><circle cx="65.5" cy="-45.8" r="8.6" fill="#E2412B"/><ellipse cx="62.5" cy="-49.1" rx="1.9" ry="1.2" transform="rotate(-30 62.5 -49.1)" fill="#fff" fill-opacity=".5"/><circle cx="55.4" cy="-64.8" r="8.6" fill="#7BC043"/><ellipse cx="52.4" cy="-68.1" rx="1.9" ry="1.2" transform="rotate(-30 52.4 -68.1)" fill="#fff" fill-opacity=".5"/><path d="M57.1 -73.0q4.7 -6.4 10.8 -4.7q-3.0 6.4 -10.8 4.7z" fill="currentColor"/></svg></div>
+      <div class="grow"><h1>لوحة المالك</h1><small id="sub">ديون الشهم</small></div>
+      <button class="ib" type="button" id="bellBtn" aria-label="إشعارات الرسائل"></button>
+      <button class="ib" type="button" id="outBtn" aria-label="تسجيل الخروج"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></button>
+    </div>
+    <nav class="tabs" id="tabs" aria-label="الأقسام"></nav>
+  </header>
+  <main id="view"></main>
+</div>
+<div id="modal"></div>
+
+<script src="../vendor/firebase-app-compat.js"></script>
+<script src="../vendor/firebase-auth-compat.js"></script>
+<script src="../vendor/firebase-firestore-compat.js"></script>
+<script src="../config.js"></script>
+<script src="../support.js"></script>
+<script>
+(function(){
+"use strict";
+/* The owner's panel. It opens only for the uid in settings/owner (as firestore.rules decide); anyone else is signed out.
+   The real guard is the rules: only that owner can list shops/ or change a shop's state, and nobody here can read a shop's
+   own book (its customers, debts or sales), which the rules keep closed to this owner too.
+   Reads: one live listener on shops/ (one read per shop, then only what changes), meta/trial and settings/main.
+   The support chat is in Cloudflare D1 through the worker (../support.js), so it costs no Firestore reads. */
+const DOMAIN="shahm-debts.app",OWNER_USER="admin";
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=n=>Math.round(Number(n)||0).toLocaleString("en-US");
+const normDigits=s=>String(s||"").replace(/[٠-٩]/g,d=>"٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[۰-۹]/g,d=>"۰۱۲۳۴۵۶۷۸۹".indexOf(d));
+const parseAmt=s=>{const n=Number(normDigits(s).replace(/[,،\s]/g,""));return isFinite(n)?n:NaN};
+const dmy=ms=>{const d=new Date(ms);return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`};
+const todayISO=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const ago=ms=>{if(!ms)return "";const s=(Date.now()-ms)/1000;if(s<60)return "هسه";if(s<3600)return `قبل ${Math.floor(s/60)} دقيقة`;if(s<86400)return `قبل ${Math.floor(s/3600)} ساعة`;
+  const d=Math.floor(s/86400);return d===1?"البارحة":d<30?`قبل ${d} يوم`:dmy(ms)};
+const clock=ms=>new Date(ms).toLocaleTimeString("ar-IQ",{hour:"numeric",minute:"2-digit",numberingSystem:"latn"});
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const markLetter=n=>{const w=String(n||"").trim().split(/\s+/).filter(x=>x&&!/^(ماركت|سوبرماركت|محل|محلات|أسواق|اسواق|مخزن|مول|بقالة|متجر)$/.test(x));
+  return (w[0]||"م").replace(/^ال(?=..)/,"").charAt(0)||"م"};
+const phoneId=v=>{let d=normDigits(v).replace(/\D/g,"");if(d.startsWith("00"))d=d.slice(2);if(/^964\d{10}$/.test(d))d="0"+d.slice(3);if(/^7\d{9}$/.test(d))d="0"+d;return d};
+const looksPhone=v=>/^[+\d\s()-]+$/.test(normDigits(v).trim())&&normDigits(v).replace(/\D/g,"").length>=10;
+const waNum=p=>{let d=normDigits(p).replace(/\D/g,"");if(!d)return "";if(d.startsWith("00"))d=d.slice(2);if(d.startsWith("0"))d="964"+d.slice(1);else if(d.length===10&&d.startsWith("7"))d="964"+d;return d};
+const I={
+  chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  store:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/></svg>',
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
+  bellOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/></svg>',
+  wa:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21l1.7-5A8.5 8.5 0 1 1 8 19.3z"/></svg>',
+};
+
+let auth,db;
+const S={shops:new Map(),threads:new Map(),trialDays:0,settings:{},tab:"shops",q:"",f:"all",sort:"end",ownerName:"",liveOn:false};
+const unsubs=[];let stopLive=null;
+
+function toast(t,ms=3200){document.querySelectorAll(".toast").forEach(x=>x.remove());const d=document.createElement("div");d.className="toast";d.setAttribute("role","status");d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),ms)}
+window.toast=toast;
+const writeFail=e=>{console.warn(e);toast(e&&e.code==="permission-denied"?"قاعدة البيانات رفضت التغيير. تأكد إنك نشرت firestore.rules الجديدة.":"ما انحفظ التغيير. تحقق من الإنترنت وحاول مرة ثانية.",5000)};
+
+/* ---------- modal ---------- */
+function openModal(html,init,wide){const r=$("#modal");r.innerHTML=`<div class="scrim"><div class="modal${wide?" wide":""}" role="dialog" aria-modal="true">${html}</div></div>`;
+  const m=r.querySelector(".modal");r.querySelector(".scrim").addEventListener("click",e=>{if(e.target.classList.contains("scrim"))closeModal()});
+  m.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",closeModal));
+  if(init)init(m);const f=m.querySelector("input,select,textarea,button:not([data-close])");if(f&&!matchMedia("(pointer:coarse)").matches)f.focus()}
+function closeModal(){$("#modal").innerHTML=""}
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&$("#modal").innerHTML)closeModal()});
+// Confirmation before a step that shuts a shop or throws its request away.
+function confirmBox(title,text,label,fn,cls="debt"){
+  openModal(`<h3>${esc(title)}</h3><p style="margin:0;color:var(--muted)">${esc(text)}</p>
+    <div class="foot"><button class="btn ${cls}" type="button" id="okBtn">${esc(label)}</button><button class="btn" type="button" data-close>إلغاء</button></div>`,
+    m=>m.querySelector("#okBtn").addEventListener("click",()=>{closeModal();fn()}));
+}
+
+/* ---------- shop state (the same meaning as Settings > المحلات in the debt book) ---------- */
+const ST={pending:["بانتظار الموافقة","warn"],trial:["تجربة","warn"],active:["نشط","paid"],disabled:["موقوف","debt"],expired:["منتهي","debt"]};
+const left=x=>x&&x.until?Math.ceil((x.until-Date.now())/864e5):null;
+const expired=x=>!!(x&&x.status==="active"&&x.until&&x.until<=Date.now());
+const state=x=>expired(x)?"expired":x.status==="active"&&x.trial?"trial":(x.status||"pending");
+const soon=x=>{const s=state(x);return (s==="active"||s==="trial")&&x.until&&left(x)<=7};
+// Conversations of shops that still exist (a rejected request's shop is gone; its messages stay in D1 but are not shown).
+const liveThreads=()=>[...S.threads.values()].filter(t=>S.shops.has(t.shop));
+const unread=id=>{const t=S.threads.get(id);return t?Number(t.ua)||0:0};
+const PLANS=[["1","شهر",1],["3","3 أشهر",3],["6","6 أشهر",6],["12","سنة",12],["none","دائمي",0],["date","تاريخ مخصص",0],["trial","تجربة",0]];
+function addMonths(ms,n){const d=new Date(ms),day=d.getDate();d.setMonth(d.getMonth()+n);if(d.getDate()<day)d.setDate(0);return d.getTime()}
+const ownerName=()=>S.settings.ownerName||"المدير";
+function log(detail){const a={id:uid(),at:Date.now(),kind:"edit",what:"account",by:ownerName(),byRole:"owner",detail};try{db.collection("activity").doc(a.id).set(a).catch(()=>{})}catch(e){}}
+
+/* ---------- gate ---------- */
+const MARK=document.querySelector(".top .logo").innerHTML;
+function gate(msg,bad){
+  $("#app").hidden=true;
+  $("#gate").hidden=false;$("#gate").innerHTML=`<div class="gate-card">
+    <div class="hero"><div class="logo" aria-hidden="true">${MARK}</div><div><b>لوحة المالك</b><span>إدارة المحلات المشتركة والدعم الفني</span></div></div>
+    <form class="box" id="lf" novalidate>
+      ${msg?`<div class="banner ${bad?"bad":"info"}" role="alert">${esc(msg)}</div>`:""}
+      <div class="field"><label for="lUser">اسم المستخدم أو الإيميل أو الرقم</label><input id="lUser" autocomplete="username" dir="ltr" style="text-align:right" required></div>
+      <div class="field"><label for="lPw">كلمة المرور</label><input id="lPw" type="password" autocomplete="current-password" dir="ltr" style="text-align:right" required></div>
+      <p class="err" id="lErr" role="alert"></p>
+      <button class="btn primary" type="submit" id="lGo" style="min-height:46px">دخول</button>
+      <p class="ro-note" style="margin:0;text-align:center">تنفتح لحساب مالك البرنامج فقط.</p>
+    </form></div>`;
+  $("#lf").addEventListener("submit",async e=>{e.preventDefault();const id=$("#lUser").value.trim(),pw=$("#lPw").value,er=$("#lErr"),b=$("#lGo");
+    if(!id||!pw){er.textContent="اكتب اسم المستخدم وكلمة المرور.";return}
+    b.disabled=true;er.textContent="";
+    try{await signInAny(id,pw)}catch(x){er.textContent=/invalid-credential|user-not-found|wrong-password|invalid-login|invalid-email/.test(x&&x.code||"")?"اسم المستخدم أو كلمة المرور غلط.":x&&x.code==="auth/too-many-requests"?"محاولات كثيرة. انتظر شوية وحاول.":"تعذّر الدخول. تحقق من الإنترنت.";b.disabled=false}});
+}
+async function aliasOf(id){try{const s=await db.doc("logins/"+id).get();return s.exists&&s.data().email||""}catch(e){return ""}}
+async function signInAny(id,pw){
+  if(id.includes("@"))return auth.signInWithEmailAndPassword(id,pw);
+  if(looksPhone(id))id=phoneId(id);
+  const moved=/^\d{10,15}$/.test(id)?await aliasOf(id):"";
+  if(moved){try{return await auth.signInWithEmailAndPassword(moved,pw)}catch(e){if(!/invalid-credential|user-not-found|wrong-password|invalid-login/.test(e.code||""))throw e}}
+  return auth.signInWithEmailAndPassword(id+"@"+DOMAIN,pw);
+}
+// The owner is the uid in settings/owner; until that exists, the original admin@ login (firestore.rules decide the same).
+async function isOwner(u){
+  try{const s=await db.doc("settings/owner").get({source:"server"});
+    if(s.exists&&s.data().uid)return s.data().uid===u.uid;
+    return u.email===OWNER_USER+"@"+DOMAIN}
+  catch(e){if(e&&e.code==="permission-denied")return false;throw e}
+}
+
+/* ---------- data ---------- */
+function start(){
+  const fail=e=>{console.warn(e);if(e&&e.code==="permission-denied"){denied();return}toast(e&&e.code==="resource-exhausted"?"خلص حد القراءة اليومي المجاني. يرجع الساعة 10 الصبح.":"تعذّر قراءة البيانات. تحقق من الإنترنت.",5000)};
+  unsubs.push(db.collection("shops").onSnapshot(s=>{S.shops=new Map(s.docs.map(d=>[d.id,{...d.data(),id:d.id}]));render();tick()},fail));
+  unsubs.push(db.doc("meta/trial").onSnapshot(s=>{S.trialDays=s.exists?Number(s.data().days)||0:0;if(S.tab==="settings")render()},()=>{}));
+  db.doc("settings/main").get().then(s=>{S.settings=s.exists?s.data():{};},()=>{});
+  ShahmSupport.init({base:window.AI_URL,token:()=>auth.currentUser.getIdToken(),side:"admin",push:true});
+  loadThreads();
+  stopLive=ShahmSupport.liveAll(ev=>{
+    if(ev.t==="open"){S.liveOn=true;if(stopLive)loadThreads();drawBell();return}
+    if(ev.thread){const was=S.threads.get(ev.shop);S.threads.set(ev.shop,ev.thread);
+      if(ev.msg&&ev.msg.side==="shop"&&!(ShahmSupport.isOpen()&&openChatId===ev.shop)){const x=S.shops.get(ev.shop);toast(`💬 رسالة من ${(x&&x.name)||ev.thread.name||"محل"}`);ding()}
+      if(!was||was.ua!==ev.thread.ua||was.status!==ev.thread.status||ev.msg)render()}
+  });
+  drawBell();
+}
+function loadThreads(){ShahmSupport.threads().then(j=>{S.threads=new Map((j.threads||[]).map(t=>[t.shop,t]));render()},e=>console.warn("threads",e))}
+function denied(){stop();auth.signOut().catch(()=>{});gate("ما عندك صلاحية تفتح لوحة المالك. سجّلنا خروجك.",true)}
+function stop(){while(unsubs.length)try{unsubs.pop()()}catch(e){}if(stopLive){stopLive();stopLive=null}ShahmSupport.isOpen&&ShahmSupport.close();S.shops=new Map();S.threads=new Map()}
+// A subscription ending moves its card without a reload.
+function tick(){clearTimeout(tick.t);const next=[...S.shops.values()].map(x=>x.status==="active"&&x.until||0).filter(u=>u>Date.now()).sort((a,b)=>a-b)[0];
+  if(next&&next-Date.now()<20*864e5)tick.t=setTimeout(()=>{render();tick()},next-Date.now()+1000)}
+let actx=null;function ding(){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=880;g.gain.setValueAtTime(.08,actx.currentTime);g.gain.exponentialRampToValueAtTime(.0001,actx.currentTime+.35);o.connect(g).connect(actx.destination);o.start();o.stop(actx.currentTime+.36)}catch(e){}}
+
+/* ---------- views ---------- */
+const TABS=[["shops","المحلات",I.store],["chat","الرسائل",I.chat],["settings","الإعدادات",I.gear]];
+function render(){
+  if($("#app").hidden)return;
+  const totalUnread=liveThreads().reduce((a,t)=>a+(Number(t.ua)||0),0);
+  $("#tabs").innerHTML=TABS.map(([k,l,ic])=>`<button type="button" data-tab="${k}" aria-current="${S.tab===k?"page":"false"}">${l}${k==="chat"&&totalUnread?` <span class="badge num">${totalUnread}</span>`:""}${k==="shops"&&count("pending")?` <span class="badge num">${count("pending")}</span>`:""}</button>`).join("");
+  document.title=(totalUnread?`(${totalUnread}) `:"")+"لوحة المالك · ديون الشهم";
+  const v=$("#view"),y=window.scrollY,focus=document.activeElement&&document.activeElement.id;
+  v.innerHTML=S.tab==="chat"?chatView():S.tab==="settings"?settingsView():shopsView();
+  if(focus==="q"){const q=$("#q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}}
+  window.scrollTo(0,y);
+}
+const count=st=>[...S.shops.values()].filter(x=>st==="soon"?soon(x):st==="unread"?unread(x.id)>0:state(x)===st||(st==="active"&&state(x)==="trial")).length;
+const FILTERS=[["all","الكل"],["pending","بانتظار الموافقة"],["active","نشطة"],["trial","تجربة"],["soon","تنتهي خلال 7 أيام"],["expired","منتهية"],["disabled","موقوفة"],["unread","رسائل جديدة"]];
+const SORTS=[["end","الأقرب للانتهاء"],["new","الأحدث تسجيلاً"],["msg","آخر رسالة"],["name","الاسم"]];
+function shopsView(){
+  const all=[...S.shops.values()];
+  const q=normDigits(S.q).trim().toLowerCase();
+  let list=all.filter(x=>{if(S.f==="all")return true;if(S.f==="soon")return soon(x);if(S.f==="unread")return unread(x.id)>0;if(S.f==="active")return state(x)==="active"||state(x)==="trial";return state(x)===S.f});
+  if(q)list=list.filter(x=>[x.name,x.ownerName,x.phone,x.username].some(v=>normDigits(v||"").toLowerCase().includes(q)));
+  const endKey=x=>{const s=state(x);return s==="pending"?-2e15:s==="expired"?-1e15+(x.until||0):(s==="active"||s==="trial")?(x.until||9e15):s==="disabled"?9.5e15:9e15};
+  list.sort(S.sort==="new"?(a,b)=>(b.createdAt||0)-(a.createdAt||0):S.sort==="name"?(a,b)=>String(a.name).localeCompare(String(b.name),"ar")
+    :S.sort==="msg"?(a,b)=>unread(b.id)-unread(a.id)||((S.threads.get(b.id)||{}).last_at||0)-((S.threads.get(a.id)||{}).last_at||0):(a,b)=>endKey(a)-endKey(b));
+  const stat=(f,l,c)=>`<button type="button" class="stat" data-f="${f}" aria-pressed="${S.f===f}" style="--c:var(${c})"><span class="v num">${count(f)}</span><span class="l">${l}</span></button>`;
+  return `<div class="stats">${stat("active","المحلات النشطة","--paid")}${stat("pending","بانتظار الموافقة","--warn")}${stat("soon","تنتهي خلال 7 أيام","--brand-orange")}${stat("expired","منتهية","--debt")}</div>
+    <div class="tools"><input class="search" id="q" type="search" placeholder="ابحث بالاسم أو الرقم…" value="${esc(S.q)}" aria-label="بحث">
+      <select id="sort" aria-label="الترتيب">${SORTS.map(([k,l])=>`<option value="${k}" ${S.sort===k?"selected":""}>${l}</option>`).join("")}</select></div>
+    <div class="chips scroll" style="margin-bottom:12px" role="group" aria-label="الحالة">${FILTERS.map(([k,l])=>`<button type="button" data-f="${k}" aria-pressed="${S.f===k}">${l}${k!=="all"&&count(k)?` <span class="num">${count(k)}</span>`:""}</button>`).join("")}</div>
+    ${list.length?`<div class="grid">${list.map(card).join("")}</div>`:`<div class="empty"><b>${all.length?"ما كو محلات بهذا البحث":"بعد ما سجّل أي محل"}</b>${all.length?"غيّر البحث أو الفلتر.":"المحل يسجّل من «سجّل محلك» بتطبيق الديون، ويظهر هنا."}</div>`}`;
+}
+function leftHtml(x){
+  const s=state(x);
+  if(s==="pending")return `<b>ينتظر موافقتك</b>`;
+  if(!x.until)return s==="disabled"?`<b>—</b>`:`<b class="left ok">دائمي</b>`;
+  const n=left(x);return `<b class="left ${n<=0?"end":n<=7?"soon":"ok"}">${n<=0?"انتهى":n===1?"يوم واحد":`<span class="num">${n}</span> يوم`}</b>`;
+}
+function barHtml(x){
+  if(!x.until||state(x)==="pending"||state(x)==="disabled")return "";
+  const last=(x.subs||[]).slice(-1)[0],from=last&&last.from||x.activatedAt||x.createdAt||Date.now(),all=Math.max(1,x.until-from),pct=Math.max(0,Math.min(100,100*(x.until-Date.now())/all)),n=left(x);
+  return `<div class="bar" aria-hidden="true"><i class="${n<=0?"end":n<=7?"soon":""}" style="width:${pct.toFixed(1)}%"></i></div>`;
+}
+function card(x){
+  const s=state(x),[lbl,cls]=ST[s]||ST.pending,u=unread(x.id),t=S.threads.get(x.id);
+  return `<article class="card st-${s}" data-id="${esc(x.id)}">
+    <div class="card-h"><span class="av" aria-hidden="true">${esc(markLetter(x.name))}</span>
+      <div class="nm"><b>${esc(x.name||"محل")}</b><span class="who">${esc(x.ownerName||"")}</span></div>
+      <span class="chip ${cls}">${lbl}</span>
+      <button class="cb" type="button" data-a="chat" aria-label="محادثة ${esc(x.name)}${u?` (${u} غير مقروءة)`:""}" title="محادثة">${I.chat}${u?`<span class="badge num">${u}</span>`:""}</button></div>
+    <div class="facts">
+      <div><span>الرقم</span><b class="num">${esc(x.phone||x.username||"—")}</b></div>
+      <div><span>تاريخ التسجيل</span><b class="num">${x.createdAt?dmy(x.createdAt):"—"}</b></div>
+      <div><span>${x.trial?"التجربة":"الاشتراك"} الباقي</span>${leftHtml(x)}</div>
+      <div><span>ينتهي</span><b class="num">${x.until&&s!=="pending"?dmy(x.until):"—"}</b></div>
+      <div><span>الكاشير</span><b>${x.pos?`<span class="chip info">مفعّل</span>`:`<span class="chip mute">مطفّى</span>`}</b></div>
+      <div><span>الرسائل</span><b>${u?`<span class="chip debt">${u} غير مقروءة</span>`:t&&t.n?(t.status==="solved"?`<span class="chip paid">محلولة</span>`:`<span class="chip mute">مفتوحة</span>`):`<span class="ro-note">ما كو</span>`}</b></div>
+    </div>
+    ${barHtml(x)}
+    <div class="acts">${actsHtml(x)}</div>
+  </article>`;
+}
+function actsHtml(x){
+  const s=state(x),b=(a,l,c="")=>`<button class="btn sm ${c}" type="button" data-a="${a}">${l}</button>`;
+  if(s==="pending")return b("sub","موافقة","paid")+b("reject","رفض","ghost danger-text")+b("info","تفاصيل","ghost");
+  return (s==="disabled"?b("enable","إرجاع","paid"):b("sub",s==="expired"||s==="trial"?"تجديد":"تمديد",s==="expired"||s==="trial"?"paid":""))
+    +(s==="disabled"?b("sub","تجديد"):b("disable","إيقاف","ghost danger-text"))
+    +b("pos",x.pos?"إطفاء الكاشير":"تفعيل الكاشير")+b("info","تفاصيل","ghost");
+}
+function chatView(){
+  const ts=liveThreads().filter(t=>t.n).sort((a,b)=>(Number(b.ua)>0)-(Number(a.ua)>0)||b.last_at-a.last_at);
+  if(!ts.length)return `<div class="empty"><b>ما وصلت رسائل بعد</b>صاحب المحل يكتب من «الدعم الفني» بإعدادات تطبيق الديون أو بقائمة الكاشير، ورسالته تظهر هنا مباشرة.</div>`;
+  return `<p class="ro-note" style="margin:0 0 10px"><span class="live-dot ${S.liveOn?"":"off"}"></span>${S.liveOn?"مباشر: الرسائل توصل هنا بدون تحديث.":"جاري الاتصال…"}</p>
+    <div class="threads">${ts.map(t=>{const x=S.shops.get(t.shop)||{},u=Number(t.ua)||0;
+    return `<button type="button" class="thr ${u?"unread":""}" data-chat="${esc(t.shop)}"><span class="av" aria-hidden="true">${esc(markLetter(x.name||t.name))}</span>
+      <div class="grow"><b>${esc(x.name||t.name||"محل")}</b> ${t.status==="solved"?`<span class="chip paid">محلولة</span>`:""}<div class="last">${t.last_from==="admin"?"أنت: ":""}${esc(t.last_text||"")}</div></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><time>${esc(ago(t.last_at))}</time>${u?`<span class="badge num">${u}</span>`:""}</div></button>`}).join("")}</div>`;
+}
+function settingsView(){
+  const td=S.trialDays||0,opts=[0,7,15,30];
+  return `<section class="panel"><h2>الفترة التجريبية المجانية</h2>
+      <p class="ro-note">المحل الجديد ينفتح وحده بعد ما يسجّل، لهذي المدة، وبنهايتها ينقفل لحد ما يدفع. «بدون» = ينتظر موافقتك.</p>
+      <div class="chips" role="group" aria-label="أيام التجربة">${opts.map(n=>`<button type="button" data-trial="${n}" aria-pressed="${td===n}">${n?n+" يوم":"بدون"}</button>`).join("")}</div>
+      <form class="row" id="trialF" novalidate><div class="field" style="flex:0 1 160px"><label for="trialN">عدد أيام آخر</label><input id="trialN" inputmode="numeric" maxlength="2" placeholder="0 - 90" value="${opts.includes(td)?"":td}"></div>
+        <button class="btn" type="submit" style="align-self:flex-end">حفظ</button></form>
+      <p class="ro-note">هسه: <b>${td?td+" يوم تجربة":"بدون تجربة"}</b>.</p></section>
+    <section class="panel"><h2>إشعارات الرسائل</h2>
+      <p class="ro-note">لما يكتب صاحب محل، توصلك رسالة على بوت Telegram (نفس بوت النسخ الاحتياطي)، وإشعار على هذا الجهاز إذا فعّلته.</p>
+      <div class="row">${ShahmSupport.pushOk()?(ShahmSupport.pushIsOn()?`<span class="chip paid">مفعّل على هذا الجهاز</span><button class="btn sm" type="button" data-push="off">إيقاف</button>`:`<button class="btn primary sm" type="button" data-push="on">${I.bell} تفعيل على هذا الجهاز</button>`):`<span class="ro-note">هذا المتصفح ما يدعم الإشعارات.</span>`}</div></section>
+    <section class="panel"><h2>تثبيت اللوحة</h2><p class="ro-note">من Chrome: القائمة ⋮ › «إضافة إلى الشاشة الرئيسية». ومن iPhone: زر المشاركة › «إضافة إلى الشاشة الرئيسية». تنفتح كتطبيق مستقل عن الدفتر والكاشير.</p></section>
+    <section class="panel"><h2>الخصوصية</h2><p class="ro-note">هذي اللوحة تشوف حالة المحل واشتراكه ورسائل الدعم بس. ديون المحلات ومبيعاتهم ما تنقرا من هنا، وقواعد قاعدة البيانات تمنعها.</p></section>`;
+}
+function drawBell(){const on=ShahmSupport.pushIsOn();$("#bellBtn").innerHTML=on?I.bell:I.bellOff;$("#bellBtn").title=on?"الإشعارات مفعّلة على هذا الجهاز":"فعّل إشعارات الرسائل";}
+
+/* ---------- actions ---------- */
+let openChatId=null;
+function openChat(id){
+  const x=S.shops.get(id)||{},t=S.threads.get(id);openChatId=id;
+  ShahmSupport.open(id,{title:x.name||(t&&t.name)||"محل",sub:x.ownerName||"",onThread:th=>{S.threads.set(id,th);render()},onClose:()=>{openChatId=null;if(location.hash)history.replaceState(null,"",location.pathname)}});
+}
+function setShop(id,patch,done,detail){db.doc("shops/"+id).update(patch).then(()=>{if(done)toast(done);if(detail)log(detail)},writeFail)}
+function act(a,id){
+  const x=S.shops.get(id);if(!x)return;
+  if(a==="chat")return openChat(id);
+  if(a==="info")return info(id);
+  if(a==="sub")return subForm(id);
+  if(a==="reject")return confirmBox("رفض المحل",`ينحذف طلب «${x.name}». إذا صاحبه دخل بعدين يگدر يسجّل من جديد. ما كو بيانات تنحذف غير الطلب.`,"رفض",()=>db.doc("shops/"+id).delete().then(()=>{toast("انرفض الطلب");log(`رفض طلب محل ${x.name}`)},writeFail));
+  if(a==="disable")return confirmBox("إيقاف المحل",`محل «${x.name}» وعماله ما يگدرون يفتحون الدفتر${x.pos?" والكاشير":""} لحد ما ترجّعه. بياناتهم ما تنحذف.`,"إيقاف",()=>setShop(id,{status:"disabled"},"انوقف المحل",`أوقف محل ${x.name}`));
+  if(a==="enable"){const end=x.until&&x.until<=Date.now();
+    return confirmBox("إرجاع المحل",end?`اشتراك «${x.name}» منتهي من ${dmy(x.until)}. يرجع شغّال بس يبقى مقفول لحد ما تجدّد له.`:`محل «${x.name}» يرجع يفتح دفتره${x.until?` لحد ${dmy(x.until)}`:""}.`,"إرجاع",()=>setShop(id,{status:"active",activatedAt:x.activatedAt||Date.now()},"رجع المحل شغّال",`رجّع محل ${x.name}`),"paid")}
+  if(a==="pos"){
+    if(x.pos)return confirmBox("إطفاء الكاشير",`كاشير «${x.name}» ينقفل ودفتر ديونه يبقى شغّال. مواده ومبيعاته ما تنحذف.`,"إطفاء",()=>setShop(id,{pos:false},"انطفى الكاشير",`أوقف كاشير محل ${x.name}`));
+    return setShop(id,{pos:true},`انفتح الكاشير لـ ${x.name}`,`شغّل كاشير محل ${x.name}`);
+  }
+}
+function subForm(id){
+  const x=S.shops.get(id);if(!x)return;
+  const prices=S.settings.subPrices||{},s=state(x),tDays=S.trialDays||15;
+  const base=Math.max(Date.now(),x.until&&x.status==="active"&&!x.trial?x.until:0);
+  openModal(`<h3>${s==="pending"?"موافقة وتفعيل":"تجديد الاشتراك"}: ${esc(x.name)}</h3>
+    <p class="hint">${s==="pending"?"اختار المدة اللي دفع عليها، وينفتح دفتره هسه.":x.trial&&x.status==="active"?`بالتجربة لحد ${dmy(x.until)}. الاشتراك المدفوع يبدأ من اليوم.`:x.until&&x.status==="active"&&!expired(x)?`ينتهي حالياً ${dmy(x.until)}. التمديد يبدأ من نهايته.`:"يبدأ من اليوم."}</p>
+    <form id="subF" class="field" style="gap:12px" novalidate>
+      <div class="chips" role="group" aria-label="المدة">${PLANS.map(([k,l])=>`<button type="button" data-plan="${k}" aria-pressed="${k==="1"}">${k==="trial"?`تجربة ${tDays} يوم`:l}</button>`).join("")}</div>
+      <div class="field" id="dF" hidden><label for="dV">ينتهي بتاريخ</label><input id="dV" type="date" min="${todayISO()}"></div>
+      <div class="field" id="aF"><label for="aV">المبلغ المدفوع (اختياري)</label><input id="aV" inputmode="numeric" dir="ltr" style="text-align:right" placeholder="مثال: 25,000" value="${prices["1"]?fmt(prices["1"]):""}"></div>
+      <div class="field"><label for="nV">ملاحظة (اختياري)</label><input id="nV" maxlength="200" placeholder="مثال: دفع كاش، خصم أول شهر…"></div>
+      <p id="toV" class="banner info" style="margin:0"></p><p class="err" id="sErr"></p>
+      <div class="foot"><button class="btn primary" type="submit">${s==="pending"?"موافقة وتفعيل":"حفظ التجديد"}</button><button class="btn" type="button" data-close>إلغاء</button></div>
+    </form>`,m=>{
+    let plan="1";
+    const to=()=>{if(plan==="none")return null;if(plan==="trial")return Math.max(Date.now(),x.until||0)+tDays*864e5;
+      if(plan==="date"){const v=m.querySelector("#dV").value;if(!v)return undefined;const [y,mo,d]=v.split("-").map(Number);return new Date(y,mo-1,d,23,59,59).getTime()}
+      return addMonths(base,PLANS.find(p=>p[0]===plan)[2])};
+    const show=()=>{const t=to();m.querySelector("#toV").innerHTML=t===null?"تفعيل دائمي بدون تاريخ انتهاء.":t?`ينفتح لحد <b class="num">${dmy(t)}</b> (<span class="num">${Math.ceil((t-Date.now())/864e5)}</span> يوم).`:"اختار التاريخ."};
+    m.querySelectorAll("[data-plan]").forEach(b=>b.addEventListener("click",()=>{plan=b.dataset.plan;m.querySelectorAll("[data-plan]").forEach(o=>o.setAttribute("aria-pressed",o===b));
+      m.querySelector("#dF").hidden=plan!=="date";m.querySelector("#aF").hidden=plan==="trial";const pr=prices[plan];m.querySelector("#aV").value=pr?fmt(pr):"";show()}));
+    m.querySelector("#dV").addEventListener("input",show);show();
+    m.querySelector("#subF").addEventListener("submit",e=>{e.preventDefault();const t=to(),err=m.querySelector("#sErr");
+      if(t===undefined){err.textContent="اختار تاريخ الانتهاء.";return}if(t&&t<=Date.now()){err.textContent="التاريخ لازم يكون بعد اليوم.";return}
+      const av=m.querySelector("#aV").value.trim(),amount=plan==="trial"||!av?0:parseAmt(av);if(av&&plan!=="trial"&&!(amount>0)){err.textContent="المبلغ لازم يكون رقم.";return}
+      const note=m.querySelector("#nV").value.trim().slice(0,200);
+      const label=plan==="trial"?`تجربة ${tDays} يوم`:PLANS.find(p=>p[0]===plan)[1];
+      const entry={at:Date.now(),plan,label,from:t?(plan==="trial"?Math.max(Date.now(),x.until||0):base):Date.now(),to:t,amount:Math.round(amount||0),by:ownerName(),...(note?{note}:{})};
+      db.doc("shops/"+id).update({status:"active",activatedAt:x.activatedAt||Date.now(),until:t,trial:plan==="trial",subs:firebase.firestore.FieldValue.arrayUnion(entry)})
+        .then(()=>{toast(t?`انفعّل ${x.name} لحد ${dmy(t)}`:`انفعّل ${x.name} تفعيل دائمي`);log(`اشتراك محل ${x.name}: ${label}${t?" إلى "+dmy(t):""}${amount?" بمبلغ "+fmt(amount):""}${note?" ("+note+")":""}`)},writeFail);
+      if(amount>0&&!["date","trial"].includes(plan)&&prices[plan]!==Math.round(amount)){S.settings.subPrices={...prices,[plan]:Math.round(amount)};db.doc("settings/main").set({subPrices:S.settings.subPrices},{merge:true}).catch(()=>{})}
+      closeModal()});
+  });
+}
+function info(id){
+  const x=S.shops.get(id);if(!x)return;const s=state(x),[lbl,cls]=ST[s],subs=(x.subs||[]).slice().reverse(),paid=subs.reduce((a,v)=>a+(Number(v.amount)||0),0),t=S.threads.get(id),wa=waNum(x.phone||x.username);
+  openModal(`<div class="row" style="justify-content:space-between"><h3>${esc(x.name)}</h3><span class="chip ${cls}">${lbl}</span></div>
+    <div class="dl">
+      <div><span>صاحب المحل</span><b>${esc(x.ownerName||"—")}</b></div>
+      <div><span>الرقم</span><b class="num">${esc(x.phone||"—")}</b></div>
+      <div><span>اسم الدخول</span><b class="num">${esc(x.username||"—")}</b></div>
+      <div><span>تاريخ التسجيل</span><b class="num">${x.createdAt?dmy(x.createdAt):"—"}</b></div>
+      <div><span>أول تفعيل</span><b class="num">${x.activatedAt?dmy(x.activatedAt):"—"}</b></div>
+      <div><span>${x.trial?"التجربة":"الاشتراك"}</span>${s==="pending"?"<b>—</b>":x.until?`<b><span class="num">${dmy(x.until)}</span> · ${leftHtml(x)}</b>`:"<b>دائمي</b>"}</div>
+      <div><span>الموظفين</span><b>${x.staff==null?`<span class="ro-note">يظهر بعد ما يفتح صاحب المحل دفتره</span>`:`<span class="num">${x.staff}</span> ${x.staff===1?"موظف":"موظفين"}`}</b></div>
+      <div><span>الكاشير</span><b>${x.pos?"مفعّل":"مطفّى"}</b></div>
+      <div><span>مجموع المدفوع</span><b class="num">${paid?fmt(paid):"—"}</b></div>
+      <div><span>الدعم الفني</span><b>${t&&t.n?`<span class="num">${t.n}</span> رسالة · ${t.status==="solved"?"محلولة":"مفتوحة"}`:"ما كو رسائل"}</b></div>
+    </div>
+    <h3 style="font-size:16px;margin-top:4px">سجل التجديدات</h3>
+    ${subs.length?`<div style="overflow-x:auto"><table class="hist"><thead><tr><th>متى</th><th>المدة</th><th>لحد</th><th>المبلغ</th><th>ملاحظة</th></tr></thead><tbody>
+      ${subs.map(v=>`<tr><td><span class="num">${dmy(v.at)}</span></td><td>${esc(v.label||"")}</td><td>${v.to?`<span class="num">${dmy(v.to)}</span>`:"دائمي"}</td><td><span class="num">${v.amount?fmt(v.amount):"—"}</span></td><td>${esc(v.note||"")}</td></tr>`).join("")}</tbody></table></div>`:`<p class="ro-note" style="margin:0">ما كو تجديدات بعد.</p>`}
+    <div class="foot" style="border-top:1px solid var(--line);padding-top:12px">
+      ${actsHtml(x).replace(/data-a="info"[^>]*>[^<]*<\/button>/,'data-a="none" hidden></button>')}
+      <button class="btn sm" type="button" data-a="chat">${I.chat}محادثة</button>
+      ${wa?`<a class="btn sm" href="https://wa.me/${wa}" target="_blank" rel="noopener">${I.wa}واتساب</a>`:""}
+      <button class="btn sm ghost" type="button" data-close>إغلاق</button></div>`,m=>{
+    m.querySelectorAll("[data-a]").forEach(b=>b.addEventListener("click",()=>{const a=b.dataset.a;closeModal();act(a,id)}));
+  },true);
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click",e=>{
+  const t=e.target;
+  const tb=t.closest("[data-tab]");if(tb){S.tab=tb.dataset.tab;render();window.scrollTo(0,0);return}
+  const f=t.closest("[data-f]");if(f){S.f=S.f===f.dataset.f&&f.classList.contains("stat")?"all":f.dataset.f;S.tab="shops";render();return}
+  const a=t.closest("#view [data-a]");if(a){act(a.dataset.a,a.closest("[data-id]").dataset.id);return}
+  const c=t.closest("[data-chat]");if(c){openChat(c.dataset.chat);return}
+  const tr=t.closest("[data-trial]");if(tr){setTrial(Number(tr.dataset.trial));return}
+  const p=t.closest("[data-push]");if(p){(p.dataset.push==="on"?ShahmSupport.pushOn(false).then(()=>toast("✓ تفعّلت الإشعارات على هذا الجهاز")):ShahmSupport.pushOff().then(()=>toast("توقفت الإشعارات على هذا الجهاز"))).catch(x=>toast(x.message)).finally(()=>{drawBell();render()});return}
+});
+document.addEventListener("input",e=>{if(e.target.id==="q"){S.q=e.target.value;render()}});
+document.addEventListener("change",e=>{if(e.target.id==="sort"){S.sort=e.target.value;render()}});
+document.addEventListener("submit",e=>{if(e.target.id==="trialF"){e.preventDefault();const n=Number(normDigits($("#trialN").value));if(!Number.isInteger(n)||n<0||n>90){toast("اكتب رقم من 0 إلى 90.");return}setTrial(n)}});
+function setTrial(n){db.doc("meta/trial").set({days:n,at:Date.now()}).then(()=>toast(n?`المحلات الجديدة تنفتح ${n} يوم تجربة`:"المحلات الجديدة تنتظر موافقتك"),writeFail)}
+$("#outBtn").addEventListener("click",()=>confirmBox("تسجيل الخروج","تطلع من لوحة المالك على هذا الجهاز.","خروج",()=>{stop();auth.signOut()},"primary"));
+$("#bellBtn").addEventListener("click",()=>{S.tab="settings";render()});
+// A notification tapped while the panel is open, or a link such as #chat=<shop id> (the Telegram message carries one).
+function fromHash(h){const m=/^#chat=([A-Za-z0-9]{10,40})$/.exec(h||"");if(m){S.tab="chat";render();openChat(m[1])}}
+if("serviceWorker" in navigator){navigator.serviceWorker.addEventListener("message",e=>{const u=e.data&&e.data.open;if(u)fromHash(new URL(u,location.href).hash)});
+  if(location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{})}
+window.addEventListener("hashchange",()=>{if(auth&&auth.currentUser&&!$("#app").hidden)fromHash(location.hash)});
+
+/* ---------- start ---------- */
+(async function boot(){
+  try{const th=localStorage.getItem("shahm-theme");if(th==="light"||th==="dark")document.documentElement.dataset.theme=th}catch(e){}
+  if(!window.FIREBASE_CONFIG||!window.firebase){gate("ما گدرت أحمّل البرنامج. تحقق من الإنترنت.",true);return}
+  firebase.initializeApp(window.FIREBASE_CONFIG);auth=firebase.auth();db=firebase.firestore();
+  if(window.FIREBASE_EMULATOR){auth.useEmulator("http://127.0.0.1:9099",{disableWarnings:true});db.useEmulator("127.0.0.1",8080)}
+  gate();
+  auth.onAuthStateChanged(async u=>{
+    stop();
+    if(!u){if($("#gate").hidden||!$("#gate").innerHTML)gate();return}
+    $("#gate").innerHTML=`<div class="box" style="max-width:320px;text-align:center">جاري التحقق…</div>`;
+    let ok=false;try{ok=await isOwner(u)}catch(e){gate("تعذّر التحقق من الحساب. تحقق من الإنترنت.",true);return}
+    if(!ok){await auth.signOut().catch(()=>{});gate("ما عندك صلاحية تفتح لوحة المالك. سجّلنا خروجك.",true);return}
+    $("#gate").hidden=true;$("#gate").innerHTML="";$("#app").hidden=false;
+    $("#sub").textContent=u.email&&!u.email.endsWith("@"+DOMAIN)?u.email:"ديون الشهم";
+    render();start();fromHash(location.hash);
+  });
+})();
+})();
+</script>
+</body>
+</html>

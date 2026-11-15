@@ -226,7 +226,9 @@ service cloud.firestore {
         && str(d().username, 40) && d().createdAt is number
         && ((d().status == 'pending' && !('trial' in d()) && !('until' in d())) || (d().status == 'active' && d().trial == true && trialOk(d().until)));
       allow update: if isOwner() || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['name', 'ownerName', 'phone', 'username'])
-        && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30) && str(d().username, 40));
+        && nameOk(d().name) && nameOk(d().ownerName) && str(d().phone, 30) && str(d().username, 40))
+        // How many workers it has (the owner's panel shows the number, never who they are), kept by the shop's owner.
+        || (sOwner(s) && d().diff(resource.data).affectedKeys().hasOnly(['staff']) && d().staff is int && d().staff >= 0 && d().staff <= 500);
       allow delete: if isOwner();
 
       match /customers/{id} {

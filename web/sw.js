@@ -1,10 +1,10 @@
 // Offline shell for the debt book: the page always tries the network first (so updates arrive), everything else is served
 // from cache and refreshed in the background. Firebase traffic is cross-origin and never touched here.
-const CACHE = "shahm-v93";
+const CACHE = "shahm-v94";
 const SHELL = [
   "./", "index.html", "config.js", "manifest.webmanifest",
   "vendor/firebase-app-compat.js", "vendor/firebase-auth-compat.js", "vendor/firebase-firestore-compat.js",
-  "vendor/capacitor.js", "vendor/jspdf.umd.min.js", "vendor/qrcode.js", "vendor/chart.umd.js", "vendor/fonts/fonts.css",
+  "support.js", "vendor/capacitor.js", "vendor/jspdf.umd.min.js", "vendor/qrcode.js", "vendor/chart.umd.js", "vendor/fonts/fonts.css",
   "icons/icon-192.png", "icons/icon-512.png",
 ];
 
@@ -17,8 +17,8 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const req = e.request;
   if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
-  // The cashier (pos/) is a separate app with its own worker and cache.
-  if (new URL(req.url).pathname.includes("/pos/")) return;
+  // The cashier (pos/) and the owner's panel (admin/) are separate apps with their own workers and caches.
+  if (/\/(pos|admin)\//.test(new URL(req.url).pathname)) return;
   if (req.mode === "navigate") {
     // Only the app page goes into the index.html slot; other pages (the printable sheet) must not replace it.
     const isApp = /\/(index\.html)?$/.test(new URL(req.url).pathname);
@@ -46,14 +46,17 @@ self.addEventListener("push", e => {
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
     if (!d.force && list.some(c => c.focused && !new URL(c.url).pathname.includes("/pos/"))) return;
     return self.registration.showNotification(d.title || "دفتر الديون", {
-      body: d.body || "", tag: d.tag || undefined, lang: "ar", dir: "rtl", icon: "icons/icon-192.png", badge: "icons/icon-192.png",
+      body: d.body || "", tag: d.tag || undefined, lang: "ar", dir: "rtl", icon: "icons/icon-192.png", badge: "icons/icon-192.png", data: { url: d.url || "" },
     });
   }));
 });
 self.addEventListener("notificationclick", e => {
   e.notification.close();
+  // A support reply (worker/src/support.js) carries the link "./#support", which opens the chat.
+  const to = (e.notification.data && e.notification.data.url) || "";
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
-    const app = list.find(c => !new URL(c.url).pathname.includes("/pos/"));
-    return app ? app.focus() : self.clients.openWindow("./");
+    const app = list.find(c => !/\/(pos|admin)\//.test(new URL(c.url).pathname));
+    if (app && to) app.postMessage({ open: to });
+    return app ? app.focus() : self.clients.openWindow(to || "./");
   }));
 });
