@@ -6,6 +6,8 @@
 // row it sends one Telegram alert, and one more when everything is back, keeping that state in KV (BK) under
 // "health:state" (written only when it changes).
 
+import { log } from "./log.js";
+
 const TIMEOUT = 8000;
 const SITE = "https://shahm-debts.app/";
 
@@ -85,6 +87,6 @@ export async function selfCheck(env, fetcher = fetch) {
       body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: message }),
     }).catch(() => {});
   }
-  console.log(JSON.stringify({ level: Object.values(checks).every(c => c.ok) ? "info" : "warn", event: "health.self", checks, alerted: !!message }));
+  log(Object.values(checks).every(c => c.ok) ? "info" : "warn", "health.self", { checks, alerted: !!message });
   return { checks, state, message };
 }

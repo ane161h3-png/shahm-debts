@@ -16,6 +16,8 @@
 // save's time in ms), so "since U" never misses a save. A delete keeps the row, marked del, so other devices learn of it and nothing is
 // ever erased from here.
 
+import { log } from "./log.js";
+
 const COLLS = new Set(["customers", "txns"]);
 const MAX_OPS = 400;
 const PAGE = 1000;
@@ -197,7 +199,7 @@ export async function handleDb(request, env, json, cors) {
         }
       }
       if (!keep.size) return json({ ok: true, n: 0, skipped }, 200, cors);
-      if (skipped) console.warn(JSON.stringify({ level: "warn", event: "db.push.skipped", tenant, uid: a.uid, skipped }));
+      if (skipped) log("warn", "db.push.skipped", { tenant, uid: a.uid, skipped });
     }
     // The book's counter moves up by the number of records (and at least to now), then each record takes one number of
     // that range, in order. It all runs as one transaction, so two saves can't mix their numbers or land out of order.
@@ -216,7 +218,7 @@ export async function handleDb(request, env, json, cors) {
     }
     await env.DB.batch(stmts);
     const u = await env.DB.prepare("SELECT u FROM ctr WHERE t = ?").bind(tenant).first("u");
-    if (env.LIVE) try { await liveOf(env, tenant).fetch("https://live/notify", { method: "POST", body: JSON.stringify({ u }) }); } catch (e) { console.warn("live", e); }
+    if (env.LIVE) try { await liveOf(env, tenant).fetch("https://live/notify", { method: "POST", body: JSON.stringify({ u }) }); } catch (e) { log("warn", "db.live.notify.failed", { tenant, err: e }); }
     return json({ ok: true, n, u, ...(skipped ? { skipped } : {}) }, 200, cors);
   }
   return json({ error: "Not found" }, 404, cors);

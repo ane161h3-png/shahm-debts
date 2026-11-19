@@ -10,6 +10,7 @@ import { handleDb, Live } from "./db.js";
 import { handleStatement } from "./statement.js";
 import { handleSupport } from "./support.js";
 import { handleHealth, selfCheck } from "./health.js";
+import { log } from "./log.js";
 export { Live };
 
 const MAX_IMAGES = 4;
@@ -274,7 +275,7 @@ async function readWithGemini(env, input) {
     j = await r.json().catch(() => ({}));
     if (r.ok) break;
     lastStatus = r.status;
-    console.error("gemini", model, r.status, j.error && j.error.status, j.error && j.error.message);
+    log("error", "ai.gemini.failed", { model, status: r.status, code: j.error && j.error.status, err: j.error && String(j.error.message || "").slice(0, 300) });
     if (![404, 429, 500, 503].includes(r.status)) break;
   }
   if (!r.ok) {
@@ -378,7 +379,7 @@ async function sendWhatsApp(request, env, cors) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
     const e = j.error || {};
-    console.error(`whatsapp send failed: ${r.status} code ${e.code} ${e.error_subcode || ""} ${String(e.message || "").slice(0, 200)}`);
+    log("error", "wa.send.failed", { status: r.status, code: e.code, subcode: e.error_subcode || null, err: String(e.message || "").slice(0, 200) });
     return json({ error: waError(e), code: "meta_" + (e.code || r.status) }, 502, cors);
   }
   const msgId = (j.messages && j.messages[0] && j.messages[0].id) || "";
@@ -386,21 +387,40 @@ async function sendWhatsApp(request, env, cors) {
   const mark = await fetch(`${base}/txns/${txnId}?updateMask.fieldPaths=waSent&updateMask.fieldPaths=waId&currentDocument.exists=true`, {
     method: "PATCH", headers: H, body: JSON.stringify({ fields: { waSent: { integerValue: String(Date.now()) }, waId: { stringValue: msgId } } }),
   });
-  if (!mark.ok) console.error(`whatsapp sent but marking the txn failed: ${mark.status}`);
-  console.log(`whatsapp ${txn.type} sent for ${auth.user.email}`);
+  if (!mark.ok) log("error", "wa.mark.failed", { status: mark.status });
+  log("info", "wa.sent", { type: txn.type, uid: auth.user.localId });
   return json({ ok: true }, 200, cors);
 }
 
 // GitHub often skips its own scheduled runs, so Cloudflare's cron (wrangler.toml [triggers]) starts the periodic (5-hour) Telegram report
 // by dispatching .github/workflows/backup.yml. Needs the GH_DISPATCH_TOKEN secret (a GitHub token with Actions read/write on the repo).
 async function dispatchReport(env) {
-  if (!env.GH_DISPATCH_TOKEN) { console.log("GH_DISPATCH_TOKEN not set; skipping the periodic report."); return; }
+  if (!env.GH_DISPATCH_TOKEN) { log("warn", "report.skipped", { why: "GH_DISPATCH_TOKEN not set" }); return; }
   const r = await fetch(`https://api.github.com/repos/${env.GH_REPO}/actions/workflows/backup.yml/dispatches`, {
     method: "POST",
     headers: { Authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`, Accept: "application/vnd.github+json", "User-Agent": "shahm-ai-cron", "X-GitHub-Api-Version": "2022-11-28" },
     body: JSON.stringify({ ref: "main", inputs: { mode: "periodic", scheduled: "true" } }),
   });
   if (!r.ok) throw new Error(`GitHub dispatch failed: ${r.status} ${(await r.text()).slice(0, 200)}`);
+}
+
+// Errors on people's devices (web/index.html sends them), into the same logs as the server's own. Only from the app's own
+// pages, at most 20 a minute per address, short fields only; nothing about customers is sent. Always 204.
+async function clientError(request, env) {
+  const none = new Response(null, { status: 204 });
+  if (request.method !== "POST") return none;
+  const origin = request.headers.get("Origin") || "";
+  const allowed = (env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim());
+  if (!allowed.includes(origin) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return none;
+  if (env.LOG_LIMIT && !(await env.LOG_LIMIT.limit({ key: request.headers.get("CF-Connecting-IP") || "?" })).success) return none;
+  const text = await request.text().catch(() => "");
+  if (text.length > 4000) return none;
+  let j = null; try { j = JSON.parse(text); } catch (e) {}
+  if (!j || typeof j !== "object") return none;
+  const s = (v, n) => String(v == null ? "" : v).slice(0, n);
+  log("error", "client.error", { origin, page: s(j.page, 60), msg: s(j.msg, 300), src: s(j.src, 120), line: Number(j.line) || 0,
+    col: Number(j.col) || 0, stack: s(j.stack, 1200), ua: s(request.headers.get("User-Agent"), 160) });
+  return none;
 }
 
 export default {
@@ -417,33 +437,34 @@ export default {
       if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "Not found" }, 404, cors);
       return handleHealth(request, env, json);
     }
+    if (new URL(request.url).pathname === "/log") return clientError(request, env);
     if (new URL(request.url).pathname === "/push") {
       if (request.method === "GET") return json({ key: vapidPublic(env) }, 200, cors);
       if (request.method !== "POST") return json({ error: "Not found" }, 404, cors);
       try { return await handlePush(request, env, json, cors); }
-      catch (e) { console.error(e); return json({ error: "تعذّر إرسال الإشعار." }, 502, cors); }
+      catch (e) { log("error", "route.failed", { path: new URL(request.url).pathname, err: e }); return json({ error: "تعذّر إرسال الإشعار." }, 502, cors); }
     }
     if (new URL(request.url).pathname === "/backup") {
       try { return await handleBackup(request, env, json, cors); }
-      catch (e) { console.error(e); return json({ error: "تعذّر الاتصال بالنسخ على السحابة." }, 502, cors); }
+      catch (e) { log("error", "route.failed", { path: new URL(request.url).pathname, err: e }); return json({ error: "تعذّر الاتصال بالنسخ على السحابة." }, 502, cors); }
     }
     if (new URL(request.url).pathname.startsWith("/db/")) {
       try { return await handleDb(request, env, json, cors); }
-      catch (e) { console.error(e); return json({ error: "تعذّر الاتصال بقاعدة البيانات الجديدة." }, 502, cors); }
+      catch (e) { log("error", "route.failed", { path: new URL(request.url).pathname, err: e }); return json({ error: "تعذّر الاتصال بقاعدة البيانات الجديدة." }, 502, cors); }
     }
     if (new URL(request.url).pathname.startsWith("/support/")) {
       try { return await handleSupport(request, env, json, cors, ctx); }
-      catch (e) { console.error(e); return json({ error: "تعذّر الاتصال بالدعم الفني. حاول مرة ثانية." }, 502, cors); }
+      catch (e) { log("error", "route.failed", { path: new URL(request.url).pathname, err: e }); return json({ error: "تعذّر الاتصال بالدعم الفني. حاول مرة ثانية." }, 502, cors); }
     }
     if (new URL(request.url).pathname === "/st") {
       try { return await handleStatement(request, env, json, cors); }
-      catch (e) { console.error(e); return json({ error: "تعذّر فتح الكشف. حاول مرة ثانية." }, 502, { ...cors, "Access-Control-Allow-Origin": "*" }); }
+      catch (e) { log("error", "route.failed", { path: new URL(request.url).pathname, err: e }); return json({ error: "تعذّر فتح الكشف. حاول مرة ثانية." }, 502, { ...cors, "Access-Control-Allow-Origin": "*" }); }
     }
     if (new URL(request.url).pathname === "/wa") {
       if (request.method === "GET") return json({ configured: !!(env.WA_TOKEN && env.WA_PHONE_ID) }, 200, cors);
       if (request.method !== "POST") return json({ error: "Not found" }, 404, cors);
       try { return await sendWhatsApp(request, env, cors); }
-      catch (e) { console.error(e); return json({ error: "تعذّر الاتصال بواتساب. حاول مرة ثانية." }, 502, cors); }
+      catch (e) { log("error", "route.failed", { path: new URL(request.url).pathname, err: e }); return json({ error: "تعذّر الاتصال بواتساب. حاول مرة ثانية." }, 502, cors); }
     }
     if (request.method !== "POST") return json({ error: "Not found" }, 404, cors);
     if (!env.ANTHROPIC_API_KEY && !env.GEMINI_API_KEY) return json({ error: "مفتاح الذكاء الاصطناعي غير مضبوط على السيرفر." }, 500, cors);
@@ -483,7 +504,7 @@ export default {
           invoice_no: String(a.invoice_no || "").replace(/\s+/g, " ").trim().slice(0, 30),
           invoice_total: Math.max(0, Math.round(Number(a.invoice_total) || 0)),
         };
-        console.log(`read ${items.length} items for ${auth.user.email} via ${useClaude ? "claude" : "gemini"}`);
+        log("info", "ai.read", { kind: "items", n: items.length, uid: auth.user.localId, via: useClaude ? "claude" : "gemini" });
         return json({ items, ...head }, 200, cors);
       }
 
@@ -508,10 +529,10 @@ export default {
         };
       // Overlapping photos of the same printed sheet return the same row twice: keep it once.
       }).filter(r => { if (!r.row) return true; const k = `${r.row}|${r.written_name}|${r.amount}`; if (seen.has(k)) return false; seen.add(k); return true; });
-      console.log(`read ${rows.length} rows for ${auth.user.email} via ${useClaude ? "claude" : "gemini"}`);
+      log("info", "ai.read", { kind: "sheet", n: rows.length, uid: auth.user.localId, via: useClaude ? "claude" : "gemini" });
       return json({ rows }, 200, cors);
     } catch (e) {
-      console.error(e);
+      log("error", "ai.failed", { err: e });
       if (e instanceof UserError) return json({ error: e.message }, 502, cors);
       const msg = e instanceof Anthropic.AuthenticationError ? "مفتاح الذكاء الاصطناعي غير صحيح."
         : e instanceof Anthropic.RateLimitError ? "ضغط على الخدمة هسه. انتظر دقيقة وحاول."

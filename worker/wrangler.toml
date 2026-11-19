@@ -62,6 +62,16 @@ name = "HEALTH_LIMIT"
 namespace_id = "1007"
 simple = { limit = 30, period = 60 }
 
+# At most 20 device error reports a minute per address (see clientError in src/index.js).
+[[ratelimits]]
+name = "LOG_LIMIT"
+namespace_id = "1008"
+simple = { limit = 20, period = 60 }
+
+# Keep the worker's logs (JSON lines from src/log.js) in Cloudflare: Workers & Pages > shahm-ai > Logs. Free plan: 200,000 a day, 3 days kept.
+[observability]
+enabled = true
+
 # Live updates between a book's devices: one Durable Object per book (see Live in src/db.js).
 [[durable_objects.bindings]]
 name = "LIVE"

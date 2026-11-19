@@ -775,6 +775,20 @@ td.x{width:64px;white-space:nowrap}
 <nav class="bottom-nav" id="bottomNav" aria-label="الأقسام" hidden></nav>
 <div id="modalRoot"></div>
 
+<script>
+/* Errors on this device go to the server's logs (worker /log), so a problem shows before anyone calls: at most 5 per opening,
+   each different message once, only the error text and where it happened (never customers' data). Silent if offline. */
+(function(){var sent=0,seen={};
+  function report(msg,src,line,col,stack){try{msg=String(msg||"").slice(0,300);
+    if(!msg||sent>=5||seen[msg]||!window.AI_URL||!navigator.onLine)return;
+    if(/^Script error\.?$|ResizeObserver loop/.test(msg)||/^(chrome|moz|safari)-extension:/.test(src||""))return;
+    seen[msg]=1;sent++;
+    fetch(window.AI_URL+"/log",{method:"POST",keepalive:true,headers:{"Content-Type":"text/plain"},
+      body:JSON.stringify({page:location.pathname,msg:msg,src:String(src||"").replace(location.origin,""),line:line||0,col:col||0,stack:String(stack||"").slice(0,1200)})}).catch(function(){})}catch(e){}}
+  window.addEventListener("error",function(e){if(e&&e.message)report(e.message,e.filename,e.lineno,e.colno,e.error&&e.error.stack)});
+  window.addEventListener("unhandledrejection",function(e){var r=e&&e.reason;report(r&&r.message?r.message:String(r),"","",0,r&&r.stack)});
+})();
+</script>
 <script src="vendor/firebase-app-compat.js"></script>
 <script src="vendor/firebase-auth-compat.js"></script>
 <script src="vendor/firebase-firestore-compat.js"></script>
