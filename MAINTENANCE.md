@@ -136,6 +136,12 @@ python3 -m http.server 8000
 ```
 افتح `http://localhost:8000`. **انتبه: بالإعداد الحالي هذا يتصل ببيانات الشغل الحقيقية.** لا تجرّب حذف أو تعديل بيانات حقيقية. للتجربة الآمنة سوّي مشروع Firebase تجريبي وضع مفاتيحه بـ `web/config.js` (على نسخة محلية فقط)، أو استخدم Firebase Emulator (`window.FIREBASE_EMULATOR = true` بملف الإعداد المحلي) مع `npx firebase emulators:start --only auth,firestore`.
 
+### 7.1 بيئة التجربة (staging)
+نسخة كاملة منفصلة للتجربة قبل ما يوصل التعديل للمحلات: الموقع `https://staging.shahm-debts.pages.dev` والسيرفر `shahm-ai-staging` بقاعدة D1 خاصة (`shahm-db-staging`)، على مشروع Firebase تجريبي. ما تلمس الموقع الحقيقي ولا بياناته.
+- **مرة وحدة:** سوّي مشروع Firebase جديد (مثلاً `shahm-staging`): Authentication ← Email/Password شغّله، Firestore Database ← Create، Rules ← الصق `firestore.rules`. من Project settings ← Your apps ← Web app خذ المفاتيح وحطها بـ GitHub Secrets: `STAGING_FIREBASE_API_KEY` و`STAGING_FIREBASE_PROJECT` و`STAGING_FIREBASE_APP_ID` و`STAGING_FIREBASE_SENDER_ID`.
+- **كل تعديل:** Actions ← Staging ← Run workflow ← اختار فرع الـ PR. بعد دقيقتين افتح رابط staging وجرّب. إذا تمام، ادمج.
+- اختبار التحمل (`loadtest/`) يشتغل على staging بس، أبداً على الحقيقي.
+
 ## 8. مشاكل شائعة وحلها
 
 | المشكلة | الحل |

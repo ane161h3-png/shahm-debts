@@ -83,3 +83,67 @@ new_sqlite_classes = ["Live"]
 
 [triggers]
 crons = ["7 4,9,14,19 * * *", "*/10 * * * *"]
+
+# ---- Staging: a separate test server (shahm-ai-staging) for trying changes before they reach the shops. Deployed only by
+# .github/workflows/staging.yml, which adds its own D1 (shahm-db-staging) and KV, and passes the test Firebase project's
+# keys (STAGING_FIREBASE_* secrets). Nothing here touches the live server, its database or its secrets.
+[env.staging]
+name = "shahm-ai-staging"
+workers_dev = true
+
+[env.staging.vars]
+FIREBASE_API_KEY = "set-by-staging-workflow"
+FIREBASE_PROJECT = "set-by-staging-workflow"
+OWNER_EMAIL = "admin@shahm-debts.app"
+ALLOWED_ORIGINS = "https://staging.shahm-debts.pages.dev,https://localhost,capacitor://localhost"
+GH_REPO = "ane161h3-png/shahm-debts"
+D1_READ = "all"
+
+# No Telegram reports from the test server; its self-check runs, but has no Telegram keys, so it only logs.
+[env.staging.triggers]
+crons = ["*/10 * * * *"]
+
+[[env.staging.ratelimits]]
+name = "AI_LIMIT"
+namespace_id = "2001"
+simple = { limit = 10, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "PUSH_LIMIT"
+namespace_id = "2002"
+simple = { limit = 60, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "BK_LIMIT"
+namespace_id = "2003"
+simple = { limit = 20, period = 60 }
+
+# Higher than live, so a load test (loadtest/) measures the server rather than this limit.
+[[env.staging.ratelimits]]
+name = "DB_LIMIT"
+namespace_id = "2004"
+simple = { limit = 600, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "ST_LIMIT"
+namespace_id = "2005"
+simple = { limit = 30, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "SUP_LIMIT"
+namespace_id = "2006"
+simple = { limit = 10, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "HEALTH_LIMIT"
+namespace_id = "2007"
+simple = { limit = 30, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "LOG_LIMIT"
+namespace_id = "2008"
+simple = { limit = 20, period = 60 }
+
+[[env.staging.durable_objects.bindings]]
+name = "LIVE"
+class_name = "Live"
