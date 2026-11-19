@@ -45,6 +45,15 @@ jobs:
           DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
           GH_TOKEN: ${{ github.token }}
         run: node scripts/backup.mjs
+      # The nightly copy of the whole Cloudflare D1 database (every book), as SQL, to the same Telegram chat; restore with
+      # scripts/d1-restore.sh. Only the 2 AM run (and «full»), not the 5-hour reports. Needs CLOUDFLARE_API_TOKEN (D1).
+      - name: Send the D1 database copy to Telegram
+        if: (inputs.mode || 'daily') == 'daily' || inputs.mode == 'full'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: bash scripts/d1-dump.sh
       # GitHub pauses scheduled workflows after 60 days without repo activity; re-enabling keeps it running.
       - name: Keep the schedule alive
         if: always()
