@@ -18,6 +18,7 @@ D1_READ = "all"
 
 # Starts the periodic Telegram report every 5 hours of the working day: 7 AM, noon, 5 PM and 10 PM Baghdad
 # (UTC+3), 7 minutes past. The 2 AM daily report covers the night. See dispatchReport() in src/index.js.
+# Every 10 minutes: the self-check that alerts on Telegram when something is down (selfCheck() in src/health.js).
 # At most 10 photo readings a minute per person (Cloudflare's free rate limiter, used in src/index.js), so a stolen or
 # misused login can't burn the AI quota.
 [[ratelimits]]
@@ -55,6 +56,12 @@ name = "SUP_LIMIT"
 namespace_id = "1006"
 simple = { limit = 10, period = 60 }
 
+# At most 30 health checks a minute per address (see src/health.js), for uptime monitors.
+[[ratelimits]]
+name = "HEALTH_LIMIT"
+namespace_id = "1007"
+simple = { limit = 30, period = 60 }
+
 # Live updates between a book's devices: one Durable Object per book (see Live in src/db.js).
 [[durable_objects.bindings]]
 name = "LIVE"
@@ -65,4 +72,4 @@ tag = "v1"
 new_sqlite_classes = ["Live"]
 
 [triggers]
-crons = ["7 4,9,14,19 * * *"]
+crons = ["7 4,9,14,19 * * *", "*/10 * * * *"]

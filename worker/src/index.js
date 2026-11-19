@@ -9,6 +9,7 @@ import { handleBackup } from "./backup.js";
 import { handleDb, Live } from "./db.js";
 import { handleStatement } from "./statement.js";
 import { handleSupport } from "./support.js";
+import { handleHealth, selfCheck } from "./health.js";
 export { Live };
 
 const MAX_IMAGES = 4;
@@ -404,12 +405,18 @@ async function dispatchReport(env) {
 
 export default {
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(dispatchReport(env));
+    // Every 10 minutes: the self-check (src/health.js); the four daily times: the periodic Telegram report.
+    if (event.cron === "*/10 * * * *") ctx.waitUntil(selfCheck(env));
+    else ctx.waitUntil(dispatchReport(env));
   },
 
   async fetch(request, env, ctx) {
     const cors = corsFor(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    if (new URL(request.url).pathname === "/health") {
+      if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "Not found" }, 404, cors);
+      return handleHealth(request, env, json);
+    }
     if (new URL(request.url).pathname === "/push") {
       if (request.method === "GET") return json({ key: vapidPublic(env) }, 200, cors);
       if (request.method !== "POST") return json({ error: "Not found" }, 404, cors);
