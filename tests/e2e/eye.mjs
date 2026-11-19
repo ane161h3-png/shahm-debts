@@ -1,0 +1,36 @@
+const { chromium } = await import(process.env.PW);
+const U="http://127.0.0.1:5075/";let bad=0;const ok=(c,m)=>{if(!c)bad++;console.log((c?"  ok ":"  XX ")+m)};
+const b=await chromium.launch({executablePath:process.env.CHROME||undefined});
+const ctx=await b.newContext({viewport:{width:390,height:844},locale:"ar-IQ",serviceWorkers:"block",isMobile:true,hasTouch:true,deviceScaleFactor:2});
+const p=await ctx.newPage();p.on("pageerror",x=>{bad++;console.log("PAGEERR",x.message)});
+await p.goto(U);await p.waitForTimeout(2000);await p.fill("#lUser","admin");await p.fill("#lPw","123456");await p.click("#lGo");await p.waitForTimeout(5000);
+await p.locator('.bottom-nav [data-go="settings"]').click();await p.waitForTimeout(600);
+await p.click('[data-setacc="hide"]');await p.waitForTimeout(600);
+await p.click('[data-hideall="1"]');await p.waitForTimeout(400);
+await p.click('[data-revealfor="10"]');await p.waitForTimeout(400);
+ok(await p.locator('[data-revealfor="10"][aria-pressed="true"]').count()===1,"10-second option chosen");
+await p.screenshot({path:"eye-set.png"});
+await p.locator('.bottom-nav [data-go="customers"]').click();await p.waitForTimeout(1000);
+const masked=await p.locator(".cust-list .chip .masked, #custList .chip .masked").count();
+ok(masked>3,"list balances hidden ("+masked+")");
+ok(await p.isVisible(".list-head .eye"),"eye button above the list");
+await p.screenshot({path:"eye-list.png"});
+await p.click(".list-head .eye");await p.waitForTimeout(1200);
+ok(await p.locator(".cust-row .chip .masked").count()===0,"tapping the eye shows the balances");
+const l1=await p.textContent(".list-head .eye .rv-left");await p.waitForTimeout(2100);const l2=await p.textContent(".list-head .eye .rv-left");
+ok(Number(l1)>Number(l2)&&Number(l1)<=10,`countdown runs (${l1} → ${l2})`);
+await p.screenshot({path:"eye-shown.png"});
+await p.waitForTimeout(8000);
+ok(await p.locator(".cust-row .chip .masked").count()>3,"hidden again after 10 seconds");
+// customer page
+await p.click(`.cust-row [data-open="c1"]`);await p.waitForTimeout(1500);console.log("    sel:",await p.evaluate(()=>document.querySelector(".detail h2")?.textContent));
+ok(await p.locator(".balance-card .amt .masked").count()===1,"balance hidden inside the customer page");
+ok(await p.locator("td.run .masked").count()>=1||await p.locator("td.run").count()===0,"running balance hidden too");
+ok(await p.isVisible(".balance-card .lbl .eye"),"eye button on the balance card");
+await p.screenshot({path:"eye-acct.png"});
+await p.click(".balance-card .lbl .eye");await p.waitForTimeout(800);
+ok(await p.locator(".balance-card .amt .masked").count()===0,"eye shows the balance");
+// background hides
+await p.evaluate(()=>{Object.defineProperty(document,"visibilityState",{value:"hidden",configurable:true});document.dispatchEvent(new Event("visibilitychange"))});await p.waitForTimeout(500);
+ok(await p.locator(".balance-card .amt .masked").count()===1,"leaving the app hides it at once");
+await b.close();console.log(bad?"FAIL "+bad:"ALL OK");process.exit(bad?1:0);
