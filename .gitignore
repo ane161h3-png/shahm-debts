@@ -2,3 +2,9 @@ node_modules/
 android/
 *.apk
 .DS_Store
+
+# Local secrets: never commit (worker secrets live in Cloudflare, CI secrets in GitHub).
+.env
+.env.*
+.dev.vars
+.wrangler/

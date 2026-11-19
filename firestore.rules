@@ -32,16 +32,28 @@ service cloud.firestore {
     // Written by this person (their profile name, as the apps put it), not dated in the future.
     function selfSigned(x) { return (x.by == prof().get('name', x.by) || prof().get('name', '') == '') && x.at is number && x.at < request.time.toMillis() + 86400000; }
 
+    // A worker the owner barred from editing (users/{uid}.perms.edit == false, set only by the owner) adds records but
+    // can't change or delete them: only undo one of their own from the last 15 minutes, or mark a WhatsApp send.
+    // Missing perms = allowed, so older accounts keep working as before.
+    function noEditBy(p) { return p.get('perms', {}).get('edit', true) == false; }
+    function freshRec(x) { return x.get('createdAt', 0) is number && x.get('createdAt', 0) > request.time.toMillis() - 900000; }
+    function waMark() { return d().diff(resource.data).affectedKeys().hasOnly(['waSent', 'waId', '_u']); }
+    function custKeep() { return !d().diff(resource.data).affectedKeys().hasAny(['name', 'limit']); }
+    function noEdit() { return !isOwner() && noEditBy(prof()); }
+
     match /customers/{id} {
       allow read: if active();
-      allow create, update: if writer() && (isOwner() || (d().id == id && nameOk(d().name)));
-      allow delete: if writer();
+      allow create: if writer() && (isOwner() || (d().id == id && nameOk(d().name)));
+      allow update: if writer() && (isOwner() || (d().id == id && nameOk(d().name) && (!noEdit() || custKeep())));
+      allow delete: if writer() && !noEdit();
     }
     match /txns/{id} {
       allow read: if active();
-      allow create, update: if writer() && (isOwner() || (d().id == id && d().customerId is string
+      allow create: if writer() && (isOwner() || (d().id == id && d().customerId is string
         && d().type in ['debt', 'pay'] && amountOk(d().amount)));
-      allow delete: if writer();
+      allow update: if writer() && (isOwner() || (d().id == id && d().customerId is string
+        && d().type in ['debt', 'pay'] && amountOk(d().amount) && (!noEdit() || freshRec(resource.data) || waMark())));
+      allow delete: if writer() && (!noEdit() || freshRec(resource.data));
     }
     // Invoice photos (one compressed JPEG per document), linked from txns.photos.
     match /photos/{id} {
@@ -240,14 +252,17 @@ service cloud.firestore {
 
       match /customers/{id} {
         allow read: if sReader(s);
-        allow create, update: if sWriter(s) && (sOwner(s) || (d().id == id && nameOk(d().name)));
-        allow delete: if sWriter(s);
+        allow create: if sWriter(s) && (sOwner(s) || (d().id == id && nameOk(d().name)));
+        allow update: if sWriter(s) && (sOwner(s) || (d().id == id && nameOk(d().name) && (!noEditBy(sProf(s)) || custKeep())));
+        allow delete: if sWriter(s) && (sOwner(s) || !noEditBy(sProf(s)));
       }
       match /txns/{id} {
         allow read: if sReader(s);
-        allow create, update: if sWriter(s) && (sOwner(s) || (d().id == id && d().customerId is string
+        allow create: if sWriter(s) && (sOwner(s) || (d().id == id && d().customerId is string
           && d().type in ['debt', 'pay'] && amountOk(d().amount)));
-        allow delete: if sWriter(s);
+        allow update: if sWriter(s) && (sOwner(s) || (d().id == id && d().customerId is string
+          && d().type in ['debt', 'pay'] && amountOk(d().amount) && (!noEditBy(sProf(s)) || freshRec(resource.data) || waMark())));
+        allow delete: if sWriter(s) && (sOwner(s) || !noEditBy(sProf(s)) || freshRec(resource.data));
       }
       match /photos/{id} {
         allow read: if sReader(s);
