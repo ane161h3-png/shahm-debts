@@ -16,6 +16,8 @@
 // save's time in ms), so "since U" never misses a save. A delete keeps the row, marked del, so other devices learn of it and nothing is
 // ever erased from here.
 
+import { log } from "./log.js";
+
 const COLLS = new Set(["customers", "txns"]);
 const MAX_OPS = 400;
 const PAGE = 1000;
@@ -45,6 +47,9 @@ export async function schema(env) {
 const val = f => f == null ? null : "stringValue" in f ? f.stringValue : "booleanValue" in f ? f.booleanValue
   : "integerValue" in f ? Number(f.integerValue) : "doubleValue" in f ? f.doubleValue : "timestampValue" in f ? Date.parse(f.timestampValue) : null;
 const field = (doc, k) => doc && doc.fields ? val(doc.fields[k]) : null;
+// The owner barred this worker from editing (users/{uid}.perms.edit == false, as in firestore.rules): adds only.
+export const barred = doc => { const m = doc && doc.fields && doc.fields.perms && doc.fields.perms.mapValue;
+  return !!(m && m.fields && m.fields.edit && m.fields.edit.booleanValue === false); };
 
 // Who is asking and what they may do in this book: {uid, role: "owner" | "editor" | "viewer" | ""}.
 const roles = new Map();
@@ -63,13 +68,13 @@ export async function access(request, env, tenant) {
   const docs = `${env.FIRESTORE_URL || "https://firestore.googleapis.com"}/v1/projects/${env.FIREBASE_PROJECT}/databases/(default)/documents`;
   const get = async p => { const x = await fetch(`${docs}/${p}`, { headers: { Authorization: "Bearer " + token } }); return { status: x.status, doc: x.ok ? await x.json().catch(() => null) : null }; };
   const uid = user.localId;
-  let role = "";
+  let role = "", noEdit = false;
   if (tenant === "main") {
     const o = await get("settings/owner"), ownerUid = field(o.doc, "uid");
     if (ownerUid ? ownerUid === uid : o.status === 404 && user.email === env.OWNER_EMAIL) role = "owner";
     else {
       const p = await get(`users/${uid}`);
-      if (p.doc && field(p.doc, "status") === "active") role = field(p.doc, "role") === "editor" ? "editor" : "viewer";
+      if (p.doc && field(p.doc, "status") === "active") { role = field(p.doc, "role") === "editor" ? "editor" : "viewer"; noEdit = barred(p.doc); }
     }
   } else {
     const s = await get(`shops/${tenant}`), until = field(s.doc, "until");
@@ -77,11 +82,11 @@ export async function access(request, env, tenant) {
       if (uid === tenant) role = "owner";
       else {
         const p = await get(`shops/${tenant}/users/${uid}`);
-        if (p.doc && field(p.doc, "status") === "active") role = field(p.doc, "role") === "editor" ? "editor" : "viewer";
+        if (p.doc && field(p.doc, "status") === "active") { role = field(p.doc, "role") === "editor" ? "editor" : "viewer"; noEdit = barred(p.doc); }
       }
     }
   }
-  const a = { uid, role };
+  const a = { uid, role, noEdit };
   if (roles.size > 500) roles.clear();
   roles.set(key, { at: Date.now(), a });
   return a;
@@ -93,6 +98,20 @@ function shapeOk(c, id, d) {
   if (c === "customers") return typeof d.name === "string" && d.name.length > 0 && d.name.length <= 100;
   return typeof d.customerId === "string" && (d.type === "debt" || d.type === "pay")
     && typeof d.amount === "number" && d.amount > 0 && d.amount < 1e10;
+}
+
+// For a worker barred from editing (as in firestore.rules): what of one save they may still send. A new record always;
+// a change or delete only of a record they could undo (made in the last 15 minutes), or a WhatsApp-sent mark;
+// a customer's name and limit never change, and a customer is never deleted.
+export const FRESH_MS = 15 * 60e3;
+export function editAllowed(c, d, old, now = Date.now()) {
+  if (!old) return d !== null;
+  if (c === "customers") return d !== null && d.name === old.name && JSON.stringify(d.limit ?? null) === JSON.stringify(old.limit ?? null);
+  if (typeof old.createdAt === "number" && old.createdAt > now - FRESH_MS) return true;
+  if (d === null) return false;
+  const keys = new Set([...Object.keys(d), ...Object.keys(old)]);
+  for (const k of keys) if (k !== "waSent" && k !== "waId" && JSON.stringify(d[k]) !== JSON.stringify(old[k])) return false;
+  return true;
 }
 
 const readOn = (env, tenant) => { const l = String(env.D1_READ || "").split(",").map(x => x.trim()); return l.includes("all") || l.includes(tenant); };
@@ -165,6 +184,23 @@ export async function handleDb(request, env, json, cors) {
       }
       keep.delete(c + "|" + id); keep.set(c + "|" + id, [c, id, s]);
     }
+    // A worker barred from editing: drop what they may not change (Firestore refuses the same write), keep the rest.
+    let skipped = 0;
+    if (a.noEdit && a.role !== "owner") {
+      const recs0 = [...keep.values()];
+      for (const c of COLLS) {
+        const ids = recs0.filter(r => r[0] === c).map(r => r[1]);
+        for (let i = 0; i < ids.length; i += 90) {
+          const part = ids.slice(i, i + 90);
+          const { results } = await env.DB.prepare(`SELECT id, d FROM docs WHERE t = ? AND c = ? AND del = 0 AND id IN (${part.map(() => "?").join(", ")})`).bind(tenant, c, ...part).all();
+          const old = new Map(results.map(x => [x.id, JSON.parse(x.d)]));
+          for (const id of part) { const r = keep.get(c + "|" + id);
+            if (!editAllowed(c, r[2] === null ? null : JSON.parse(r[2]), old.get(id) || null)) { keep.delete(c + "|" + id); skipped++; } }
+        }
+      }
+      if (!keep.size) return json({ ok: true, n: 0, skipped }, 200, cors);
+      if (skipped) log("warn", "db.push.skipped", { tenant, uid: a.uid, skipped });
+    }
     // The book's counter moves up by the number of records (and at least to now), then each record takes one number of
     // that range, in order. It all runs as one transaction, so two saves can't mix their numbers or land out of order.
     // Few statements (many records each), because the free plan allows 50 queries per request.
@@ -182,8 +218,8 @@ export async function handleDb(request, env, json, cors) {
     }
     await env.DB.batch(stmts);
     const u = await env.DB.prepare("SELECT u FROM ctr WHERE t = ?").bind(tenant).first("u");
-    if (env.LIVE) try { await liveOf(env, tenant).fetch("https://live/notify", { method: "POST", body: JSON.stringify({ u }) }); } catch (e) { console.warn("live", e); }
-    return json({ ok: true, n, u }, 200, cors);
+    if (env.LIVE) try { await liveOf(env, tenant).fetch("https://live/notify", { method: "POST", body: JSON.stringify({ u }) }); } catch (e) { log("warn", "db.live.notify.failed", { tenant, err: e }); }
+    return json({ ok: true, n, u, ...(skipped ? { skipped } : {}) }, 200, cors);
   }
   return json({ error: "Not found" }, 404, cors);
 }

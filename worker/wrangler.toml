@@ -18,6 +18,7 @@ D1_READ = "all"
 
 # Starts the periodic Telegram report every 5 hours of the working day: 7 AM, noon, 5 PM and 10 PM Baghdad
 # (UTC+3), 7 minutes past. The 2 AM daily report covers the night. See dispatchReport() in src/index.js.
+# Every 10 minutes: the self-check that alerts on Telegram when something is down (selfCheck() in src/health.js).
 # At most 10 photo readings a minute per person (Cloudflare's free rate limiter, used in src/index.js), so a stolen or
 # misused login can't burn the AI quota.
 [[ratelimits]]
@@ -55,6 +56,22 @@ name = "SUP_LIMIT"
 namespace_id = "1006"
 simple = { limit = 10, period = 60 }
 
+# At most 30 health checks a minute per address (see src/health.js), for uptime monitors.
+[[ratelimits]]
+name = "HEALTH_LIMIT"
+namespace_id = "1007"
+simple = { limit = 30, period = 60 }
+
+# At most 20 device error reports a minute per address (see clientError in src/index.js).
+[[ratelimits]]
+name = "LOG_LIMIT"
+namespace_id = "1008"
+simple = { limit = 20, period = 60 }
+
+# Keep the worker's logs (JSON lines from src/log.js) in Cloudflare: Workers & Pages > shahm-ai > Logs. Free plan: 200,000 a day, 3 days kept.
+[observability]
+enabled = true
+
 # Live updates between a book's devices: one Durable Object per book (see Live in src/db.js).
 [[durable_objects.bindings]]
 name = "LIVE"
@@ -65,4 +82,68 @@ tag = "v1"
 new_sqlite_classes = ["Live"]
 
 [triggers]
-crons = ["7 4,9,14,19 * * *"]
+crons = ["7 4,9,14,19 * * *", "*/10 * * * *"]
+
+# ---- Staging: a separate test server (shahm-ai-staging) for trying changes before they reach the shops. Deployed only by
+# .github/workflows/staging.yml, which adds its own D1 (shahm-db-staging) and KV, and passes the test Firebase project's
+# keys (STAGING_FIREBASE_* secrets). Nothing here touches the live server, its database or its secrets.
+[env.staging]
+name = "shahm-ai-staging"
+workers_dev = true
+
+[env.staging.vars]
+FIREBASE_API_KEY = "set-by-staging-workflow"
+FIREBASE_PROJECT = "set-by-staging-workflow"
+OWNER_EMAIL = "admin@shahm-debts.app"
+ALLOWED_ORIGINS = "https://staging.shahm-debts.pages.dev,https://localhost,capacitor://localhost"
+GH_REPO = "ane161h3-png/shahm-debts"
+D1_READ = "all"
+
+# No Telegram reports from the test server; its self-check runs, but has no Telegram keys, so it only logs.
+[env.staging.triggers]
+crons = ["*/10 * * * *"]
+
+[[env.staging.ratelimits]]
+name = "AI_LIMIT"
+namespace_id = "2001"
+simple = { limit = 10, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "PUSH_LIMIT"
+namespace_id = "2002"
+simple = { limit = 60, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "BK_LIMIT"
+namespace_id = "2003"
+simple = { limit = 20, period = 60 }
+
+# Higher than live, so a load test (loadtest/) measures the server rather than this limit.
+[[env.staging.ratelimits]]
+name = "DB_LIMIT"
+namespace_id = "2004"
+simple = { limit = 600, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "ST_LIMIT"
+namespace_id = "2005"
+simple = { limit = 30, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "SUP_LIMIT"
+namespace_id = "2006"
+simple = { limit = 10, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "HEALTH_LIMIT"
+namespace_id = "2007"
+simple = { limit = 30, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "LOG_LIMIT"
+namespace_id = "2008"
+simple = { limit = 20, period = 60 }
+
+[[env.staging.durable_objects.bindings]]
+name = "LIVE"
+class_name = "Live"

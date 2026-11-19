@@ -1,0 +1,79 @@
+# A full test copy of the app, to try a change before it reaches the shops: the website at
+# https://staging.shahm-debts.pages.dev and the server shahm-ai-staging (worker/wrangler.toml [env.staging]) with its own
+# D1 database (shahm-db-staging) and backups store, on a separate Firebase project. Never the live site, data or keys.
+# Run: Actions > Staging > Run workflow (pick the branch to try), or push to the branch "staging".
+# Needs, once (MAINTENANCE.md): CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (already set) and a test Firebase project's
+# web keys as STAGING_FIREBASE_API_KEY, STAGING_FIREBASE_PROJECT, STAGING_FIREBASE_APP_ID, STAGING_FIREBASE_SENDER_ID.
+name: Staging
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: staging
+  cancel-in-progress: true
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  FB_KEY: ${{ secrets.STAGING_FIREBASE_API_KEY }}
+  FB_PROJECT: ${{ secrets.STAGING_FIREBASE_PROJECT }}
+  FB_APP: ${{ secrets.STAGING_FIREBASE_APP_ID }}
+  FB_SENDER: ${{ secrets.STAGING_FIREBASE_SENDER_ID }}
+  WORKER_URL: https://shahm-ai-staging.hydrzyd83.workers.dev
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the test project is set up
+        id: ready
+        run: |
+          missing=""
+          for v in CLOUDFLARE_API_TOKEN FB_KEY FB_PROJECT FB_APP; do [ -n "${!v}" ] || missing="$missing $v"; done
+          if [ -n "$missing" ]; then
+            echo "::warning::Staging is not set up yet (missing:$missing). See MAINTENANCE.md, «بيئة التجربة (staging)». Nothing was deployed."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            [ "$FB_PROJECT" != "shahm-debts-a080e" ] || { echo "::error::STAGING_FIREBASE_PROJECT is the live project. Use a separate test project."; exit 1; }
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.ready.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.ready.outputs.ok == 'true'
+        with: { node-version: 22 }
+      - name: Test server (shahm-ai-staging) with its own D1 and KV
+        if: steps.ready.outputs.ok == 'true'
+        working-directory: worker
+        run: |
+          npm ci
+          W="npx wrangler"
+          kv=$($W kv namespace list 2>/dev/null | jq -r '.[] | select(.title | endswith("shahm-backups-staging")) | .id' | head -n1) || kv=""
+          [ -n "$kv" ] || { $W kv namespace create shahm-backups-staging >/dev/null 2>&1 || true; kv=$($W kv namespace list | jq -r '.[] | select(.title | endswith("shahm-backups-staging")) | .id' | head -n1); }
+          db=$($W d1 list --json 2>/dev/null | jq -r '.[] | select(.name == "shahm-db-staging") | .uuid' | head -n1) || db=""
+          [ -n "$db" ] || { $W d1 create shahm-db-staging >/dev/null 2>&1 || true; db=$($W d1 list --json | jq -r '.[] | select(.name == "shahm-db-staging") | .uuid' | head -n1); }
+          [ -n "$kv" ] && printf '\n[[env.staging.kv_namespaces]]\nbinding = "BK"\nid = "%s"\n' "$kv" >> wrangler.toml
+          [ -n "$db" ] && printf '\n[[env.staging.d1_databases]]\nbinding = "DB"\ndatabase_name = "shahm-db-staging"\ndatabase_id = "%s"\n' "$db" >> wrangler.toml
+          $W deploy --env staging --var "FIREBASE_API_KEY:$FB_KEY" --var "FIREBASE_PROJECT:$FB_PROJECT"
+          # The test server's own backup key, made once (a different key from the live one, which is never touched).
+          list=$($W secret list --env staging --format json) || list="[]"
+          echo "$list" | jq -e '.[] | select(.name == "BK_SECRET")' >/dev/null || node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("base64"))' | $W secret put BK_SECRET --env staging
+          curl -s -m 20 "$WORKER_URL/health" || true
+      - name: Test website (staging.shahm-debts.pages.dev) pointed at the test project and server
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          rm -rf site && cp -r web site
+          cat > site/config.js <<EOC
+          // STAGING copy (made by .github/workflows/staging.yml): test Firebase project and test server only.
+          window.FIREBASE_CONFIG = { apiKey: "$FB_KEY", authDomain: "$FB_PROJECT.firebaseapp.com", projectId: "$FB_PROJECT",
+            storageBucket: "$FB_PROJECT.firebasestorage.app", messagingSenderId: "$FB_SENDER", appId: "$FB_APP" };
+          window.AI_URL = "$WORKER_URL";
+          window.STAGING = true;
+          EOC
+          host=${WORKER_URL#https://}
+          for f in site/index.html site/pos/index.html site/admin/index.html; do
+            [ -f "$f" ] && sed -i "s#connect-src 'self'#connect-src 'self' https://$host wss://$host#" "$f"
+          done
+          npx --yes wrangler@4 pages deploy site --project-name shahm-debts --branch staging --commit-dirty=true
+          echo "Staging: https://staging.shahm-debts.pages.dev"

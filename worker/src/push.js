@@ -3,6 +3,8 @@
 // settings/main.push; when a worker records a debt or payment, the app asks this server to push it to them.
 // VAPID_JWK is the server's private P-256 key (a JWK), made once by .github/workflows/ai-worker.yml and kept as a secret.
 
+import { log } from "./log.js";
+
 const enc = new TextEncoder();
 const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const unb64u = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
@@ -84,6 +86,6 @@ export async function handlePush(request, env, json, cors) {
   const msg = { title: str(b.title, 120) || "دفتر الديون", body: str(b.body, 200), tag: str(b.tag, 40), force: kind === "test" };
   const res = await Promise.all(subs.map(s => sendPush(env, s, msg).catch(() => 0)));
   const gone = subs.filter((s, i) => res[i] === 404 || res[i] === 410).map(s => s.h);
-  console.log(`push ${kind}: ${res.filter(x => x >= 200 && x < 300).length}/${subs.length} sent`);
+  log("info", "push.sent", { kind, sent: res.filter(x => x >= 200 && x < 300).length, of: subs.length });
   return json({ sent: res.filter(x => x >= 200 && x < 300).length, tried: subs.length, gone }, 200, cors);
 }
