@@ -1295,7 +1295,10 @@ function contactMatches(q){
   const ws=foldAr(q).split(" ").filter(Boolean);if(!phoneBook||ws.join("").length<2)return [];
   return phoneBook.filter(c=>ws.every(w=>c.f.includes(w))).slice(0,4);
 }
+/* Balances of every account, one pass over all transactions. Inside one render() pass it is worked out once and shared
+   (render() can ask a dozen times); outside a render, and once the pass ends, it is worked out fresh. */
 function stats(){
+  if(stats.pass&&stats.memo)return stats.memo;
   const per=new Map();
   for(const c of S.customers.values())per.set(c.id,{bal:0,debt:0,paid:0,last:c.createdAt||0,count:0});
   for(const t of S.txns.values()){
@@ -1303,6 +1306,7 @@ function stats(){
     if(t.type==="debt"){p.bal+=t.amount;p.debt+=t.amount}else{p.bal-=t.amount;p.paid+=t.amount}
     p.count++;p.last=Math.max(p.last,t.updatedAt||t.createdAt||0);
   }
+  if(stats.pass)stats.memo=per;
   return per;
 }
 function balanceOf(id){let b=0;for(const t of S.txns.values())if(t.customerId===id)b+=t.type==="debt"?t.amount:-t.amount;return b}
@@ -1975,7 +1979,8 @@ function maybeIntro(){
   setTimeout(()=>showIntro(0),600);
 }
 const OPEN_NOTIFY=location.hash==="#notify";
-function render(){
+function render(){stats.memo=null;stats.pass=true;try{return renderNow()}finally{stats.pass=false;stats.memo=null}}
+function renderNow(){
   if(!S.me||$("#app").hidden)return;
   if(OPEN_NOTIFY&&!render.notify){render.notify=true;S.view="settings";S.setPage="notify";try{history.replaceState(null,"",location.pathname+location.search)}catch(e){}}
   maybeIntro();if(!dailyCheck.t&&!render.daily){render.daily=true;setTimeout(dailyCheck,1500)}
@@ -2159,14 +2164,20 @@ function custTableRows(){
   const by={bal:(a,b)=>b.p.bal-a.p.bal,recent:(a,b)=>b.p.last-a.p.last,old:(a,b)=>a.p.last-b.p.last,level:(a,b)=>b.lv-a.lv||b.p.bal-a.p.bal,name:(a,b)=>(a.c.name||"").localeCompare(b.c.name||"","ar")};
   return arr.sort(by[H.sort]||by.bal);
 }
+/* Long lists draw 200 rows, then «عرض المزيد» adds 200 more; a new search, filter or sort starts again at 200.
+   Counts, totals, PDF and Excel always cover every row. */
+function moreLimit(k,key){const M=moreLimit.m||(moreLimit.m={}),m=M[k]||(M[k]={key:"",n:1});if(m.key!==key){m.key=key;m.n=1}return 200*m.n}
+function moreBtn(k,rest,bare){const b=`<button class="btn sm" type="button" data-more="${k}">عرض المزيد (<span class="num">${Math.min(rest,200)}</span> من <span class="num">${rest}</span> باقي)</button>`;
+  return bare?b:`<li class="list-more" style="text-align:center;padding:8px 10px">${b}</li>`}
 const ctStatus=x=>x.locked?["debt","مقفول"]:x.over?["warn","تجاوز الحد"]:x.p.bal>0?["owe","عليه دين"]:x.p.bal<0?["paid","له رصيد"]:["paid","مسدد"];
 function renderHomeTable(){
   const wrap=$("#htWrap"),foot=$("#htFoot");if(!wrap)return;
   const rows=custTableRows(),w=canWrite();let tot=0;for(const x of rows)if(x.p.bal>0)tot+=x.p.bal;
+  const lim=moreLimit("ht",[S.ht.f,S.ht.sort,S.ht.q].join("|")),rest=rows.length-lim;
   const all=[...S.customers.values()].filter(c=>!isSup(c)).length;
   wrap.innerHTML=!rows.length?`<div class="ct-empty">${I.users}<b>${all?"لا توجد نتائج":"لا يوجد زبائن"}</b>${all?"جرّب اسماً آخر أو غيّر التصفية.":""}</div>`
   :`<table class="ct-table"><thead><tr><th class="ct-n">ت</th><th>أسم الزبون</th><th class="h-sm">رقم الهاتف</th><th class="h-sm">الفئة</th><th class="h-sm">آخر حركة</th><th>الدين ${CUR}</th><th class="h-sm">سقف الدين</th><th>الحالة</th><th>الإجراءات</th><th class="h-xs">التفاصيل</th></tr></thead><tbody>
-    ${rows.map((x,i)=>{const c=x.c,p=x.p,[sc,st]=ctStatus(x),l=c.phone&&p.bal>0?waLink(c.phone,fillTpl(c.promise&&promiseLeft(c)<=0?"promise":"remind",c)):"";
+    ${rows.slice(0,lim).map((x,i)=>{const c=x.c,p=x.p,[sc,st]=ctStatus(x),l=c.phone&&p.bal>0?waLink(c.phone,fillTpl(c.promise&&promiseLeft(c)<=0?"promise":"remind",c)):"";
       return `<tr><td class="ct-n num">${i+1}</td><td class="ct-nm"><button class="linkish" type="button" data-open="${esc(c.id)}">${esc(c.name)}</button></td>
       <td class="h-sm num ct-ph">${c.phone?esc(c.phone):'<span class="ro-note">—</span>'}</td>
       <td class="h-sm">${x.lv?`<span class="prio p${x.lv}">${PRIO[x.lv]}</span>`:'<span class="prio p0">منتظم</span>'}</td>
@@ -2175,7 +2186,7 @@ function renderHomeTable(){
       <td class="h-sm num">${c.limit>0?fmt(c.limit):'<span class="ro-note">بدون</span>'}</td>
       <td><span class="ct-st ${sc}">${st}</span></td>
       <td class="ct-ops">${w?`<button type="button" class="ct-b q-pay" data-qpay="${esc(c.id)}" title="تسديد" aria-label="تسديد ${esc(c.name)}">${I.minus}</button><button type="button" class="ct-b q-debt" data-qdebt="${esc(c.id)}" title="دين" aria-label="دين على ${esc(c.name)}">${I.plus}</button>`:""}${l?`<a class="ct-b wa" href="${esc(l)}" target="_blank" rel="noopener" data-remind="${esc(c.id)}" title="تذكير واتساب" aria-label="تذكير ${esc(c.name)}">${I.wa}</a>`:""}</td>
-      <td class="h-xs"><button class="btn sm" type="button" data-open="${esc(c.id)}">${I.book}كشف</button></td></tr>`}).join("")}</tbody></table>`;
+      <td class="h-xs"><button class="btn sm" type="button" data-open="${esc(c.id)}">${I.book}كشف</button></td></tr>`}).join("")}</tbody></table>${rest>0?`<div style="text-align:center;padding:10px 0">${moreBtn("ht",rest,true)}</div>`:""}`;
   foot.innerHTML=`<div class="ct-sum"><span>عدد الزبائن: <b class="num">${rows.length}</b>${rows.length!==all?` من <span class="num">${all}</span>`:""}</span><span>إجمالي الديون: <b class="num amt">${shown("total",fmt(tot))}</b> ${CUR}</span></div>
     ${can("totals")?`<div class="ct-exp"><button class="btn sm" type="button" data-act="htpdf" ${rows.length?"":"disabled"}>${I.pdf}طباعة PDF</button><button class="btn sm" type="button" data-act="htcsv" ${rows.length?"":"disabled"}>${I.save}تصدير Excel</button></div>`:""}`;
 }
@@ -2237,7 +2248,8 @@ function renderList(){
   const total=[...S.customers.values()].filter(c=>kindOf(c)===S.kind).length;
   if(!total){ul.innerHTML=`<li class="empty"><b>${S.kind==="supplier"?"لا يوجد موردين بعد":"لا يوجد زبائن بعد"}</b>${canWrite()?(S.kind==="supplier"?"اضغط «إضافة مورد» لتسجيل ما عليك للموردين.":"اضغط «إضافة زبون» لإضافة أول زبون."):""}</li>`;return}
   if(!arr.length){ul.innerHTML='<li class="empty"><b>لا توجد نتائج</b>جرّب اسماً آخر أو غيّر التصفية.</li>';return}
-  ul.innerHTML=arr.map(c=>{
+  const lim=moreLimit("list",[S.kind,S.filter,S.sort,q].join("|")),rest=arr.length-lim;
+  ul.innerHTML=arr.slice(0,lim).map(c=>{
     const p=per.get(c.id);const cls=p.bal>0?"debt":p.bal<0?"paid":"zero";
     const label=p.bal>0?fmt(p.bal):p.bal<0?"له "+fmt(-p.bal):"مسدد";
     const sub=[c.phone,p.count?p.count+" حركة":"بدون حركات"].filter(Boolean).join(" · ");
@@ -2247,7 +2259,7 @@ function renderList(){
       <span class="meta"><span class="name">${esc(c.name)}${over?' <span class="chip warn" style="font-size:11px;padding:0 6px">تجاوز الحد</span>':""}${lk&&lk.locked?' <span class="chip debt" style="font-size:11px;padding:0 6px">مقفول</span>':""}</span><span class="sub">${esc(sub)}${dueMap.has(c.id)?` <span class="chip ${dueMap.get(c.id)<0?"debt":"warn"}" style="font-size:11px;padding:0 6px">${dueText(dueMap.get(c.id))}</span>`:""}</span></span>
       <span class="chip ${cls}">${shown("list",`<span class="num">${esc(label)}</span>`)}</span></button>
       ${canWrite()?`<span class="row-q"><button type="button" class="q-pay" data-qpay="${esc(c.id)}" aria-label="دفعة من ${esc(c.name)}" title="دفعة">${I.minus}</button><button type="button" class="q-debt" data-qdebt="${esc(c.id)}" aria-label="دين على ${esc(c.name)}" title="دين">${I.plus}</button></span>`:""}</li>`;
-  }).join("");
+  }).join("")+(rest>0?moreBtn("list",rest):"");
   ul.insertAdjacentHTML("afterbegin",`<li class="ro-note list-head" style="padding:2px 10px 6px">${arr.length} ${S.kind==="supplier"?"مورد":"حساب"}${hiddenNums().includes("list")?eyeBtn():""}</li>`);
   if(S.kind==="supplier"){const m=monthISO();let owe=0,buy=0,paid=0;
     for(const c of S.customers.values())if(isSup(c)){const b=per.get(c.id).bal;if(b>0)owe+=b}
@@ -4531,6 +4543,7 @@ document.addEventListener("click",e=>{
   const pm=t.closest("[data-paymode]");if(pm){S.rep.pmode=pm.dataset.paymode;render();return}
   const rpt=t.closest("[data-reptab]");if(rpt){S.rep.tab=rpt.dataset.reptab;render();return}
   const rpp=t.closest("[data-repper]");if(rpp){S.rep.per=rpp.dataset.repper;if(S.rep.per==="custom"&&!S.rep.from){S.rep.to=todayISO();S.rep.from=addDays(todayISO(),-29)}render();return}
+  const mr=t.closest("[data-more]");if(mr){const k=mr.dataset.more;const M=moreLimit.m||{};if(M[k])M[k].n++;if(k==="ht")renderHomeTable();else renderList();return}
   const htf=t.closest("[data-htf]");if(htf){S.ht.f=htf.dataset.htf;document.querySelectorAll("[data-htf]").forEach(b=>b.setAttribute("aria-pressed",b===htf));renderHomeTable();return}
   const wf=t.closest("[data-wf]");if(wf){S.rep.wf=wf.dataset.wf;S.rep.wlimit=40;render();return}
   const cg=t.closest("[data-cloudget]");if(cg){if(isAdmin())cloudGet(cg.dataset.cloudget);return}
