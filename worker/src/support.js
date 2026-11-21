@@ -17,6 +17,7 @@
 // A shop's workers and anyone else get 403. A message is never edited or deleted by anyone.
 import { sendPush } from "./push.js";
 import { validTenant } from "./db.js";
+import { log } from "./log.js";
 
 const MAX_TEXT = 2000;
 const MAX_IMG = 400_000; // characters of the photo's data URL (the app compresses it to ~150 KB)
@@ -96,7 +97,7 @@ async function telegram(env, text) {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text, disable_web_page_preview: true }),
   }).catch(() => null);
-  if (!r || !r.ok) console.log("support telegram failed", r && r.status);
+  if (!r || !r.ok) log("warn", "support.telegram.failed", { status: r && r.status });
 }
 
 const hashOf = async e => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(e))).slice(0, 8)].map(b => b.toString(16).padStart(2, "0")).join("");

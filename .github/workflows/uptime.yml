@@ -1,0 +1,52 @@
+# Outside watch on the live app, from GitHub's machines (another company's network, so it still works when all of
+# Cloudflare is down): every 15 minutes it opens the website and the server's /health. When one stops answering it sends
+# one Telegram alert, and one more when it is back (it compares with the previous run). The worker's own self-check
+# (worker/src/health.js) watches the rest from inside every 10 minutes. GitHub may start scheduled runs late.
+name: Uptime
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+permissions:
+  actions: read
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the site and the server
+        id: probe
+        run: |
+          bad=""
+          for u in "https://shahm-debts.app/" "https://shahm-ai.hydrzyd83.workers.dev/health"; do
+            ok=0
+            for i in 1 2 3; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$u" || true)
+              if [ "$code" = 200 ]; then ok=1; break; fi
+              sleep 20
+            done
+            [ $ok = 1 ] || bad="$bad\n- $u ($code)"
+          done
+          printf 'bad<<EOF\n%b\nEOF\n' "$bad" >> "$GITHUB_OUTPUT"
+          [ -z "$bad" ] && echo "All up" || printf "Down:%b\n" "$bad"
+      - name: Alert on Telegram when the state changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BAD: ${{ steps.probe.outputs.bad }}
+        run: |
+          # The previous finished run: failure = it was already down (alert sent then), success = it was up.
+          prev=$(gh run list -R "${{ github.repository }}" --workflow uptime.yml --status completed --limit 1 --json conclusion -q '.[0].conclusion' || echo "")
+          send() { [ -n "$TELEGRAM_TOKEN" ] && curl -s -m 20 -X POST "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage" --data-urlencode "chat_id=$TELEGRAM_CHAT_ID" --data-urlencode "text=$1" >/dev/null || true; }
+          if [ -n "$(echo "$BAD" | tr -d '[:space:]')" ]; then
+            [ "$prev" = failure ] || send "🔴 البرنامج ما يرد من برّا (فحص GitHub):$BAD
+          الأجهزة تحفظ عندها وترسل لما يرجع. راح توصلك رسالة لما يرجع."
+            exit 1
+          elif [ "$prev" = failure ]; then
+            send "🟢 البرنامج رجع يرد (فحص GitHub)."
+          fi

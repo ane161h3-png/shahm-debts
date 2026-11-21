@@ -1,0 +1,84 @@
+# Automatic checks on every pull request and every push to main, before anything reaches the shops:
+# - unit: the worker's own logic (permissions, health, logs), the backup counter, every page's scripts parse.
+# - rules: firestore.rules on the Firebase emulator (who may read, add, change, delete, in the main book and shops).
+# - worker: the server builds for live and for staging (wrangler --dry-run, no deploy).
+# - e2e: the whole app in a real browser on a local copy (emulators + local worker + web/), tests/e2e/run.sh.
+# Nothing here uses the live project or any secret. Turn on branch protection so a red check blocks the merge (MAINTENANCE.md).
+name: Tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  unit-rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: actions/cache@v4
+        with: { path: ~/.cache/firebase/emulators, key: firebase-emulators-v1 }
+      - name: Scripts parse
+        run: |
+          for f in scripts/*.mjs; do node --check "$f"; done
+          for f in scripts/*.sh; do bash -n "$f"; done
+      - run: npm install --no-audit --no-fund
+        working-directory: tests
+      - name: Unit tests (with coverage)
+        run: npm run coverage
+        working-directory: tests
+      - name: Firestore rules tests
+        run: npm run rules
+        working-directory: tests
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: Builds for live
+        run: npx wrangler deploy --dry-run --outdir /tmp/live
+      - name: Builds for staging
+        run: npx wrangler deploy --dry-run --env staging --outdir /tmp/staging
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: actions/cache@v4
+        with: { path: ~/.cache/firebase/emulators, key: firebase-emulators-v1 }
+      - run: npm ci
+        working-directory: worker
+      - run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium
+        working-directory: tests
+      - name: Browser tests
+        run: bash tests/e2e/run.sh
+      - name: Screenshots and logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-work
+          path: |
+            tests/e2e/.work/
+            !tests/e2e/.work/wk/node_modules
+            !tests/e2e/.work/wk/.wrangler
+            !tests/e2e/.work/site
+          retention-days: 7

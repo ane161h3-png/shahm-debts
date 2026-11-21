@@ -1,0 +1,63 @@
+# Load test on STAGING only (loadtest/README.md): makes the test accounts, then runs k6 with up to 3000 people at once.
+# Needs the staging secrets (staging.yml) plus STAGING_OWNER_EMAIL / STAGING_OWNER_PASSWORD (admin on the staging site).
+name: Load test
+on:
+  workflow_dispatch:
+    inputs:
+      scale:
+        description: "1 = 3000 people, 0.1 = 300"
+        default: "0.1"
+      hold:
+        description: "How long the peak lasts (e.g. 5m, 10m)"
+        default: "5m"
+      accounts:
+        description: "Test accounts to spread people over (≤ 80)"
+        default: "50"
+permissions:
+  contents: read
+concurrency:
+  group: loadtest
+  cancel-in-progress: false
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      BASE: https://shahm-ai-staging.hydrzyd83.workers.dev
+      WORKER: https://shahm-ai-staging.hydrzyd83.workers.dev
+      FB_KEY: ${{ secrets.STAGING_FIREBASE_API_KEY }}
+      FB_PROJECT: ${{ secrets.STAGING_FIREBASE_PROJECT }}
+      OWNER_EMAIL: ${{ secrets.STAGING_OWNER_EMAIL }}
+      OWNER_PASSWORD: ${{ secrets.STAGING_OWNER_PASSWORD }}
+    steps:
+      - name: Check staging is set up
+        run: |
+          for v in FB_KEY FB_PROJECT OWNER_EMAIL OWNER_PASSWORD; do [ -n "${!v}" ] || { echo "::error::Missing staging secret for $v (loadtest/README.md)"; exit 1; }; done
+          curl -sf -m 20 "$BASE/health" || { echo "::error::The staging server does not answer. Run the Staging workflow first."; exit 1; }
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Test accounts
+        run: N=${{ inputs.accounts }} OUT=$PWD/loadtest/accounts.json node loadtest/make-accounts.mjs
+      - name: Quick check (100 people)
+        run: USERS=100 ACCOUNTS=$PWD/loadtest/accounts.json node loadtest/smoke.mjs
+      - uses: grafana/setup-k6-action@v1
+      - name: k6
+        run: |
+          ulimit -n 65535 || true
+          k6 run --summary-export=summary.json -e BASE="$BASE" -e FB_KEY="$FB_KEY" -e ACCOUNTS=./accounts.json \
+            -e SCALE=${{ inputs.scale }} -e HOLD=${{ inputs.hold }} k6-shahm.js
+        working-directory: loadtest
+      - name: Summary
+        if: always()
+        working-directory: loadtest
+        run: |
+          [ -f summary.json ] || exit 0
+          node -e 'const s=require("./summary.json").metrics;const g=(m,k)=>s[m]&&s[m][k]!==undefined?Math.round(s[m][k]):"-";
+            const L=["## Load test (scale ${{ inputs.scale }})","| | p95 ms | avg ms |","|---|---|---|",
+            ...["http_req_duration","login_ms"].map(m=>`| ${m} | ${g(m,"p(95)")} | ${g(m,"avg")} |`),
+            `requests: ${g("http_reqs","count")}, failed: ${s.http_req_failed?(s.http_req_failed.value*100).toFixed(2):"-"}%, 429: ${g("rate_limited_429","count")}`];
+            console.log(L.join("\n"))' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: k6-summary, path: loadtest/summary.json, if-no-files-found: ignore }

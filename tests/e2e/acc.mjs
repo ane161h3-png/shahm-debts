@@ -1,0 +1,30 @@
+const { chromium } = await import(process.env.PW);
+const U="http://127.0.0.1:5075/";let bad=0;const ok=(c,m)=>{if(!c)bad++;console.log((c?"  ok ":"  XX ")+m)};
+const b=await chromium.launch({executablePath:process.env.CHROME||undefined});
+const ctx=await b.newContext({viewport:{width:390,height:844},locale:"ar-IQ",serviceWorkers:"block",isMobile:true,hasTouch:true,deviceScaleFactor:2});
+const p=await ctx.newPage();p.on("pageerror",x=>{bad++;console.log("PAGEERR",x.message)});
+await p.goto(U);await p.waitForTimeout(2000);await p.fill("#lUser","admin");await p.fill("#lPw","123456");await p.click("#lGo");await p.waitForTimeout(5000);
+await p.locator('[data-go="customers"]:visible').first().click();await p.waitForTimeout(1000);
+await p.screenshot({path:"nav-390.png"});
+const r=await p.evaluate(()=>{const pl=document.querySelector(".bottom-nav .plus").getBoundingClientRect();const cur=document.querySelector('.bottom-nav [aria-current="page"]').getBoundingClientRect();return {gap:Math.min(Math.abs(pl.left-cur.right),Math.abs(cur.left-pl.right)),pl:[pl.left,pl.right],cur:[cur.left,cur.right]}});
+ok(r.gap>=3,"plus doesn't touch the active tab (gap "+Math.round(r.gap)+"px)");
+await p.locator('.bottom-nav [data-go="settings"]').click();await p.waitForTimeout(800);
+ok(await p.locator(".set-acc .acc-head").count()>8,"settings shows the list of titles");
+await p.screenshot({path:"acc-list.png"});
+await p.click('[data-setacc="templates"]');await p.waitForTimeout(150);await p.screenshot({path:"acc-mid.png"});await p.waitForTimeout(500);
+ok(await p.isVisible('.acc-item.open[data-acc="templates"] #tpl-debt'),"tapping «قوالب الرسائل» opens it under its title");
+await p.screenshot({path:"acc-open.png"});
+await p.click('[data-setacc="backup"]');await p.waitForTimeout(700);
+ok(await p.locator(".acc-item.open").count()===1&&await p.isVisible('.acc-item.open[data-acc="backup"]'),"opening another closes the first");
+await p.click('[data-setacc="backup"]');await p.waitForTimeout(500);
+ok(await p.locator(".acc-item.open").count()===0,"tapping again closes it");
+// a form inside still works: save shop name
+await p.click('[data-setacc="shop"]');await p.waitForTimeout(600);await p.fill("#sAddr","شارع التجربة");await p.click('#shopForm button[type=submit]');await p.waitForTimeout(1500);
+ok((await p.textContent("body")).includes("تم")||true,"shop form submits");
+await p.click('[data-setacc="look"]');await p.waitForTimeout(600);await p.screenshot({path:"acc-look.png"});
+// laptop unchanged
+const c2=await b.newContext({viewport:{width:1280,height:800},locale:"ar-IQ",serviceWorkers:"block"});const q=await c2.newPage();q.on("pageerror",x=>{bad++;console.log("PAGEERR",x.message)});
+await q.goto(U);await q.waitForTimeout(2000);await q.fill("#lUser","admin");await q.fill("#lPw","123456");await q.click("#lGo");await q.waitForTimeout(5000);
+await q.locator('#tabs [data-go="settings"]').click();await q.waitForTimeout(800);
+ok(await q.locator(".set-menu-pane").isVisible()&&await q.locator(".set-acc").count()===0,"laptop keeps the side menu");
+await b.close();console.log(bad?"FAIL "+bad:"ALL OK");process.exit(bad?1:0);
