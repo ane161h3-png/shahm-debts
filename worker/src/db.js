@@ -18,6 +18,32 @@
 
 import { log } from "./log.js";
 
+// D1 runs one query at a time per database, and refuses work for a few seconds when too much arrives at once ("D1 DB is
+// overloaded", the 3000-person load test). Such a refusal changed nothing, so the same query can simply run again a moment
+// later. A whole batch is one transaction, so retrying it is safe too.
+export const busyErr = e => /overloaded|too many resources|D1_ERROR.*(reset|busy|timed out|try again)|SQLITE_BUSY/i.test(String(e && (e.message || e)));
+export async function retry(fn, tries = 4, sleep = ms => new Promise(r => setTimeout(r, ms))) {
+  for (let i = 0; ; i++) {
+    try { return await fn(); }
+    catch (e) { if (i >= tries - 1 || !busyErr(e)) throw e; await sleep(150 * 2 ** i + Math.random() * 150); }
+  }
+}
+
+// Pages of /db/pull kept in this worker's memory, keyed by book, since and the book's counter. Any save moves the counter,
+// so a kept page is never older than the book: many devices asking the same thing (every device opening the book from 0,
+// or all of them after one live message) cost D1 one tiny read of the counter instead of the whole page.
+const PULLS = new Map(), PULL_MAX = 40, PULL_BYTES = 24e6;
+let pullBytes = 0;
+export function pullGet(k) { const v = PULLS.get(k); if (v) { PULLS.delete(k); PULLS.set(k, v); } return v; }
+export function pullPut(k, v) {
+  if (v.length > PULL_BYTES / 4) return;
+  if (PULLS.has(k)) { pullBytes -= PULLS.get(k).length; PULLS.delete(k); }
+  PULLS.set(k, v); pullBytes += v.length;
+  for (const [old, x] of PULLS) { if (PULLS.size <= PULL_MAX && pullBytes <= PULL_BYTES) break; PULLS.delete(old); pullBytes -= x.length; }
+}
+// Books already found filled (seeded) stay so; asked once per worker instead of on every pull.
+const SEEDED = new Set();
+
 const COLLS = new Set(["customers", "txns"]);
 const MAX_OPS = 400;
 const PAGE = 1000;
@@ -30,7 +56,7 @@ export const validId = id => typeof id === "string" && id.length > 0 && id.lengt
 let schemaReady = false;
 export async function schema(env) {
   if (schemaReady) return;
-  await env.DB.batch([
+  await retry(() => env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS docs (t TEXT NOT NULL, c TEXT NOT NULL, id TEXT NOT NULL, d TEXT, u INTEGER NOT NULL, del INTEGER NOT NULL DEFAULT 0, by TEXT, PRIMARY KEY (t, c, id)) WITHOUT ROWID"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS docs_tu ON docs (t, u)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS ctr (t TEXT PRIMARY KEY, u INTEGER NOT NULL)"),
@@ -39,7 +65,7 @@ export async function schema(env) {
     // Books whose D1 copy a full check has filled (see seeded below); main was filled before this table existed.
     env.DB.prepare("CREATE TABLE IF NOT EXISTS books (t TEXT PRIMARY KEY, seeded INTEGER NOT NULL) WITHOUT ROWID"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS stlinks (t TEXT NOT NULL, cid TEXT NOT NULL, k TEXT NOT NULL UNIQUE, nm TEXT, at INTEGER NOT NULL, by TEXT, PRIMARY KEY (t, cid)) WITHOUT ROWID"),
-  ]);
+  ]));
   schemaReady = true;
 }
 
@@ -117,8 +143,13 @@ export function editAllowed(c, d, old, now = Date.now()) {
 const readOn = (env, tenant) => { const l = String(env.D1_READ || "").split(",").map(x => x.trim()); return l.includes("all") || l.includes(tenant); };
 // Listed in D1_READ and filled: a shop listed (through "all") before any of its devices ran a full check keeps reading
 // Firestore until one has, so nobody ever opens a half-copied book. A new shop's first check (nothing to copy) fills it.
-const readsHere = async (env, tenant) => readOn(env, tenant)
-  && (tenant === "main" || !!(await env.DB.prepare("SELECT 1 AS x FROM books WHERE t = ?").bind(tenant).first("x")));
+const readsHere = async (env, tenant) => {
+  if (!readOn(env, tenant)) return false;
+  if (tenant === "main" || SEEDED.has(tenant)) return true;
+  const yes = !!(await retry(() => env.DB.prepare("SELECT 1 AS x FROM books WHERE t = ?").bind(tenant).first("x")));
+  if (yes) SEEDED.add(tenant);
+  return yes;
+};
 
 // One per book: holds the open live links of its devices and tells them when something was saved. Idle links hibernate
 // (no cost), and the keep-alive ping is answered without waking it.
@@ -153,14 +184,24 @@ export async function handleDb(request, env, json, cors) {
 
   if (what === "pull" && request.method === "GET") {
     const since = Math.max(0, Math.floor(Number(url.searchParams.get("since")) || 0));
-    const { results } = await env.DB.prepare("SELECT c, id, d, u, del FROM docs WHERE t = ? AND u > ? ORDER BY u LIMIT ?").bind(tenant, since, PAGE + 1).all();
-    const more = results.length > PAGE, rows = results.slice(0, PAGE).map(x => [x.c, x.id, x.del ? null : JSON.parse(x.d), x.u]);
-    return json({ rows, more, u: rows.length ? rows[rows.length - 1][3] : since, read: await readsHere(env, tenant) }, 200, cors);
+    const [ctr, read] = await Promise.all([
+      retry(() => env.DB.prepare("SELECT u FROM ctr WHERE t = ?").bind(tenant).first("u")), readsHere(env, tenant)]);
+    // Nothing saved after since: answer without reading the book.
+    if (ctr != null && since >= ctr) return json({ rows: [], more: false, u: since, read }, 200, cors);
+    const key = tenant + "|" + since + "|" + (ctr == null ? "-" : ctr);
+    let page = pullGet(key);
+    if (!page) {
+      const { results } = await retry(() => env.DB.prepare("SELECT c, id, d, u, del FROM docs WHERE t = ? AND u > ? ORDER BY u LIMIT ?").bind(tenant, since, PAGE + 1).all());
+      const more = results.length > PAGE, rows = results.slice(0, PAGE).map(x => [x.c, x.id, x.del ? null : JSON.parse(x.d), x.u]);
+      page = JSON.stringify({ rows, more, u: rows.length ? rows[rows.length - 1][3] : since }).slice(0, -1);
+      if (ctr != null) pullPut(key, page);
+    }
+    return new Response(page + ',"read":' + read + "}", { status: 200, headers: { ...cors, "Content-Type": "application/json; charset=utf-8" } });
   }
 
   if (what === "seeded" && request.method === "POST") {
     if (a.role === "viewer") return json({ error: "ما عندك صلاحية لهذا التعديل." }, 403, cors);
-    await env.DB.prepare("INSERT OR IGNORE INTO books (t, seeded) VALUES (?, ?)").bind(tenant, Date.now()).run();
+    await retry(() => env.DB.prepare("INSERT OR IGNORE INTO books (t, seeded) VALUES (?, ?)").bind(tenant, Date.now()).run());
     return json({ ok: true }, 200, cors);
   }
 
@@ -192,7 +233,7 @@ export async function handleDb(request, env, json, cors) {
         const ids = recs0.filter(r => r[0] === c).map(r => r[1]);
         for (let i = 0; i < ids.length; i += 90) {
           const part = ids.slice(i, i + 90);
-          const { results } = await env.DB.prepare(`SELECT id, d FROM docs WHERE t = ? AND c = ? AND del = 0 AND id IN (${part.map(() => "?").join(", ")})`).bind(tenant, c, ...part).all();
+          const { results } = await retry(() => env.DB.prepare(`SELECT id, d FROM docs WHERE t = ? AND c = ? AND del = 0 AND id IN (${part.map(() => "?").join(", ")})`).bind(tenant, c, ...part).all());
           const old = new Map(results.map(x => [x.id, JSON.parse(x.d)]));
           for (const id of part) { const r = keep.get(c + "|" + id);
             if (!editAllowed(c, r[2] === null ? null : JSON.parse(r[2]), old.get(id) || null)) { keep.delete(c + "|" + id); skipped++; } }
@@ -216,8 +257,8 @@ export async function handleDb(request, env, json, cors) {
           ON CONFLICT (t, c, id) DO UPDATE SET ${del ? "" : "d = excluded.d, "}u = excluded.u, del = excluded.del, by = excluded.by`).bind(...args));
       }
     }
-    await env.DB.batch(stmts);
-    const u = await env.DB.prepare("SELECT u FROM ctr WHERE t = ?").bind(tenant).first("u");
+    await retry(() => env.DB.batch(stmts));
+    const u = await retry(() => env.DB.prepare("SELECT u FROM ctr WHERE t = ?").bind(tenant).first("u"));
     if (env.LIVE) try { await liveOf(env, tenant).fetch("https://live/notify", { method: "POST", body: JSON.stringify({ u }) }); } catch (e) { log("warn", "db.live.notify.failed", { tenant, err: e }); }
     return json({ ok: true, n, u, ...(skipped ? { skipped } : {}) }, 200, cors);
   }

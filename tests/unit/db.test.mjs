@@ -38,3 +38,28 @@ test("barred worker: customer name and limit stay, no customer delete", () => {
   assert.ok(!editAllowed("customers", null, c));
   assert.ok(editAllowed("customers", { id: "c", name: "a", phone: "1" }, { id: "c", name: "a" }));
 });
+
+test("busy D1 is asked again, other errors are not", async () => {
+  const { retry, busyErr } = await import("../../worker/src/db.js");
+  assert.ok(busyErr(new Error("D1_ERROR: D1 DB is overloaded. Too many resources consumed within a 10 second window.")));
+  assert.ok(!busyErr(new Error("D1_ERROR: no such table: docs")));
+  const nap = async () => {};
+  let n = 0;
+  assert.equal(await retry(async () => { if (++n < 3) throw new Error("D1 DB is overloaded"); return "ok"; }, 4, nap), "ok");
+  assert.equal(n, 3);
+  n = 0;
+  await assert.rejects(retry(async () => { n++; throw new Error("SQL syntax"); }, 4, nap), /syntax/);
+  assert.equal(n, 1, "a real error is not repeated");
+  n = 0;
+  await assert.rejects(retry(async () => { n++; throw new Error("overloaded"); }, 4, nap), /overloaded/);
+  assert.equal(n, 4, "gives up after 4 tries");
+});
+
+test("pull page memory stays bounded", async () => {
+  const { pullGet, pullPut } = await import("../../worker/src/db.js");
+  for (let i = 0; i < 60; i++) pullPut("b|0|" + i, "x".repeat(1000));
+  assert.equal(pullGet("b|0|0"), undefined, "oldest dropped");
+  assert.equal(pullGet("b|0|59"), "x".repeat(1000));
+  pullPut("big", "y".repeat(7e6));
+  assert.equal(pullGet("big"), undefined, "a page too big is not kept");
+});
