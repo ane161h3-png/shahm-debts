@@ -63,3 +63,35 @@ test("pull page memory stays bounded", async () => {
   pullPut("big", "y".repeat(7e6));
   assert.equal(pullGet("big"), undefined, "a page too big is not kept");
 });
+
+test("Firestore down: last known role kept, else 503, never a cached refusal", async () => {
+  const { access } = await import("../../worker/src/db.js");
+  const env = { FIREBASE_API_KEY: "k", FIREBASE_PROJECT: "p", AUTH_URL: "http://auth", FIRESTORE_URL: "http://fs", OWNER_EMAIL: "admin@x" };
+  let fsDown = false, lookups = 0, reads = 0;
+  const real = globalThis.fetch, realNow = Date.now;
+  globalThis.fetch = async (url) => {
+    url = String(url);
+    if (url.startsWith("http://auth")) { lookups++; return new Response(JSON.stringify({ users: [{ localId: "w1", email: "w@x" }] })); }
+    reads++;
+    if (fsDown) return new Response("{}", { status: 429 });
+    if (url.endsWith("/settings/owner")) return new Response(JSON.stringify({ fields: { uid: { stringValue: "own" } } }));
+    if (url.endsWith("/users/w1")) return new Response(JSON.stringify({ fields: { status: { stringValue: "active" }, role: { stringValue: "editor" } } }));
+    return new Response("{}", { status: 404 });
+  };
+  const req = t => new Request("http://w/db/pull", { headers: { Authorization: "Bearer " + t } });
+  try {
+    let t0 = realNow();
+    Date.now = () => t0;
+    assert.equal((await access(req("tokA"), env, "main")).role, "editor");
+    assert.equal((await access(req("tokB"), env, "main")).role, "editor", "same account, new login");
+    assert.equal(reads, 2, "the role is read once per account, not per login");
+    t0 += 10 * 60e3; fsDown = true;
+    assert.equal((await access(req("tokA"), env, "main")).role, "editor", "Firestore down: last role kept");
+    const fresh = await access(new Request("http://w/db/pull", { headers: { Authorization: "Bearer tokC" } }), env, "AbCdEf0123456789");
+    assert.equal(fresh.status, 503, "nothing known: try again, not 403");
+    fsDown = false;
+    const shop = await access(req("tokC"), env, "AbCdEf0123456789");
+    assert.equal(shop.role, "", "after recovery the real answer comes back");
+    assert.ok(lookups >= 3);
+  } finally { globalThis.fetch = real; Date.now = realNow; }
+});

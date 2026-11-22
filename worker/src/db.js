@@ -78,27 +78,40 @@ export const barred = doc => { const m = doc && doc.fields && doc.fields.perms &
   return !!(m && m.fields && m.fields.edit && m.fields.edit.booleanValue === false); };
 
 // Who is asking and what they may do in this book: {uid, role: "owner" | "editor" | "viewer" | ""}.
-const roles = new Map();
+// Two memories, so a busy hour costs Firebase little: a login (token) → its account for a few minutes, and an account's
+// role in a book for ROLE_TTL. When Firestore can't answer (its daily limit, an outage) the last role it gave is used for
+// up to ROLE_KEEP instead of refusing everyone; with none known the answer is 503 (try again), never a cached refusal.
+const roles = new Map(), logins = new Map();
+const ROLE_KEEP = 6 * 3600e3, LOGIN_TTL = 5 * 60e3;
+const remember = (m, k, v) => { if (m.size > 2000) m.clear(); m.set(k, v); };
 export async function access(request, env, tenant) {
   // A browser can't set headers on a WebSocket, so the live link sends the login as its second protocol.
   const proto = (request.headers.get("Sec-WebSocket-Protocol") || "").split(",").map(x => x.trim());
   const token = proto[0] === "bearer" && proto[1] ? proto[1] : (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return { error: "سجّل دخولك أولاً.", status: 401 };
-  const key = tenant + "|" + token, hit = roles.get(key);
-  if (hit && Date.now() - hit.at < ROLE_TTL) return hit.a;
-  const authUrl = env.AUTH_URL || "https://identitytoolkit.googleapis.com";
-  const r = await fetch(`${authUrl}/v1/accounts:lookup?key=${env.FIREBASE_API_KEY}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: token }) });
-  const j = await r.json().catch(() => ({}));
-  const user = r.ok && j.users && j.users[0];
-  if (!user) return { error: "انتهت الجلسة. اطلع وادخل من جديد.", status: 401 };
+  const now = Date.now();
+  let user = logins.get(token);
+  if (!user || now - user.at > LOGIN_TTL) {
+    const authUrl = env.AUTH_URL || "https://identitytoolkit.googleapis.com";
+    const r = await fetch(`${authUrl}/v1/accounts:lookup?key=${env.FIREBASE_API_KEY}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: token }) });
+    const j = await r.json().catch(() => ({}));
+    const u = r.ok && j.users && j.users[0];
+    if (!u) return r.status >= 500 || r.status === 429 ? { error: "الخادم مشغول، حاول بعد شوية.", status: 503 } : { error: "انتهت الجلسة. اطلع وادخل من جديد.", status: 401 };
+    user = { at: now, uid: u.localId, email: u.email };
+    remember(logins, token, user);
+  }
+  const uid = user.uid, key = tenant + "|" + uid, hit = roles.get(key);
+  if (hit && now - hit.at < ROLE_TTL) return hit.a;
   const docs = `${env.FIRESTORE_URL || "https://firestore.googleapis.com"}/v1/projects/${env.FIREBASE_PROJECT}/databases/(default)/documents`;
-  const get = async p => { const x = await fetch(`${docs}/${p}`, { headers: { Authorization: "Bearer " + token } }); return { status: x.status, doc: x.ok ? await x.json().catch(() => null) : null }; };
-  const uid = user.localId;
+  let down = false;
+  const get = async p => { const x = await fetch(`${docs}/${p}`, { headers: { Authorization: "Bearer " + token } });
+    if (!x.ok && x.status !== 404 && x.status !== 403) down = true;
+    return { status: x.status, doc: x.ok ? await x.json().catch(() => null) : null }; };
   let role = "", noEdit = false;
   if (tenant === "main") {
     const o = await get("settings/owner"), ownerUid = field(o.doc, "uid");
     if (ownerUid ? ownerUid === uid : o.status === 404 && user.email === env.OWNER_EMAIL) role = "owner";
-    else {
+    else if (!down) {
       const p = await get(`users/${uid}`);
       if (p.doc && field(p.doc, "status") === "active") { role = field(p.doc, "role") === "editor" ? "editor" : "viewer"; noEdit = barred(p.doc); }
     }
@@ -112,9 +125,13 @@ export async function access(request, env, tenant) {
       }
     }
   }
+  if (down && !role) {
+    log("warn", "db.access.firestore_down", { tenant, uid, kept: !!hit });
+    if (hit && now - hit.at < ROLE_KEEP) return hit.a;
+    return { error: "الخادم مشغول، حاول بعد شوية.", status: 503 };
+  }
   const a = { uid, role, noEdit };
-  if (roles.size > 500) roles.clear();
-  roles.set(key, { at: Date.now(), a });
+  remember(roles, key, { at: now, a });
   return a;
 }
 
