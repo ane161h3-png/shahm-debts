@@ -4,7 +4,7 @@
 //   WORKER=https://shahm-ai-staging.hydrzyd83.workers.dev N=50 node loadtest/make-accounts.mjs
 // Refuses the live project. Firebase lets one address make about 100 accounts an hour, so keep N ≤ 80.
 import { writeFileSync, existsSync, readFileSync } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { createHmac } from "node:crypto";
 
 const env = k => { const v = process.env[k]; if (!v) { console.error(`missing ${k}`); process.exit(2); } return v; };
 const KEY = env("FB_KEY"), PROJECT = env("FB_PROJECT"), WORKER = env("WORKER").replace(/\/$/, "");
@@ -27,10 +27,13 @@ const prof = TENANT === "main" ? uid => `users/${uid}` : uid => `shops/${TENANT}
 const old = existsSync(OUT) ? JSON.parse(readFileSync(OUT, "utf8")) : [];
 const accounts = [];
 for (let i = 0; i < N; i++) {
-  const email = `k6-${String(i).padStart(3, "0")}@loadtest.invalid`;
+  // k6b-: the first accounts (k6-) had random passwords that a CI run doesn't keep. Each password now comes from the
+  // owner's password and the address, so any later run signs the same accounts in again.
+  const email = `k6b-${String(i).padStart(3, "0")}@loadtest.invalid`;
   const known = old.find(a => a.email === email);
-  const password = known ? known.password : randomBytes(9).toString("base64url");
+  const password = known ? known.password : createHmac("sha256", OWNER_PASSWORD).update(email).digest("base64url").slice(0, 20);
   let s = known ? await signIn(email, password) : await post("signUp", { email, password, returnSecureToken: true });
+  if (!s.ok && s.j.error && s.j.error.message === "EMAIL_EXISTS") s = await signIn(email, password);
   if (!s.ok) { console.error(`${email}: ${s.j.error && s.j.error.message}`); continue; }
   const uid = s.j.localId;
   const r = await fetch(`${docs}/${prof(uid)}`, { method: "PATCH", headers: { Authorization: "Bearer " + ownerToken, "Content-Type": "application/json" },

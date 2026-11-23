@@ -449,7 +449,7 @@ export default {
       catch (e) { log("error", "route.failed", { path: new URL(request.url).pathname, err: e }); return json({ error: "تعذّر الاتصال بالنسخ على السحابة." }, 502, cors); }
     }
     if (new URL(request.url).pathname.startsWith("/db/")) {
-      try { return await handleDb(request, env, json, cors); }
+      try { return await handleDb(request, env, json, cors, ctx); }
       catch (e) { log("error", "route.failed", { path: new URL(request.url).pathname, err: e }); return json({ error: "تعذّر الاتصال بقاعدة البيانات الجديدة." }, 502, cors); }
     }
     if (new URL(request.url).pathname.startsWith("/support/")) {

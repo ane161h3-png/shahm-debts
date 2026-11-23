@@ -1644,13 +1644,19 @@ async function d1Flush(){
     if(r.ok){done();if(d1Out.size)d1Kick(300)}
     // Turned off on the server, or a save it will never take: drop it (the daily check sends the book again anyway).
     else if(d1Off||r.status===400||r.status===403||r.status===413){if(d1Off)d1Out.clear();done();d1Last({...(d1Last()||{}),err:r.j.error||"خطأ "+r.status,errAt:Date.now()})}
-    else d1Kick(60e3);
+    else d1Kick(r.status===502||r.status===503?5e3+Math.random()*15e3:60e3);
   }catch(e){d1Kick(60e3)}
 }
 addEventListener("online",()=>{if(d1Out.size)d1Kick(2000)});
 const stableJson=v=>JSON.stringify(v,(k,x)=>x&&typeof x==="object"&&!Array.isArray(x)?Object.keys(x).sort().reduce((o,k2)=>(o[k2]=x[k2],o),{}):x);
+/* GET from the worker, asked again twice after a short random wait when it's busy (502/503: D1 overloaded for a moment),
+   so many devices don't all come back at the same instant. */
+async function d1Get(path){
+  for(let i=0;;i++){const r=await fetch(d1Url()+path,{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
+    if((r.status!==502&&r.status!==503)||i>=2)return r;
+    await new Promise(ok=>setTimeout(ok,700*(i+1)+Math.random()*1500))}}
 async function d1Pull(){const all=new Map();let since=0;
-  for(;;){const r=await fetch(d1Url()+"pull?tenant="+encodeURIComponent(bkTenant())+"&since="+since,{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
+  for(;;){const r=await d1Get("pull?tenant="+encodeURIComponent(bkTenant())+"&since="+since);
     const j=await r.json().catch(()=>({}));if(!r.ok){if(j.off)d1Off=true;throw new Error(j.error||"خطأ "+r.status)}
     for(const [c,id,d,u] of j.rows)all.set(c+"|"+id,{d,u});since=j.u;if(!j.more)return all}}
 async function d1Check(force){
@@ -1730,7 +1736,7 @@ async function d1Read(live,key,ready){
   const st={mark:mine?mine.mark:0},M={customers:new Map(),txns:new Map()};
   if(mine)for(const k of ["customers","txns"])for(const [id,x] of mine[k])M[k].set(id,x);
   const pullFrom=async since=>{const rows=[];
-    for(;;){const r=await fetch(d1Url()+"pull?tenant="+encodeURIComponent(bkTenant())+"&since="+since,{headers:{Authorization:"Bearer "+await auth.currentUser.getIdToken()}});
+    for(;;){const r=await d1Get("pull?tenant="+encodeURIComponent(bkTenant())+"&since="+since);
       const j=await r.json().catch(()=>({}));if(!r.ok){if(j.off)d1Off=true;throw new Error(j.error||"خطأ "+r.status)}
       if(!j.read)return null;rows.push(...j.rows);since=j.u;if(!j.more)return rows}};
   const apply=(maps,rows)=>{for(const [c,id,d,u] of rows){if(u>st.mark)st.mark=u;if(d1Out.has(c+"|"+id))continue;
@@ -1754,7 +1760,7 @@ async function d1Read(live,key,ready){
   const open=async()=>{if(closed||!live())return;
     try{ws=new WebSocket(d1Url().replace(/^http/,"ws")+"live?tenant="+encodeURIComponent(bkTenant()),["bearer",await auth.currentUser.getIdToken()]);
       ws.onopen=()=>{wait=1000;sync()};
-      ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m&&m.u>st.mark)sync()}catch(x){}};
+      ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m&&m.u>st.mark)setTimeout(sync,Math.random()*800)}catch(x){}};
       ws.onclose=()=>{ws=null;if(!closed)setTimeout(open,wait=Math.min(wait*2,60e3))};
     }catch(e){ws=null;setTimeout(open,wait=Math.min(wait*2,60e3))}};
   open();
