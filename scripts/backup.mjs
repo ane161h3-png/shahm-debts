@@ -29,6 +29,21 @@ const TG_URL = process.env.TELEGRAM_URL || "https://api.telegram.org";
 const GH_URL = process.env.GITHUB_API_URL || "https://api.github.com";
 const USER = process.env.BACKUP_USER || "backup";
 
+// A dropped connection (Node says only «fetch failed») is tried again up to 3 more times, 3, 6 and 9 seconds apart,
+// so one network blip on the runner no longer loses a report. Each retry is logged with the real cause and the host.
+const netFetch = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  for (let i = 0; ; i++) {
+    try { return await netFetch(url, init); } catch (e) {
+      const why = (e.cause && (e.cause.code || e.cause.message)) || e.message;
+      let host = ""; try { host = new URL(String(url)).host; } catch {}
+      if (i >= 3 || e.name === "AbortError") { e.message = `${e.message} (${host}: ${why})`; throw e; }
+      console.warn(`Network error on ${host} (${why}), trying again in ${3 * (i + 1)} s`);
+      await new Promise(r => setTimeout(r, 3000 * (i + 1)));
+    }
+  }
+};
+
 async function signIn() {
   const r = await fetch(`${AUTH_URL}/v1/accounts:signInWithPassword?key=${cfg.apiKey}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
