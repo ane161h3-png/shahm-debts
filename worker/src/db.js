@@ -41,6 +41,15 @@ export function pullPut(k, v) {
   PULLS.set(k, v); pullBytes += v.length;
   for (const [old, x] of PULLS) { if (PULLS.size <= PULL_MAX && pullBytes <= PULL_BYTES) break; PULLS.delete(old); pullBytes -= x.length; }
 }
+// Full pull pages in the data centre's shared cache (Cache API), so every worker copy there shares them. Off in tests.
+const EDGE_TTL = 3600;
+const edgeKey = k => new Request("https://pull.cache.invalid/" + encodeURIComponent(k));
+export async function edgeGet(k) {
+  try { if (typeof caches === "undefined") return null; const r = await caches.default.match(edgeKey(k)); return r ? await r.text() : null; } catch (e) { return null; }
+}
+export async function edgePut(k, v) {
+  try { if (typeof caches === "undefined" || v.length > 20e6) return; await caches.default.put(edgeKey(k), new Response(v, { headers: { "Cache-Control": "max-age=" + EDGE_TTL } })); } catch (e) {}
+}
 // Books already found filled (seeded) stay so; asked once per worker instead of on every pull.
 const SEEDED = new Set();
 
@@ -186,7 +195,7 @@ export class Live {
 }
 const liveOf = (env, tenant) => env.LIVE.get(env.LIVE.idFromName(tenant));
 
-export async function handleDb(request, env, json, cors) {
+export async function handleDb(request, env, json, cors, ctx) {
   if (!env.DB) return json({ error: "قاعدة البيانات الجديدة بعدها ما مفعّلة على السيرفر.", off: true }, 503, cors);
   const url = new URL(request.url), what = url.pathname.slice(4), tenant = url.searchParams.get("tenant");
   if (!validTenant(tenant)) return json({ error: "طلب غير صحيح." }, 400, cors);
@@ -205,14 +214,20 @@ export async function handleDb(request, env, json, cors) {
       retry(() => env.DB.prepare("SELECT u FROM ctr WHERE t = ?").bind(tenant).first("u")), readsHere(env, tenant)]);
     // Nothing saved after since: answer without reading the book.
     if (ctr != null && since >= ctr) return json({ rows: [], more: false, u: since, read }, 200, cors);
-    const key = tenant + "|" + since + "|" + (ctr == null ? "-" : ctr);
-    let page = pullGet(key);
+    // A full page (more: true) never goes wrong with age: every save takes a u above the counter, so nothing new can enter
+    // (since, page end]; a record saved again only leaves it and comes back on a later page with its new value. Such pages
+    // are kept by book + since alone, in this worker and in the data centre's cache, so a whole shop opening the book at
+    // once reads each page from D1 about once. The last page (more: false) is kept against the counter as before.
+    const full = tenant + "|" + since, key = full + "|" + (ctr == null ? "-" : ctr);
+    let page = pullGet(full) || pullGet(key);
+    if (!page) page = await edgeGet(full);
     if (!page) {
       const { results } = await retry(() => env.DB.prepare("SELECT c, id, d, u, del FROM docs WHERE t = ? AND u > ? ORDER BY u LIMIT ?").bind(tenant, since, PAGE + 1).all());
       const more = results.length > PAGE, rows = results.slice(0, PAGE).map(x => [x.c, x.id, x.del ? null : JSON.parse(x.d), x.u]);
       page = JSON.stringify({ rows, more, u: rows.length ? rows[rows.length - 1][3] : since }).slice(0, -1);
-      if (ctr != null) pullPut(key, page);
-    }
+      if (more) { pullPut(full, page); ctx && ctx.waitUntil ? ctx.waitUntil(edgePut(full, page)) : await edgePut(full, page); }
+      else if (ctr != null) pullPut(key, page);
+    } else if (!pullGet(full) && !pullGet(key)) pullPut(full, page);
     return new Response(page + ',"read":' + read + "}", { status: 200, headers: { ...cors, "Content-Type": "application/json; charset=utf-8" } });
   }
 

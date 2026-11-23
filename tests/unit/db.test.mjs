@@ -95,3 +95,45 @@ test("Firestore down: last known role kept, else 503, never a cached refusal", a
     assert.ok(lookups >= 3);
   } finally { globalThis.fetch = real; Date.now = realNow; }
 });
+
+test("full pull pages are shared after saves; a record saved again still arrives with its new value", async () => {
+  const { handleDb } = await import("../../worker/src/db.js");
+  // A fake D1 with one book: 2,500 customers, u = 1..2500, counter at 2500.
+  const docs = new Map(); let ctr = 2500, pageReads = 0;
+  for (let i = 1; i <= 2500; i++) docs.set("c" + i, { c: "customers", id: "c" + i, d: JSON.stringify({ id: "c" + i, v: 1 }), u: i, del: 0 });
+  const stmt = sql => ({ bind: (...a) => ({
+    first: async () => /FROM ctr/.test(sql) ? ctr : null,
+    all: async () => {
+      if (!/FROM docs/.test(sql)) return { results: [] };
+      pageReads++;
+      const [, since, lim] = a;
+      return { results: [...docs.values()].filter(x => x.u > since).sort((x, y) => x.u - y.u).slice(0, lim) };
+    },
+    run: async () => ({}) }) });
+  const env = { DB: { prepare: stmt, batch: async () => [] }, FIREBASE_API_KEY: "k", FIREBASE_PROJECT: "p", AUTH_URL: "http://auth",
+    FIRESTORE_URL: "http://fs", OWNER_EMAIL: "o@x", D1_READ: "main" };
+  const real = globalThis.fetch;
+  globalThis.fetch = async url => String(url).startsWith("http://auth")
+    ? new Response(JSON.stringify({ users: [{ localId: "own", email: "o@x" }] })) : new Response("{}", { status: 404 });
+  const json = (o, s) => new Response(JSON.stringify(o), { status: s || 200 });
+  const pullAll = async () => {
+    const got = new Map(); let since = 0, more = true;
+    while (more) {
+      const r = await handleDb(new Request(`http://w/db/pull?tenant=main&since=${since}`, { headers: { Authorization: "Bearer T" } }), env, json, {});
+      assert.equal(r.status, 200); const j = await r.json();
+      for (const [, id, d] of j.rows) got.set(id, d); since = j.u; more = j.more;
+    }
+    return got;
+  };
+  try {
+    const first = await pullAll();
+    assert.equal(first.size, 2500); assert.equal(pageReads, 3);
+    // c5 (on the first page) is saved again: it leaves u 5 and takes u 2501.
+    ctr = 2501; docs.get("c5").u = 2501; docs.get("c5").d = JSON.stringify({ id: "c5", v: 2 });
+    pageReads = 0;
+    const second = await pullAll();
+    assert.equal(pageReads, 1, "the two full pages come from memory, only the last page is read");
+    assert.equal(second.size, 2500);
+    assert.equal(second.get("c5").v, 2, "the newer value arrives on the last page and wins");
+  } finally { globalThis.fetch = real; }
+});
