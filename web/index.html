@@ -679,6 +679,58 @@ td.x{width:64px;white-space:nowrap}
   @keyframes tcDrift{from{transform:translateX(0)}to{transform:translateX(50%)}}
   .tc-view:hover .tc-track,.tc-view:active .tc-track,.tc-view:focus-within .tc-track{animation-play-state:paused}}
 @media (prefers-reduced-motion:reduce){.tc-view{overflow-x:auto;-webkit-mask-image:none;mask-image:none}.tc-dup,.tc[aria-hidden]{display:none}}
+/* Home board (homeBoard): swipeable cards at the top of home that move on by themselves; the late and locked cards hold a reel
+   that shows one customer at a time. */
+.hb{position:relative;overflow:hidden;padding:0}
+.hb-view{overflow:hidden;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.hb-track{display:flex;direction:rtl}
+.hb-card{flex:none;width:100%;min-width:0;display:grid;grid-template-columns:1fr;gap:12px;padding:14px 16px 12px;border-top:4px solid var(--hb-c,var(--accent))}
+.hb-card.k-today{--hb-c:var(--accent);--hb-soft:var(--accent-soft)}
+.hb-card.k-late{--hb-c:var(--warn);--hb-soft:var(--warn-soft)}
+.hb-card.k-lock{--hb-c:var(--debt);--hb-soft:var(--debt-soft)}
+.hb-head{display:flex;align-items:center;gap:10px;min-width:0}
+.hb-ic{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--hb-soft);color:var(--hb-c)}
+.hb-ic svg{width:22px;height:22px}
+.hb-t{min-width:0;display:flex;flex-direction:column}
+.hb-t b{font-family:var(--f-display);font-weight:800;font-size:17px;line-height:1.25}
+.hb-t span{font-size:12.5px;color:var(--muted)}
+.hb-go{margin-inline-start:auto;flex:none}
+.hb-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}
+.hb-st{min-width:0;background:var(--paper-2);border:1px solid var(--line);border-radius:var(--r-ctl);padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.hb-st .k{font-size:12.5px;color:var(--muted)}
+.hb-st .v{font-family:var(--f-display);font-weight:800;font-size:clamp(18px,5.2vw,24px);line-height:1.15;overflow-wrap:anywhere}
+.hb-st .v small{font-size:12px;font-weight:500;color:var(--muted);margin-inline-start:4px}
+.hb-st .v{white-space:nowrap}.hb-st .k{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:420px){.k-today .hb-st .v small{display:none}}
+.hb-st .v.debt{color:var(--debt)}.hb-st .v.paid{color:var(--paid)}.hb-st .v.warn{color:var(--warn)}
+.hb-reel{display:flex;align-items:center;gap:6px;background:var(--hb-soft);border-radius:var(--r-ctl);padding:6px}
+.hb-rv{flex:1;min-width:0;height:58px;overflow:hidden;position:relative}
+.hb-rt{display:flex;flex-direction:column}
+.hb-ri{height:58px;flex:none;display:flex;align-items:center;gap:10px;width:100%;font:inherit;color:var(--ink);background:none;border:0;padding:0 6px;text-align:right;cursor:pointer;border-radius:8px}
+.hb-ri:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.hb-ri .avatar{width:36px;height:36px;font-size:15px;flex:none}
+.hb-ri .m{min-width:0;display:flex;flex-direction:column;flex:1}
+.hb-ri .m b{font-weight:700;font-size:15.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hb-ri .m span{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hb-ri .a{flex:none;font-family:var(--f-display);font-weight:800;font-size:17px;color:var(--debt)}
+.hb-rc{flex:none;display:flex;flex-direction:column;align-items:center;gap:2px}
+.hb-rc button{width:30px;height:24px;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0}
+.hb-rc button svg{width:14px;height:14px}
+.hb-rc .num{font-size:11px;color:var(--muted);line-height:1}
+.hb-ok{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13.5px;background:var(--paper-2);border-radius:var(--r-ctl);padding:10px 12px}
+.hb-ok svg{width:18px;height:18px;color:var(--paid);flex:none}
+.hb-bar{display:flex;align-items:center;justify-content:center;gap:10px;padding:0 12px 10px}
+.hb-bar>button{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:var(--paper);color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0}
+.hb-bar>button svg{width:16px;height:16px}
+.hb-dots{display:flex;gap:6px;align-items:center}
+.hb-dots button{width:8px;height:8px;border-radius:99px;border:0;padding:0;background:var(--line);cursor:pointer}
+.hb-dots button[aria-current="true"]{width:22px;background:var(--hb-dot,var(--accent))}
+.hb-prog{position:absolute;top:0;inset-inline:0;height:4px;pointer-events:none}
+.hb-prog i{display:block;height:100%;width:0;background:color-mix(in srgb,var(--paper) 55%,transparent)}
+@media (min-width:821px){.hb-card{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:center;column-gap:18px;padding:16px 20px 12px}
+  .hb-card .hb-head{grid-column:1/-1}.hb-card .hb-reel,.hb-card .hb-ok{align-self:stretch}.hb-rv,.hb-ri{height:64px}}
+@media (prefers-reduced-motion:no-preference){.hb-track.anim{transition:transform .5s cubic-bezier(.2,.7,.2,1)}.hb-rt.anim{transition:transform .45s cubic-bezier(.2,.7,.2,1)}
+  .hb-prog i.run{width:100%;transition:width linear var(--hb-ms,8000ms)}}
 /* Count-up numbers (countUps). */
 .cu{display:inline-block}
 .cu-badge{display:inline-block;vertical-align:middle;margin-inline-start:10px;font-family:var(--f-display);font-size:16px;font-weight:700;line-height:1;pointer-events:none;white-space:nowrap;direction:ltr;unicode-bidi:isolate}
@@ -1130,14 +1182,24 @@ const lockDays=()=>{const n=Number(S.settings.lockDays);return n>0?n:0};
 // A customer's own period (c.lockDays: 0 = never, 30/60) wins over the general one (def). The old c.noLock means never.
 const ownLock=c=>c&&!isSup(c)&&(c.noLock||c.lockDays!=null);
 function lockDaysOf(c,def){if(!c||isSup(c)||c.noLock)return 0;const n=Number(c.lockDays!=null?c.lockDays:def===undefined?lockDays():def);return n>0?n:0}
-const anyLock=()=>lockDays()>0||[...S.customers.values()].some(c=>!isSup(c)&&(c.lockNow||limitOf(c)||ownLock(c)&&lockDaysOf(c)>0));
-const lockWhy=L=>L.manual?`قفله المدير من ${esc(shortDate(L.since))}`:L.limit?`تجاوز حد الدين <b class="num">${fmt(L.lim)}</b> من ${esc(shortDate(L.since))}`:`عليه دين من ${esc(shortDate(L.since))} وما تسدد الحساب كامل خلال <b class="num">${L.n}</b> يوم`;
+const anyLock=()=>lockDays()>0||monthLock()>0||[...S.customers.values()].some(c=>!isSup(c)&&(c.lockNow||limitOf(c)||ownLock(c)&&lockDaysOf(c)>0));
+const lockWhy=L=>L.manual?`قفله المدير من ${esc(shortDate(L.since))}`:L.month?`ما سدد حساب الشهر الماضي (باقي منه <b class="num">${fmt(L.owe)}</b>) وانقفل براس الشهر من ${esc(shortDate(L.since))}`:L.limit?`تجاوز حد الدين <b class="num">${fmt(L.lim)}</b> من ${esc(shortDate(L.since))}`:`عليه دين من ${esc(shortDate(L.since))} وما تسدد الحساب كامل خلال <b class="num">${L.n}</b> يوم`;
 const lockName=n=>n===30?"شهر":n===60?"شهرين":n?n+" يوم":"بدون قفل";
 // Over the debt limit (c.limit) locks the account too (Settings > قفل الحسابات, on unless turned off): the debt that takes the
 // balance over the limit goes through, then no new debt until the account is paid off in full, or opened. Opening lets the next
 // debt through; a later debt that still leaves it over the limit locks it again. A customer set to «بدون قفل» never locks by itself.
 const limLock=()=>S.settings.lockLimit!==false;
 const limitOf=c=>c&&limLock()&&!c.noLock&&c.lockDays!==0&&Number(c.limit)>0?Number(c.limit):0;
+// Month-start lock (Settings > قفل الحسابات, off unless chosen; S.settings.lockMonth = the day of the month it starts, 1/5/10):
+// from that day, a customer who still owes anything of what they owed when the month began (their balance at the end of last
+// month, less this month's payments) takes no new debt until that much is paid, or the account is opened (open for the rest
+// of the month). Debts of this month don't count. A customer set to «بدون قفل» and suppliers never lock.
+const monthLock=()=>{const n=Number(S.settings.lockMonth);return n>=1&&n<=28?n:0};
+function monthLockOf(c,rows,d){d=d===undefined?monthLock():d;if(!d||!c||isSup(c)||c.noLock||c.lockDays===0)return null;
+  const t=todayISO(),m=t.slice(0,8)+"01",day=t.slice(0,8)+String(d).padStart(2,"0");if(t<day||c.lockReset&&c.lockReset>=day)return null;
+  let carried=0,paid=0;for(const x of rows){const a=Number(x.amount)||0;if(!x.date)continue;if(x.date<m)carried+=x.type==="debt"?a:-a;else if(x.type==="pay")paid+=a}
+  return carried>0&&paid<carried?{locked:true,left:0,since:day,start:day,n:0,month:true,owe:carried-paid}:null;
+}
 // Whether a record came after a moment kept as a time (at) or, on older records, only as a day.
 const afterAt=(t,at,day)=>at&&t.createdAt?t.createdAt>at:!!day&&t.date>day;
 // c.lockNow (a date, c.lockAt its time): the owner locked the account by hand; it stays locked until opened, or until a payment
@@ -1151,6 +1213,7 @@ function lockOf(c,rows,n){
   if(c.lockNow&&!paid)return {locked:true,left:0,since:c.lockNow,start:c.lockNow,n,manual:true};
   if(last&&!(c.lockReset&&(c.lockResetAt&&last.createdAt?c.lockResetAt>last.createdAt:c.lockReset>=last.date)))
     return {locked:true,left:0,since:over,start:over,n,limit:true,lim};
+  const mo=monthLockOf(c,rows);if(mo)return mo;
   if(!n||!since)return null;
   const start=c.lockReset&&c.lockReset>since?c.lockReset:since;
   const left=n-daysBetween(start,todayISO());
@@ -1165,10 +1228,10 @@ let lockTries=0,lockWait=0;
 function lockGate(c,L,then){
   const lc=S.settings.lockCode,owner=LOCK_OWNER();
   openModal(`<h3><i class="lk">${I.lock}</i> حساب ${esc(c.name)} مقفول</h3>
-    <p class="hint">${lockWhy(L)}${!L.manual&&!L.limit&&L.start!==L.since?" من آخر فتح":""}. ما ينكتب عليه دين جديد حتى يسدد ${L.manual||L.limit?"الحساب كامل":""}، أو ${owner?"تفتح الحساب":lc?"ينفتح بالرمز":"يفتحه المدير"}. التسديد مفتوح.</p>
+    <p class="hint">${lockWhy(L)}${!L.manual&&!L.limit&&!L.month&&L.start!==L.since?" من آخر فتح":""}. ما ينكتب عليه دين جديد حتى يسدد ${L.manual||L.limit?"الحساب كامل":L.month?"الباقي من حساب الشهر الماضي":""}، أو ${owner?"تفتح الحساب":lc?"ينفتح بالرمز":"يفتحه المدير"}. التسديد مفتوح.</p>
     ${!owner&&lc?`<form id="lkForm" class="field" style="gap:8px" novalidate><label for="lkCode">رمز الفتح</label><input id="lkCode" type="password" inputmode="numeric" autocomplete="off" maxlength="12" style="direction:ltr;text-align:right"><p class="err" id="lkErr"></p></form>`:""}
     <div class="foot">${owner?`<button class="btn primary" type="button" id="lkOpen">${I.lock}فتح القفل</button>`:lc?`<button class="btn primary" type="submit" form="lkForm">فتح بالرمز</button>`:""}<button class="btn" type="button" data-close>${owner||lc?"إلغاء":"تمام"}</button></div>
-    <p class="ro-note" style="margin:0">${L.manual?"الفتح يرفع القفل.":L.limit?"الفتح يسمح بدين واحد، وأي دين بعده والحساب فوق الحد يقفله من جديد.":`الفتح يعطيه ${L.n} يوم جديدة من اليوم.`}</p>`,m=>{
+    <p class="ro-note" style="margin:0">${L.manual?"الفتح يرفع القفل.":L.month?"الفتح يخليه مفتوح لآخر هذا الشهر.":L.limit?"الفتح يسمح بدين واحد، وأي دين بعده والحساب فوق الحد يقفله من جديد.":`الفتح يعطيه ${L.n} يوم جديدة من اليوم.`}</p>`,m=>{
     const done=how=>{closeModal();lockOpen(c,how);then&&then()};
     const ob=m.querySelector("#lkOpen");if(ob)ob.addEventListener("click",()=>done(""));
     const f=m.querySelector("#lkForm");if(f)f.addEventListener("submit",async e=>{e.preventDefault();const er=m.querySelector("#lkErr");
@@ -1215,6 +1278,10 @@ function lockMap(def){
     const L=lockOf(c,rows,lockDaysOf(c,def));if(L)out.set(c.id,L)}
   return out;
 }
+// How many customers the month-start lock would hold if it started on day d (now: only if that day has come this month).
+function monthCount(d,now){if(!d)return 0;const by=new Map();for(const t of S.txns.values()){if(!by.has(t.customerId))by.set(t.customerId,[]);by.get(t.customerId).push(t)}
+  const dd=now?d:1;let n=0;
+  for(const c of S.customers.values())if(monthLockOf(c,by.get(c.id)||[],dd))n++;return n}
 const lateText=x=>x?(x.paid?`آخر دفعة قبل ${x.days} يوم`:`ما دافع من أول دين (${x.days} يوم)`):"";
 /* Suppliers: payments settle the oldest purchase invoices first, so each invoice shows what is still owed on it. */
 function openInvoices(c){
@@ -2090,6 +2157,94 @@ function topCards(per,total){
     <div class="section-title"><h2>${I.trend}الزبائن حسب الرصيد</h2><span class="ro-note"><span class="num">${list.length}</span> زبون عليهم دين</span></div>
     <div class="tc-view"><div class="tc-track" style="--tc-dur:${list.length*reps*6}s">${one}<span class="tc-dup">${two}</span></div></div></section>`;
 }
+/* ---------- home board: cards at the top of home that move on every few seconds and swipe by hand ----------
+   Today's report (debts and payments recorded this shop day, 2 AM to 2 AM), late customers and locked accounts (each with a
+   reel that shows one customer at a time, by itself or with its arrows). The late and locked cards stay as long as anyone is
+   late or locked. The slide and reel positions live in S.hb so the live refreshes of home don't send it back to the start.
+   It pauses while touched, hovered or focused, while a window is open, and while the app is in the background. */
+const HB_SLIDE=8000,HB_REEL=3000;
+const hbI={up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>',
+  down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+  next:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>',
+  prev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
+  day:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  late:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>'};
+function hbCards(per){
+  const out=[],day=shopDay(),{start,end}=shopDayRange(day);let dN=0,dA=0,pN=0,pA=0,lastD=null;
+  for(const t of S.txns.values()){const c=S.customers.get(t.customerId);if(!c||isSup(c))continue;
+    if(!(t.createdAt?t.createdAt>=start&&t.createdAt<end:t.date===day))continue;
+    if(t.type==="debt"){dN++;dA+=Number(t.amount)||0;if(!lastD||(t.createdAt||0)>(lastD.createdAt||0))lastD=t}else{pN++;pA+=Number(t.amount)||0}}
+  const lc=lastD&&S.customers.get(lastD.customerId);
+  out.push({k:"today",title:"تقرير اليوم",sub:dayName(day),ic:hbI.day,
+    body:`<div class="hb-stats"><div class="hb-st"><span class="k">ديون اليوم</span><span class="v debt num">${cu("hb:dn",dN,"debt")}</span></div>
+      <div class="hb-st"><span class="k">مبلغها</span><span class="v debt">${shown("added",`<span class="num">${fmt(dA)}</span><small>${CUR}</small>`)}</span></div>
+      <div class="hb-st"><span class="k">تسديدات (<span class="num">${pN}</span>)</span><span class="v paid">${shown("paid",`<span class="num">${fmt(pA)}</span><small>${CUR}</small>`)}</span></div></div>`,
+    side:lc?`<div class="hb-ok">${I.plus}<span>آخر دين: <button class="linkish" type="button" data-open="${esc(lc.id)}">${esc(lc.name)}</button> ${shown("top",`<span class="num">${fmt(lastD.amount)}</span> ${CUR}`)}${lastD.createdAt?` · ${hm12(lastD.createdAt)}`:""}</span></div>`
+      :`<div class="hb-ok">${I.check}<span>ماكو ديون انسجلت اليوم لحد هسه.</span></div>`});
+  const late=lateInfo(),lateL=[...late.entries()].filter(([,x])=>x.late).map(([id,x])=>({c:S.customers.get(id),x,b:per.get(id).bal})).filter(r=>r.c).sort((a,b)=>b.x.days-a.x.days||b.b-a.b);
+  if(lateL.length){const tot=lateL.reduce((a,r)=>a+r.b,0);
+    out.push({k:"late",title:"الزبائن المتأخرين",sub:`ما دافعوا من أكثر من ${LATE_DAYS} يوم`,ic:hbI.late,go:`data-go="reminders" data-remf="late"`,
+      body:`<div class="hb-stats"><div class="hb-st"><span class="k">عددهم</span><span class="v warn num">${lateL.length}</span></div><div class="hb-st"><span class="k">مجموع اللي عليهم</span><span class="v debt">${shown("top",`<span class="num">${fmt(tot)}</span><small>${CUR}</small>`)}</span></div></div>`,
+      reel:lateL.map(r=>({id:r.c.id,name:r.c.name,s:(r.x.paid?"آخر دفعة قبل ":"ما دافع من أول دين، ")+r.x.days+" يوم",b:r.b}))})}
+  const locks=anyLock()?lockMap():new Map(),lockL=[...locks.entries()].filter(([,L])=>L.locked).map(([id,L])=>({c:S.customers.get(id),L,b:per.get(id).bal})).filter(r=>r.c).sort((a,b)=>b.b-a.b);
+  if(lockL.length){const why=L=>L.manual?"قفله المدير":L.month?"ما سدد حساب الشهر الماضي":L.limit?"تجاوز حد الدين":"ما سدد خلال "+lockName(L.n);
+    out.push({k:"lock",title:"الحسابات المقفولة",sub:"ما ينكتب عليهم دين جديد",ic:I.lock,go:`data-act="golocked"`,
+      body:`<div class="hb-stats"><div class="hb-st"><span class="k">عددها</span><span class="v debt num">${lockL.length}</span></div><div class="hb-st"><span class="k">مجموع اللي عليهم</span><span class="v debt">${shown("top",`<span class="num">${fmt(lockL.reduce((a,r)=>a+r.b,0))}</span><small>${CUR}</small>`)}</span></div></div>`,
+      reel:lockL.map(r=>({id:r.c.id,name:r.c.name,s:why(r.L),b:r.b}))})}
+  return out;
+}
+function homeBoard(per){
+  const cards=hbCards(per),H=S.hb||(S.hb={i:0,r:{}});if(H.i>=cards.length)H.i=0;H.keys=cards.map(c=>c.k);
+  const reel=c=>{if(!c.reel)return c.side||"";const n=c.reel.length,j=(H.r[c.k]||0)%n;H.r[c.k]=j;
+    return `<div class="hb-reel" data-hbreel="${c.k}" data-n="${n}"><div class="hb-rv" aria-live="off"><div class="hb-rt" style="transform:translateY(-${j*100/n}%)">${c.reel.map((r,i)=>`<button type="button" class="hb-ri" data-open="${esc(r.id)}"${i===j?"":' tabindex="-1"'} title="فتح حساب ${esc(r.name)}"><span class="avatar" aria-hidden="true">${initial(r.name)}</span><span class="m"><b>${esc(r.name)}</b><span>${esc(r.s)}</span></span><span class="a">${shown("top",`<span class="num">${fmt(r.b)}</span>`)}</span></button>`).join("")}</div></div>
+      ${n>1?`<div class="hb-rc"><button type="button" data-hbr="-1" aria-label="الزبون السابق">${hbI.up}</button><span class="num" data-hbpos>${j+1}/${n}</span><button type="button" data-hbr="1" aria-label="الزبون التالي">${hbI.down}</button></div>`:""}</div>`};
+  const n=cards.length,dot={today:"var(--accent)",late:"var(--warn)",lock:"var(--debt)"};
+  return `<section class="pane hb" id="hb" aria-roledescription="carousel" aria-label="لوحة اليوم" style="--hb-dot:${dot[cards[H.i].k]}">
+    <div class="hb-prog" aria-hidden="true"><i></i></div>
+    <div class="hb-view"><div class="hb-track" style="transform:translateX(${H.i*100}%)">${cards.map((c,i)=>`<article class="hb-card k-${c.k}" role="group" aria-roledescription="بطاقة" aria-label="${esc(c.title)} (${i+1} من ${n})"${i===H.i?"":' aria-hidden="true" inert'}>
+      <div class="hb-head"><span class="hb-ic">${c.ic}</span><span class="hb-t"><b>${esc(c.title)}</b><span>${esc(c.sub)}</span></span>${c.go?`<button class="btn sm hb-go" type="button" ${c.go}>عرضهم</button>`:""}</div>
+      ${c.body}${reel(c)}</article>`).join("")}</div></div>
+    ${n>1?`<div class="hb-bar"><button type="button" data-hbs="-1" aria-label="البطاقة السابقة">${hbI.prev}</button><div class="hb-dots">${cards.map((c,i)=>`<button type="button" data-hbgo="${i}" aria-label="${esc(c.title)}" aria-current="${i===H.i}" style="--hb-dot:${dot[c.k]}"></button>`).join("")}</div><button type="button" data-hbs="1" aria-label="البطاقة التالية">${hbI.next}</button></div>`:""}
+  </section>`;
+}
+// Moves the board without redrawing home (keeps it smooth); the next redraw draws the same position.
+function hbShow(i,anim=true){
+  const H=S.hb,el=$("#hb");if(!H||!el)return;const n=H.keys.length;if(!n)return;H.i=((i%n)+n)%n;H.slideAt=Date.now();
+  const tr=el.querySelector(".hb-track");tr.classList.toggle("anim",anim);tr.style.transform=`translateX(${H.i*100}%)`;
+  el.querySelectorAll(".hb-card").forEach((c,k)=>{const on=k===H.i;c.toggleAttribute("inert",!on);if(on)c.removeAttribute("aria-hidden");else c.setAttribute("aria-hidden","true")});
+  el.querySelectorAll("[data-hbgo]").forEach((d,k)=>d.setAttribute("aria-current",k===H.i));
+  const cur=el.querySelectorAll("[data-hbgo]")[H.i];if(cur)el.style.setProperty("--hb-dot",cur.style.getPropertyValue("--hb-dot"));
+  hbProg();
+}
+function hbReel(k,d){
+  const H=S.hb,el=$("#hb");if(!H||!el)return;const box=el.querySelector(`[data-hbreel="${k}"]`);if(!box)return;const n=Number(box.dataset.n);if(n<2)return;
+  const j=(((H.r[k]||0)+d)%n+n)%n;H.r[k]=j;H.reelAt=Date.now();
+  const rt=box.querySelector(".hb-rt");rt.classList.add("anim");rt.style.transform=`translateY(-${j*100/n}%)`;
+  rt.querySelectorAll(".hb-ri").forEach((b,i)=>{if(i===j)b.removeAttribute("tabindex");else b.setAttribute("tabindex","-1")});
+  const p=box.querySelector("[data-hbpos]");if(p)p.textContent=`${j+1}/${n}`;
+}
+function hbProg(){const i=document.querySelector("#hb .hb-prog i");if(!i)return;i.classList.remove("run");i.style.setProperty("--hb-ms",HB_SLIDE+"ms");
+  if(S.hb.keys.length<2||hbPaused())return;void i.offsetWidth;i.classList.add("run")}
+function hbPaused(){const el=$("#hb");return !el||document.hidden||!!$("#modalRoot").children.length||S.hb.hold||HB_HOVER.matches&&el.matches(":hover")||!!el.querySelector(":focus-visible")}
+const HB_HOVER=matchMedia("(hover:hover)");
+setInterval(()=>{const H=S.hb,el=$("#hb");if(!H||!el||S.view!=="home")return;
+  const p=hbPaused(),now=Date.now();if(p){H.slideAt=now;const i=el.querySelector(".hb-prog i.run");if(i)i.classList.remove("run");return}
+  if(!el.querySelector(".hb-prog i.run"))hbProg();
+  if(H.keys.length>1&&now-(H.slideAt||(H.slideAt=now))>=HB_SLIDE){hbShow(H.i+1);return}
+  const k=H.keys[H.i];if(now-(H.reelAt||(H.reelAt=now))>=HB_REEL){H.reelAt=now;if(k!=="today")hbReel(k,1)}
+},500);
+// Swipe: in this right-to-left page the next card sits to the left, so dragging right brings it in.
+(()=>{let x0=null,y0=0,dx=0,drag=false,id=null;
+  document.addEventListener("pointerdown",e=>{const v=e.target.closest&&e.target.closest(".hb-view");if(!v||e.button>0)return;x0=e.clientX;y0=e.clientY;dx=0;drag=false;id=e.pointerId;S.hb.hold=true});
+  document.addEventListener("pointermove",e=>{if(x0==null||e.pointerId!==id)return;dx=e.clientX-x0;if(!drag&&Math.abs(dx)>8&&Math.abs(dx)>Math.abs(e.clientY-y0))drag=true;
+    if(drag){const tr=document.querySelector("#hb .hb-track");if(tr){tr.classList.remove("anim");tr.style.transform=`translateX(calc(${S.hb.i*100}% + ${dx}px))`}}});
+  const up=e=>{if(x0==null||e.pointerId!==id)return;x0=null;S.hb.hold=e.pointerType==="mouse"?false:S.hb.hold;
+    if(e.pointerType!=="mouse")setTimeout(()=>{S.hb.hold=false},2500);
+    if(drag){const w=(document.querySelector("#hb .hb-view")||{}).clientWidth||300;hbShow(S.hb.i+(Math.abs(dx)>Math.min(60,w/5)?(dx>0?1:-1):0));
+      const stop=ev=>{ev.stopPropagation();ev.preventDefault()};document.addEventListener("click",stop,{capture:true,once:true});setTimeout(()=>document.removeEventListener("click",stop,{capture:true}),50)}};
+  document.addEventListener("pointerup",up);document.addEventListener("pointercancel",up);
+  document.addEventListener("visibilitychange",()=>{if(S.hb)S.hb.slideAt=Date.now()});
+})();
 function homeView(){
   const per=stats();const m=monthISO();let total=0,owing=0,mAdd=0,mPay=0;
   let supOwed=0;const custN=[...S.customers.values()].filter(c=>!isSup(c)).length;
@@ -2099,6 +2254,7 @@ function homeView(){
   const actAll=S.activity.filter(a=>a.kind!=="login"&&(S.actFilter==="all"?a.kind!=="remind":a.kind===S.actFilter));
   const actDay0=shopDayRange(shopDay()).start,actToday=actAll.filter(a=>a.at>=actDay0).length,acts=actAll.slice(0,Math.max(60,actToday));
   return `<div style="display:flex;flex-direction:column;gap:14px">
+  ${homeBoard(per)}
   <section class="pane summary" aria-label="ملخص">
     <div class="sum-hero"><div class="k">${I.wallet}مجموع الدين على الزبائن${eyeBtn()}</div>
       <div class="v">${shown("total",`<span class="num">${cu("total",total,"debt",1)}</span><small>${CUR}</small>`)}</div>
@@ -2322,14 +2478,14 @@ function renderDetail(){
     <div class="balance-card ${balCls}">
       <div><div class="lbl">${balLbl}${hiddenNums().includes("acct")?eyeBtn():""}</div><div class="amt">${shown("acct",`<span class="num">${cu("bal:"+c.id,Math.abs(per.bal),per.bal>=0?"debt":"paid",1)}</span><small>${CUR}</small>`)}</div>
         <div class="limit-row">${sup?"":(()=>{const n=lockDaysOf(c),own=ownLock(c);if(!n&&!own&&!isAdmin())return "";
-          const L=lockState(c)||{};if(L.manual||L.limit)return `<span class="chip debt"><i class="lk">${I.lock}</i> ${L.manual?"مقفول هسه":"مقفول: تجاوز الحد"}</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">تغيير القفل</button>`:""}`;
+          const L=lockState(c)||{};if(L.manual||L.limit||L.month)return `<span class="chip debt"><i class="lk">${I.lock}</i> ${L.manual?"مقفول هسه":L.month?"مقفول: حساب الشهر":"مقفول: تجاوز الحد"}</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">تغيير القفل</button>`:""}`;
           return `<span class="chip ${n?"warn":"zero"}"><i class="lk">${I.lock}</i> ${n?"قفل بعد "+lockName(n):"بدون قفل"}${own?"":" (عام)"}</span>${isAdmin()?`<button class="linkish" type="button" data-act="lockset">${n||own?"تغيير القفل":"+ قفل الحساب"}</button>`:""}`})()}${sup?"":c.limit>0?`حد الدين: <b class="num">${fmt(c.limit)}</b>${over?' <span class="chip warn">تجاوز الحد</span>':""}`:""}${w&&!sup&&can("edit")?`<button class="linkish" type="button" data-act="setlimit">${c.limit>0?"تغيير الحد":"+ تحديد حد الدين"}</button>`:""}</div></div>
       ${w?`<div class="actions"><button class="btn debt" type="button" data-act="debt" title="اختصار: +">${I.plus}${sup?"فاتورة شراء":"دين"}</button><button class="btn paid" type="button" data-act="pay" title="اختصار: −">${I.minus}${sup?"دفعة للمورد":"دفعة"}</button>${per.bal!==0?`<button class="btn zero" type="button" data-act="zero">${I.zero}تصفير</button>`:""}</div>`:""}
     </div>
     ${balSpark(c)}
     ${(()=>{const L=sup?null:lockState(c);if(!L||(!L.locked&&L.left>7))return "";
       if(!L.locked)return `<div class="banner warn"><i class="lk">${I.lock}</i> ينقفل الحساب ${L.left?`بعد <b class="num">${L.left}</b> يوم`:"اليوم"} إذا ما تسدد كامل (عليه دين من ${esc(shortDate(L.since))}).</div>`;
-      return `<div class="banner bad promise-row"><span><i class="lk">${I.lock}</i> <b>الحساب مقفول:</b> ${lockWhy(L)}. ما ينكتب عليه دين جديد حتى ${L.manual||L.limit?"يسدد الحساب كامل أو ينفتح":"يسدد"}.</span>
+      return `<div class="banner bad promise-row"><span><i class="lk">${I.lock}</i> <b>الحساب مقفول:</b> ${lockWhy(L)}. ما ينكتب عليه دين جديد حتى ${L.manual||L.limit?"يسدد الحساب كامل أو ينفتح":L.month?"يسدد الباقي من حساب الشهر الماضي أو ينفتح":"يسدد"}.</span>
         ${w&&(isAdmin()||S.settings.lockCode)?`<span class="ops"><button class="btn sm" type="button" data-act="unlock">${isAdmin()?"فتح القفل":"فتح بالرمز"}</button></span>`:""}</div>`})()}
     ${!sup&&(c.promise||(per.bal>0&&w))?(()=>{const left=promiseLeft(c),pr=c.promise;
       if(!pr)return `<button class="btn block" type="button" data-act="promise">${I.bell}+ موعد وعد بالدفع</button>`;
@@ -2959,10 +3115,13 @@ function setPage(k){
       ${box("debt","إضافة دين جديد","ترسل بعد تسجيل دين")}${box("pay","إضافة دفعة","ترسل بعد تسجيل تسديد")}${box("remind","تذكير بالرصيد","زر «تذكير واتساب» في صفحة الزبون")}${box("promise","تذكير بموعد الدفع","يوم الوعد بالدفع. {الموعد} و{مبلغ الوعد} تتبدل تلقائياً")}${box("monthend","تذكير نهاية الشهر","لكل المدينين قبل نهاية الشهر: التذكيرات ← «نهاية الشهر». {نهاية الشهر} يتبدل بآخر يوم بالشهر")}${box("all","رسالة عامة لكل الزبائن","بدون اسم أو مبلغ، ترسلها مرة وحدة لكل الزبائن: التذكيرات ← «رسالة عامة للكل»")}
       <div><button class="btn primary" type="button" data-act="savetpl">حفظ القوالب</button></div>`;
   }
-  if(k==="lock"){const n=lockDays(),cnt=d=>[...lockMap(d).values()].filter(x=>x.locked&&!x.limit).length,ex=[...S.customers.values()].filter(ownLock),lm=lockMap(),man=[...S.customers.values()].filter(c=>(lm.get(c.id)||{}).manual),ll=limLock(),lim=[...S.customers.values()].filter(c=>(lm.get(c.id)||{}).limit);
+  if(k==="lock"){const n=lockDays(),cnt=d=>[...lockMap(d).values()].filter(x=>x.locked&&!x.limit&&!x.month).length,mo=monthLock(),mcnt=d=>monthCount(d),ex=[...S.customers.values()].filter(ownLock),lm=lockMap(),man=[...S.customers.values()].filter(c=>(lm.get(c.id)||{}).manual),ll=limLock(),lim=[...S.customers.values()].filter(c=>(lm.get(c.id)||{}).limit);
     return `<h2>قفل الحسابات</h2><p class="lead">الزبون اللي عليه دين وما سدد الحساب كامل خلال المدة ينقفل حسابه: ما ينكتب عليه دين جديد (لا بالدفتر ولا بالكاشير) حتى يسدد، أو تفتحه أنت، أو واحد عنده رمز الفتح. التسديد يبقى مفتوح دائماً.</p>
     <div class="tpl"><h3>${I.lock}المدة العامة (لكل الزبائن)</h3><span class="ro-note">تنحسب من أول دين بعد آخر مرة صار حسابه صفر. الفتح يعطيه نفس المدة من يوم الفتح. وتكدر تحدد مدة خاصة لأي زبون، أو تقفله هسه، من صفحته (زر «قفل الحساب» تحت الرصيد)، وهذا يمشي حتى لو العامة «بدون قفل».</span>
       <div class="seg" role="group" aria-label="مدة القفل" style="align-self:flex-start;flex-wrap:wrap">${[[0,"بدون قفل"],[30,"شهر"],[60,"شهرين"]].map(([d,l])=>`<button type="button" data-lockdays="${d}" aria-pressed="${n===d}">${l}${d?` (ينقفل <span class="num">${cnt(d)}</span>)`:""}</button>`).join("")}</div></div>
+    <div class="tpl"><h3>${I.lock}قفل راس الشهر</h3><span class="ro-note">براس كل شهر ينقفل كل زبون باقي عليه شي من حساب الشهر الماضي: ما ينكتب عليه دين جديد حتى يسدد الباقي، أو تفتحه أنت فيبقى مفتوح لآخر الشهر. ديون الشهر الجديد ما تنحسب. تكدر تعطيهم مهلة أيام من أول الشهر. الزبون اللي قفله «بدون قفل» ما ينقفل.</span>
+      <div class="seg" role="group" aria-label="قفل راس الشهر" style="align-self:flex-start;flex-wrap:wrap">${[[0,"مطفي"],[1,"يوم 1"],[5,"يوم 5"],[10,"يوم 10"]].map(([d,l])=>`<button type="button" data-lockmonth="${d}" aria-pressed="${mo===d}">${l}${d&&mcnt(d)?` (ينقفل <span class="num">${mcnt(d)}</span>)`:""}</button>`).join("")}</div>
+      ${mo?`<span class="ro-note">يشتغل من يوم <b class="num">${mo}</b> بكل شهر. مقفولين هسه بسببه: <b class="num">${[...lockMap().values()].filter(x=>x.month).length}</b>.</span>`:""}</div>
     <div class="tpl"><h3>${I.lock}القفل عند تجاوز حد الدين</h3><span class="ro-note">الزبون اللي عنده حد دين وعبره ينقفل حسابه، ويبقى مقفول حتى يسدد الحساب كامل (يصير صفر) فينفتح وحده، أو تفتحه أنت للدين الواحد. الحد تحدده من صفحة الزبون. والزبون اللي قفله «بدون قفل» ما ينقفل.</span>
       <div class="seg" role="group" aria-label="القفل عند تجاوز الحد" style="align-self:flex-start"><button type="button" data-locklimit="1" aria-pressed="${ll}">يشتغل${ll&&lim.length?` (مقفول <span class="num">${lim.length}</span>)`:""}</button><button type="button" data-locklimit="0" aria-pressed="${!ll}">مطفي</button></div>
       ${lim.length?`<span class="ro-note">مقفولين لأنهم عبروا الحد: ${lim.map(c=>esc(c.name)).join("، ")}.</span>`:""}</div>
@@ -4516,6 +4675,9 @@ document.addEventListener("click",e=>{
   const t=e.target;
   if(t.closest('[data-act="bell"]')){S.bellOpen=!S.bellOpen;renderBell();return}
   if(S.bellOpen&&(!t.closest(".bell-panel")||t.closest("button,a"))){S.bellOpen=false;renderBell()}
+  const hbs=t.closest("[data-hbs]");if(hbs){hbShow(S.hb.i+Number(hbs.dataset.hbs));return}
+  const hbg=t.closest("[data-hbgo]");if(hbg){hbShow(Number(hbg.dataset.hbgo));return}
+  const hbr=t.closest("[data-hbr]");if(hbr){const k=hbr.closest("[data-hbreel]").dataset.hbreel;hbReel(k,Number(hbr.dataset.hbr));return}
   const g=t.closest("[data-go]");if(g){if(g.dataset.remf){S.remTab="send";S.remFilter=g.dataset.remf}go(g.dataset.go);return}
   const ap=t.closest("[data-addphone]");if(ap){const ac=S.customers.get(ap.dataset.addphone);if(ac&&canWrite())phoneForm(ac);return}
   const o=t.closest("[data-open]");if(o){openCustomer(o.dataset.open);return}
@@ -4530,6 +4692,10 @@ document.addEventListener("click",e=>{
   const bs=t.closest("[data-bizstyle]");if(bs){S.bizDraft={...(S.bizDraft||{}),style:bs.dataset.bizstyle};bs.parentElement.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===bs));bizRedraw();return}
   const lli=t.closest("[data-locklimit]");if(lli&&isAdmin()){const on=lli.dataset.locklimit==="1";if(on===limLock())return;
     saveSettings({lockLimit:on}).then(ok=>{if(ok){log("edit","lock",{detail:on?"تشغيل القفل عند تجاوز حد الدين":"إيقاف القفل عند تجاوز حد الدين"});toast(on?"تم تشغيل قفل تجاوز الحد":"انطفى قفل تجاوز الحد")}});return}
+  const lmo=t.closest("[data-lockmonth]");if(lmo&&isAdmin()){const d=Number(lmo.dataset.lockmonth);if(d===monthLock())return;
+    const go=()=>saveSettings({lockMonth:d}).then(ok=>{if(ok){log("edit","lock",{detail:d?`قفل راس الشهر من يوم ${d}`:"إيقاف قفل راس الشهر"});toast(d?"تم تشغيل قفل راس الشهر":"انطفى قفل راس الشهر")}});
+    const n=d?monthCount(d,true):0;
+    if(n)confirmBox("تشغيل قفل راس الشهر",`${n} زبون راح ينقفل حسابه هسه لأنه باقي عليه من حساب الشهر الماضي. تكدر تفتح أي واحد منهم من صفحته.`,"تشغيل",go);else go();return}
   const ld=t.closest("[data-lockdays]");if(ld&&isAdmin()){const d=Number(ld.dataset.lockdays);const go=()=>saveSettings({lockDays:d}).then(ok=>{if(ok){log("edit","lock",{detail:d?`قفل الحسابات بعد ${d} يوم`:"إيقاف قفل الحسابات"});toast(d?"تم تشغيل القفل":"انطفى القفل")}});
     const n=d?[...lockMap(d).values()].filter(x=>x.locked).length:0;
     if(n&&d!==lockDays())confirmBox("تشغيل قفل الحسابات",`${n} زبون راح ينقفل حسابه هسه لأنه ما سدد كامل خلال ${d} يوم. تكدر تفتح أي واحد منهم من صفحته.`,"تشغيل",go);else go();return}

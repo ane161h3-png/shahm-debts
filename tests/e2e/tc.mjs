@@ -13,7 +13,7 @@ await p.mouse.move(5,5);const x1=await p.$eval(".tc-track .tc",e=>e.getBoundingC
 ok(x2>x1,tag+`: strip drifts to the right (${x1.toFixed(0)} → ${x2.toFixed(0)})`);
 const sw=await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth);ok(sw,tag+": no sideways page scroll");
 await p.screenshot({path:`tc-${tag}.png`});
-if(tag==="phone"){const id=await p.getAttribute(".tc-track .tc","data-open");await p.click(".tc-track .tc",{force:true});await p.waitForTimeout(1200);
+if(tag==="phone"){const id=await p.getAttribute(".tc-track .tc","data-open");await p.$eval(".tc-track .tc",e=>e.click());await p.waitForTimeout(1200);
   ok((await p.textContent(".detail h2"))!=null,"tapping a card opens the account ("+id+")");}
 await ctx.close()}
 // reduced motion
