@@ -684,7 +684,7 @@ td.x{width:64px;white-space:nowrap}
 .hb{position:relative;overflow:hidden;padding:0}
 .hb-view{overflow:hidden;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .hb-track{display:flex;direction:rtl}
-.hb-card{flex:none;width:100%;min-width:0;display:grid;grid-template-columns:1fr;gap:12px;padding:14px 16px 12px;border-top:4px solid var(--hb-c,var(--accent))}
+.hb-card{flex:none;width:100%;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;padding:14px 16px 12px;border-top:4px solid var(--hb-c,var(--accent))}
 .hb-card.k-today{--hb-c:var(--accent);--hb-soft:var(--accent-soft)}
 .hb-card.k-late{--hb-c:var(--warn);--hb-soft:var(--warn-soft)}
 .hb-card.k-lock{--hb-c:var(--debt);--hb-soft:var(--debt-soft)}
@@ -700,7 +700,10 @@ td.x{width:64px;white-space:nowrap}
 .hb-st .k{font-size:12.5px;color:var(--muted)}
 .hb-st .v{font-family:var(--f-display);font-weight:800;font-size:clamp(18px,5.2vw,24px);line-height:1.15;overflow-wrap:anywhere}
 .hb-st .v small{font-size:12px;font-weight:500;color:var(--muted);margin-inline-start:4px}
-.hb-st .v{white-space:nowrap}.hb-st .k{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hb-st{container-type:inline-size}.hb-st .v{white-space:nowrap}
+/* Long amounts shrink to fit their box (--l = digits shown). */
+.hb-st .v[style*="--l"]{font-size:clamp(13px,calc(160cqi / (var(--l) + 3)),24px)}
+@media (max-width:420px){.k-today .hb-st .v[style*="--l"]{font-size:clamp(13px,calc(160cqi / (var(--l) + 1)),22px)}}.hb-st .k{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:420px){.k-today .hb-st .v small{display:none}}
 .hb-st .v.debt{color:var(--debt)}.hb-st .v.paid{color:var(--paid)}.hb-st .v.warn{color:var(--warn)}
 .hb-reel{display:flex;align-items:center;gap:6px;background:var(--hb-soft);border-radius:var(--r-ctl);padding:6px}
@@ -727,8 +730,13 @@ td.x{width:64px;white-space:nowrap}
 .hb-dots button[aria-current="true"]{width:22px;background:var(--hb-dot,var(--accent))}
 .hb-prog{position:absolute;top:0;inset-inline:0;height:4px;pointer-events:none}
 .hb-prog i{display:block;height:100%;width:0;background:color-mix(in srgb,var(--paper) 55%,transparent)}
-@media (min-width:821px){.hb-card{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:center;column-gap:18px;padding:16px 20px 12px}
-  .hb-card .hb-head{grid-column:1/-1}.hb-card .hb-reel,.hb-card .hb-ok{align-self:stretch}.hb-rv,.hb-ri{height:64px}}
+/* Laptop and iPad: every card side by side (no sliding); the reels still turn. */
+@media (min-width:768px){.hb.wide{background:none;border:0;box-shadow:none;overflow:visible}
+  .hb.wide .hb-view{overflow:visible;touch-action:auto;user-select:auto;-webkit-user-select:auto}
+  .hb.wide .hb-track{display:grid;grid-template-columns:repeat(var(--hb-n),minmax(0,1fr));gap:14px;transform:none!important}
+  .hb.wide .hb-card{width:auto;background:var(--paper);border:1px solid var(--line);border-top:4px solid var(--hb-c);border-radius:var(--r);box-shadow:var(--shadow);align-content:start}
+  .hb.wide .hb-bar,.hb.wide .hb-prog{display:none}
+  .hb.wide .hb-reel{margin-top:auto}.hb.wide .hb-rv,.hb.wide .hb-ri{height:64px}}
 @media (prefers-reduced-motion:no-preference){.hb-track.anim{transition:transform .5s cubic-bezier(.2,.7,.2,1)}.hb-rt.anim{transition:transform .45s cubic-bezier(.2,.7,.2,1)}
   .hb-prog i.run{width:100%;transition:width linear var(--hb-ms,8000ms)}}
 /* Count-up numbers (countUps). */
@@ -2162,7 +2170,8 @@ function topCards(per,total){
    reel that shows one customer at a time, by itself or with its arrows). The late and locked cards stay as long as anyone is
    late or locked. The slide and reel positions live in S.hb so the live refreshes of home don't send it back to the start.
    It pauses while touched, hovered or focused, while a window is open, and while the app is in the background. */
-const HB_SLIDE=8000,HB_REEL=3000;
+const HB_SLIDE=8000,HB_REEL=3000,HB_WIDE=matchMedia("(min-width:768px)");
+HB_WIDE.addEventListener("change",()=>{if(S.me&&S.view==="home")render()});
 const hbI={up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>',
   down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
   next:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>',
@@ -2177,19 +2186,19 @@ function hbCards(per){
   const lc=lastD&&S.customers.get(lastD.customerId);
   out.push({k:"today",title:"تقرير اليوم",sub:dayName(day),ic:hbI.day,
     body:`<div class="hb-stats"><div class="hb-st"><span class="k">ديون اليوم</span><span class="v debt num">${cu("hb:dn",dN,"debt")}</span></div>
-      <div class="hb-st"><span class="k">مبلغها</span><span class="v debt">${shown("added",`<span class="num">${fmt(dA)}</span><small>${CUR}</small>`)}</span></div>
-      <div class="hb-st"><span class="k">تسديدات (<span class="num">${pN}</span>)</span><span class="v paid">${shown("paid",`<span class="num">${fmt(pA)}</span><small>${CUR}</small>`)}</span></div></div>`,
+      <div class="hb-st"><span class="k">مبلغها</span><span class="v debt" style="--l:${fmt(dA).length}">${shown("added",`<span class="num">${fmt(dA)}</span><small>${CUR}</small>`)}</span></div>
+      <div class="hb-st"><span class="k">تسديدات (<span class="num">${pN}</span>)</span><span class="v paid" style="--l:${fmt(pA).length}">${shown("paid",`<span class="num">${fmt(pA)}</span><small>${CUR}</small>`)}</span></div></div>`,
     side:lc?`<div class="hb-ok">${I.plus}<span>آخر دين: <button class="linkish" type="button" data-open="${esc(lc.id)}">${esc(lc.name)}</button> ${shown("top",`<span class="num">${fmt(lastD.amount)}</span> ${CUR}`)}${lastD.createdAt?` · ${hm12(lastD.createdAt)}`:""}</span></div>`
       :`<div class="hb-ok">${I.check}<span>ماكو ديون انسجلت اليوم لحد هسه.</span></div>`});
   const late=lateInfo(),lateL=[...late.entries()].filter(([,x])=>x.late).map(([id,x])=>({c:S.customers.get(id),x,b:per.get(id).bal})).filter(r=>r.c).sort((a,b)=>b.x.days-a.x.days||b.b-a.b);
   if(lateL.length){const tot=lateL.reduce((a,r)=>a+r.b,0);
     out.push({k:"late",title:"الزبائن المتأخرين",sub:`ما دافعوا من أكثر من ${LATE_DAYS} يوم`,ic:hbI.late,go:`data-go="reminders" data-remf="late"`,
-      body:`<div class="hb-stats"><div class="hb-st"><span class="k">عددهم</span><span class="v warn num">${lateL.length}</span></div><div class="hb-st"><span class="k">مجموع اللي عليهم</span><span class="v debt">${shown("top",`<span class="num">${fmt(tot)}</span><small>${CUR}</small>`)}</span></div></div>`,
+      body:`<div class="hb-stats"><div class="hb-st"><span class="k">عددهم</span><span class="v warn num">${lateL.length}</span></div><div class="hb-st"><span class="k">مجموع اللي عليهم</span><span class="v debt" style="--l:${fmt(tot).length}">${shown("top",`<span class="num">${fmt(tot)}</span><small>${CUR}</small>`)}</span></div></div>`,
       reel:lateL.map(r=>({id:r.c.id,name:r.c.name,s:(r.x.paid?"آخر دفعة قبل ":"ما دافع من أول دين، ")+r.x.days+" يوم",b:r.b}))})}
   const locks=anyLock()?lockMap():new Map(),lockL=[...locks.entries()].filter(([,L])=>L.locked).map(([id,L])=>({c:S.customers.get(id),L,b:per.get(id).bal})).filter(r=>r.c).sort((a,b)=>b.b-a.b);
   if(lockL.length){const why=L=>L.manual?"قفله المدير":L.month?"ما سدد حساب الشهر الماضي":L.limit?"تجاوز حد الدين":"ما سدد خلال "+lockName(L.n);
     out.push({k:"lock",title:"الحسابات المقفولة",sub:"ما ينكتب عليهم دين جديد",ic:I.lock,go:`data-act="golocked"`,
-      body:`<div class="hb-stats"><div class="hb-st"><span class="k">عددها</span><span class="v debt num">${lockL.length}</span></div><div class="hb-st"><span class="k">مجموع اللي عليهم</span><span class="v debt">${shown("top",`<span class="num">${fmt(lockL.reduce((a,r)=>a+r.b,0))}</span><small>${CUR}</small>`)}</span></div></div>`,
+      body:`<div class="hb-stats"><div class="hb-st"><span class="k">عددها</span><span class="v debt num">${lockL.length}</span></div><div class="hb-st"><span class="k">مجموع اللي عليهم</span><span class="v debt" style="--l:${fmt(lockL.reduce((a,r)=>a+r.b,0)).length}">${shown("top",`<span class="num">${fmt(lockL.reduce((a,r)=>a+r.b,0))}</span><small>${CUR}</small>`)}</span></div></div>`,
       reel:lockL.map(r=>({id:r.c.id,name:r.c.name,s:why(r.L),b:r.b}))})}
   return out;
 }
@@ -2198,18 +2207,18 @@ function homeBoard(per){
   const reel=c=>{if(!c.reel)return c.side||"";const n=c.reel.length,j=(H.r[c.k]||0)%n;H.r[c.k]=j;
     return `<div class="hb-reel" data-hbreel="${c.k}" data-n="${n}"><div class="hb-rv" aria-live="off"><div class="hb-rt" style="transform:translateY(-${j*100/n}%)">${c.reel.map((r,i)=>`<button type="button" class="hb-ri" data-open="${esc(r.id)}"${i===j?"":' tabindex="-1"'} title="فتح حساب ${esc(r.name)}"><span class="avatar" aria-hidden="true">${initial(r.name)}</span><span class="m"><b>${esc(r.name)}</b><span>${esc(r.s)}</span></span><span class="a">${shown("top",`<span class="num">${fmt(r.b)}</span>`)}</span></button>`).join("")}</div></div>
       ${n>1?`<div class="hb-rc"><button type="button" data-hbr="-1" aria-label="الزبون السابق">${hbI.up}</button><span class="num" data-hbpos>${j+1}/${n}</span><button type="button" data-hbr="1" aria-label="الزبون التالي">${hbI.down}</button></div>`:""}</div>`};
-  const n=cards.length,dot={today:"var(--accent)",late:"var(--warn)",lock:"var(--debt)"};
-  return `<section class="pane hb" id="hb" aria-roledescription="carousel" aria-label="لوحة اليوم" style="--hb-dot:${dot[cards[H.i].k]}">
+  const n=cards.length,dot={today:"var(--accent)",late:"var(--warn)",lock:"var(--debt)"},wide=HB_WIDE.matches;
+  return `<section class="pane hb${wide?" wide":""}" id="hb"${wide?"":' aria-roledescription="carousel"'} aria-label="لوحة اليوم" style="--hb-dot:${dot[cards[H.i].k]};--hb-n:${n}">
     <div class="hb-prog" aria-hidden="true"><i></i></div>
-    <div class="hb-view"><div class="hb-track" style="transform:translateX(${H.i*100}%)">${cards.map((c,i)=>`<article class="hb-card k-${c.k}" role="group" aria-roledescription="بطاقة" aria-label="${esc(c.title)} (${i+1} من ${n})"${i===H.i?"":' aria-hidden="true" inert'}>
+    <div class="hb-view"><div class="hb-track" style="transform:translateX(${H.i*100}%)">${cards.map((c,i)=>`<article class="hb-card k-${c.k}" role="group" aria-roledescription="بطاقة" aria-label="${esc(c.title)} (${i+1} من ${n})"${i===H.i||wide?"":' aria-hidden="true" inert'}>
       <div class="hb-head"><span class="hb-ic">${c.ic}</span><span class="hb-t"><b>${esc(c.title)}</b><span>${esc(c.sub)}</span></span>${c.go?`<button class="btn sm hb-go" type="button" ${c.go}>عرضهم</button>`:""}</div>
       ${c.body}${reel(c)}</article>`).join("")}</div></div>
-    ${n>1?`<div class="hb-bar"><button type="button" data-hbs="-1" aria-label="البطاقة السابقة">${hbI.prev}</button><div class="hb-dots">${cards.map((c,i)=>`<button type="button" data-hbgo="${i}" aria-label="${esc(c.title)}" aria-current="${i===H.i}" style="--hb-dot:${dot[c.k]}"></button>`).join("")}</div><button type="button" data-hbs="1" aria-label="البطاقة التالية">${hbI.next}</button></div>`:""}
+    ${n>1&&!wide?`<div class="hb-bar"><button type="button" data-hbs="-1" aria-label="البطاقة السابقة">${hbI.prev}</button><div class="hb-dots">${cards.map((c,i)=>`<button type="button" data-hbgo="${i}" aria-label="${esc(c.title)}" aria-current="${i===H.i}" style="--hb-dot:${dot[c.k]}"></button>`).join("")}</div><button type="button" data-hbs="1" aria-label="البطاقة التالية">${hbI.next}</button></div>`:""}
   </section>`;
 }
 // Moves the board without redrawing home (keeps it smooth); the next redraw draws the same position.
 function hbShow(i,anim=true){
-  const H=S.hb,el=$("#hb");if(!H||!el)return;const n=H.keys.length;if(!n)return;H.i=((i%n)+n)%n;H.slideAt=Date.now();
+  const H=S.hb,el=$("#hb");if(!H||!el||el.classList.contains("wide"))return;const n=H.keys.length;if(!n)return;H.i=((i%n)+n)%n;H.slideAt=Date.now();
   const tr=el.querySelector(".hb-track");tr.classList.toggle("anim",anim);tr.style.transform=`translateX(${H.i*100}%)`;
   el.querySelectorAll(".hb-card").forEach((c,k)=>{const on=k===H.i;c.toggleAttribute("inert",!on);if(on)c.removeAttribute("aria-hidden");else c.setAttribute("aria-hidden","true")});
   el.querySelectorAll("[data-hbgo]").forEach((d,k)=>d.setAttribute("aria-current",k===H.i));
@@ -2228,14 +2237,18 @@ function hbProg(){const i=document.querySelector("#hb .hb-prog i");if(!i)return;
 function hbPaused(){const el=$("#hb");return !el||document.hidden||!!$("#modalRoot").children.length||S.hb.hold||HB_HOVER.matches&&el.matches(":hover")||!!el.querySelector(":focus-visible")}
 const HB_HOVER=matchMedia("(hover:hover)");
 setInterval(()=>{const H=S.hb,el=$("#hb");if(!H||!el||S.view!=="home")return;
-  const p=hbPaused(),now=Date.now();if(p){H.slideAt=now;const i=el.querySelector(".hb-prog i.run");if(i)i.classList.remove("run");return}
+  const now=Date.now();
+  // Side by side: each reel turns on its own and stops only while that card is under the pointer or keyboard focus.
+  if(el.classList.contains("wide")){if(document.hidden||$("#modalRoot").children.length||now-(H.reelAt||(H.reelAt=now))<HB_REEL)return;H.reelAt=now;
+    for(const k of H.keys){const c=el.querySelector(".k-"+k);if(k!=="today"&&c&&!(HB_HOVER.matches&&c.matches(":hover"))&&!c.querySelector(":focus-visible"))hbReel(k,1)}return}
+  if(hbPaused()){H.slideAt=now;const i=el.querySelector(".hb-prog i.run");if(i)i.classList.remove("run");return}
   if(!el.querySelector(".hb-prog i.run"))hbProg();
   if(H.keys.length>1&&now-(H.slideAt||(H.slideAt=now))>=HB_SLIDE){hbShow(H.i+1);return}
   const k=H.keys[H.i];if(now-(H.reelAt||(H.reelAt=now))>=HB_REEL){H.reelAt=now;if(k!=="today")hbReel(k,1)}
 },500);
 // Swipe: in this right-to-left page the next card sits to the left, so dragging right brings it in.
 (()=>{let x0=null,y0=0,dx=0,drag=false,id=null;
-  document.addEventListener("pointerdown",e=>{const v=e.target.closest&&e.target.closest(".hb-view");if(!v||e.button>0)return;x0=e.clientX;y0=e.clientY;dx=0;drag=false;id=e.pointerId;S.hb.hold=true});
+  document.addEventListener("pointerdown",e=>{const v=e.target.closest&&e.target.closest(".hb-view");if(!v||e.button>0||v.closest(".wide"))return;x0=e.clientX;y0=e.clientY;dx=0;drag=false;id=e.pointerId;S.hb.hold=true});
   document.addEventListener("pointermove",e=>{if(x0==null||e.pointerId!==id)return;dx=e.clientX-x0;if(!drag&&Math.abs(dx)>8&&Math.abs(dx)>Math.abs(e.clientY-y0))drag=true;
     if(drag){const tr=document.querySelector("#hb .hb-track");if(tr){tr.classList.remove("anim");tr.style.transform=`translateX(calc(${S.hb.i*100}% + ${dx}px))`}}});
   const up=e=>{if(x0==null||e.pointerId!==id)return;x0=null;S.hb.hold=e.pointerType==="mouse"?false:S.hb.hold;
@@ -2254,6 +2267,11 @@ function homeView(){
   const actAll=S.activity.filter(a=>a.kind!=="login"&&(S.actFilter==="all"?a.kind!=="remind":a.kind===S.actFilter));
   const actDay0=shopDayRange(shopDay()).start,actToday=actAll.filter(a=>a.at>=actDay0).length,acts=actAll.slice(0,Math.max(60,actToday));
   return `<div style="display:flex;flex-direction:column;gap:14px">
+  <section class="pane card-pad home-search" aria-label="بحث عن زبون">
+    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="hq" type="search" placeholder="ابحث عن زبون أو مورد بالاسم أو الرقم" autocomplete="off" enterkeyhint="search" value="${esc(S.hq||"")}">${micBtn('class="s-mic" data-vsearch="hq"',"ابحث بالصوت")}</div>
+    <ul class="hs-list" id="hsList" hidden></ul>
+  </section>
   ${homeBoard(per)}
   <section class="pane summary" aria-label="ملخص">
     <div class="sum-hero"><div class="k">${I.wallet}مجموع الدين على الزبائن${eyeBtn()}</div>
@@ -2267,11 +2285,6 @@ function homeView(){
     <div class="sum-actions" role="group" aria-label="إجراءات سريعة">${canWrite()?`<button class="btn debt" type="button" data-act="quick">${I.plus}دين جديد</button><button class="btn paid" type="button" data-act="quickpay">تسديد</button><button class="btn" type="button" data-act="voice">${I.mic}بالصوت</button><button class="btn" type="button" data-act="newcust">زبون جديد</button>${SHOP?"":`<button class="btn" type="button" data-act="scan">${I.camera}تصوير اليوميات</button>`}`:""}${can("totals")?`<button class="btn" type="button" data-act="monthrep">${I.trend}التقرير الشهري</button>`:""}<button class="btn wa" type="button" data-go="reminders">${I.wa}تذكير المدينين${shown("owing",` (${owing})`)}</button></div>
   </section>
   ${topCards(per,total)}
-  <section class="pane card-pad home-search" aria-label="بحث عن زبون">
-    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="hq" type="search" placeholder="ابحث عن زبون أو مورد بالاسم أو الرقم" autocomplete="off" enterkeyhint="search" value="${esc(S.hq||"")}">${micBtn('class="s-mic" data-vsearch="hq"',"ابحث بالصوت")}</div>
-    <ul class="hs-list" id="hsList" hidden></ul>
-  </section>
   ${custTableSection()}
   <div class="home-grid">
     <section class="pane card-pad" aria-label="سجل النشاط">
