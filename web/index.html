@@ -1951,6 +1951,9 @@ function notifText(a){
   if(a.what==="customer"&&a.kind==="add")return ["cust",`👤 ${a.by} أضاف زبون جديد`,c];
   return null;
 }
+// Same list the service worker keeps (web/sw.js seenTag): an entry the phone already showed is never shown again.
+async function noteOnce(tag){try{if(!window.caches)return true;const c=await caches.open("shahm-pushseen"),key="./__seen/"+encodeURIComponent(tag),hit=await c.match(key);
+  if(hit&&Date.now()-Number(await hit.text())<864e5)return false;await c.put(key,new Response(String(Date.now())))}catch(e){}return true}
 const NOTIFIED=new Set(); // activity ids already announced on this page, so one entry never alerts twice
 function notifyAct(a){
   if(!S.me||!isAdmin()||!a||a.by===S.me.name||NOTIFIED.has(a.id))return;NOTIFIED.add(a.id);
@@ -1959,7 +1962,7 @@ function notifyAct(a){
   toast(`${title}${body?" "+body:""}`,ac?{label:"فتح",onClick:()=>openCustomer(ac.id)}:null);
   if(pr.sound)chime();
   // With phone notifications on, the server's push already shows it on this device; a second one from the page doubled it.
-  if(document.visibilityState!=="visible"&&pushState!=="on")deviceNote(title,body,a.id);
+  if(document.visibilityState!=="visible"&&pushState!=="on")noteOnce(a.id).then(n=>{if(n)deviceNote(title,body,a.id)});
 }
 /* Phone notifications that arrive with the app closed (Web Push through the AI worker, worker/src/push.js). The owner turns
    them on per device in Settings > الإشعارات: the device's subscription goes into settings/main.push[hash] {e,p,a,u,k,at},

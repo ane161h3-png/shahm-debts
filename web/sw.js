@@ -38,6 +38,19 @@ self.addEventListener("fetch", e => {
   }));
 });
 
+// Entries already shown as a phone notification, by tag (shared with the page, see deviceNote in index.html). Kept for a
+// day in their own cache, which the version cleanup below does not touch.
+const IOS = /iPhone|iPad|iPod/.test(self.navigator.userAgent);
+async function seenTag(tag) {
+  try {
+    const c = await caches.open("shahm-pushseen"), key = "./__seen/" + encodeURIComponent(tag), hit = await c.match(key);
+    if (hit && Date.now() - Number(await hit.text()) < 864e5) return true;
+    await c.put(key, new Response(String(Date.now())));
+    const keys = await c.keys(); if (keys.length > 300) for (const k of keys.slice(0, keys.length - 200)) await c.delete(k);
+  } catch (x) {}
+  return false;
+}
+
 // Phone notifications sent by the server (worker/src/push.js) when a worker records a debt or payment. While the app is
 // on screen it shows the entry itself, so the push is skipped then (the test push always shows).
 self.addEventListener("push", e => {
@@ -45,8 +58,9 @@ self.addEventListener("push", e => {
   try { d = e.data ? e.data.json() : {}; } catch (x) {}
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
     if (!d.force && list.some(c => c.focused && !new URL(c.url).pathname.includes("/pos/"))) return;
-    // The same entry already on screen (the open page showed it, or this push came twice): don't show it again.
-    return (d.tag && !d.force ? self.registration.getNotifications({ tag: d.tag }) : Promise.resolve([])).catch(() => []).then(open => open.length ? null : self.registration.showNotification(d.title || "دفتر الديون", {
+    // The same entry shown before on this phone (the page showed it, or it came twice, even if the first one was already
+    // swiped away): not again. iPhone stops pushes to a site whose push shows nothing, so there it only replaces the old one.
+    return (d.tag && !d.force ? seenTag(d.tag) : Promise.resolve(false)).then(dup => dup && !IOS ? null : self.registration.showNotification(d.title || "دفتر الديون", {
       body: d.body || "", tag: d.tag || undefined, lang: "ar", dir: "rtl", icon: "icons/icon-192.png", badge: "icons/icon-192.png", data: { url: d.url || "" },
     }));
   }));
