@@ -1951,13 +1951,15 @@ function notifText(a){
   if(a.what==="customer"&&a.kind==="add")return ["cust",`👤 ${a.by} أضاف زبون جديد`,c];
   return null;
 }
+const NOTIFIED=new Set(); // activity ids already announced on this page, so one entry never alerts twice
 function notifyAct(a){
-  if(!S.me||!isAdmin()||!a||a.by===S.me.name)return;
+  if(!S.me||!isAdmin()||!a||a.by===S.me.name||NOTIFIED.has(a.id))return;NOTIFIED.add(a.id);
   const n=notifText(a),pr=notifPrefs();if(!n||!pr[n[0]])return;
   const [,title,body]=n,ac=actCust(a);
   toast(`${title}${body?" "+body:""}`,ac?{label:"فتح",onClick:()=>openCustomer(ac.id)}:null);
   if(pr.sound)chime();
-  if(document.visibilityState!=="visible")deviceNote(title,body,a.id);
+  // With phone notifications on, the server's push already shows it on this device; a second one from the page doubled it.
+  if(document.visibilityState!=="visible"&&pushState!=="on")deviceNote(title,body,a.id);
 }
 /* Phone notifications that arrive with the app closed (Web Push through the AI worker, worker/src/push.js). The owner turns
    them on per device in Settings > الإشعارات: the device's subscription goes into settings/main.push[hash] {e,p,a,u,k,at},
@@ -2015,10 +2017,15 @@ function startData(){
   syncData(fail);d1Load();
   // Activity: the whole business day live (the home log shows every one of today's entries), plus the last 100 before it, read once.
   const day0=shopDayRange(shopDay()).start;let actDay=[],actOld=[];const actSet=()=>{S.activity=[...actDay,...actOld];render()};
-  let actFirst=true;
-  unsubs.push(db.collection(P("activity")).where("at",">=",day0).orderBy("at","desc").onSnapshot(s=>{actDay=s.docs.map(d=>d.data());
-    if(!actFirst)for(const c of s.docChanges())if(c.type==="added"&&!c.doc.metadata.hasPendingWrites)notifyAct(c.doc.data());
-    actFirst=false;actSet()},fail));
+  // Alerts only for entries that arrive while the app is open. The first snapshot can come from the device cache; entries
+  // recorded while the app was closed then arrive with the server's answer and were already sent as phone notifications,
+  // so everything up to the first server answer is the starting point and alerts nobody.
+  let actBase=false;
+  unsubs.push(db.collection(P("activity")).where("at",">=",day0).orderBy("at","desc").onSnapshot({includeMetadataChanges:true},s=>{
+    const ch=s.docChanges();if(actBase&&!ch.length)return;
+    actDay=s.docs.map(d=>d.data());
+    if(actBase)for(const c of ch)if(c.type==="added"&&!c.doc.metadata.hasPendingWrites)notifyAct(c.doc.data());
+    if(!s.metadata.fromCache)actBase=true;actSet()},fail));
   db.collection(P("activity")).where("at","<",day0).orderBy("at","desc").limit(100).get().then(s=>{actOld=s.docs.map(d=>d.data());actSet()},fail);
   unsubs.push(db.doc(P("settings/main")).onSnapshot(s=>{S.settings=s.exists?{...s.data()}:{};
     if(SHOP&&S.isOwner&&S.shop&&!s.exists&&!s.metadata.fromCache)saveSettings({shopName:S.shop.name,ownerName:S.shop.ownerName,phone:S.shop.phone||""});try{if(shopName())localStorage.setItem(GATE_NAME_KEY,shopName());localStorage.setItem(GATE_TENANT_KEY,SHOP?"1":"0")}catch(e){}if(S.me&&S.me.role==="owner")S.me.name=S.settings.ownerName||"المدير";S.ready.s=true;render()},fail));

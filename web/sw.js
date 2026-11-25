@@ -1,6 +1,6 @@
 // Offline shell for the debt book: the page always tries the network first (so updates arrive), everything else is served
 // from cache and refreshed in the background. Firebase traffic is cross-origin and never touched here.
-const CACHE = "shahm-v104";
+const CACHE = "shahm-v105";
 const SHELL = [
   "./", "index.html", "config.js", "manifest.webmanifest",
   "vendor/firebase-app-compat.js", "vendor/firebase-auth-compat.js", "vendor/firebase-firestore-compat.js",
@@ -45,9 +45,10 @@ self.addEventListener("push", e => {
   try { d = e.data ? e.data.json() : {}; } catch (x) {}
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
     if (!d.force && list.some(c => c.focused && !new URL(c.url).pathname.includes("/pos/"))) return;
-    return self.registration.showNotification(d.title || "دفتر الديون", {
+    // The same entry already on screen (the open page showed it, or this push came twice): don't show it again.
+    return (d.tag && !d.force ? self.registration.getNotifications({ tag: d.tag }) : Promise.resolve([])).catch(() => []).then(open => open.length ? null : self.registration.showNotification(d.title || "دفتر الديون", {
       body: d.body || "", tag: d.tag || undefined, lang: "ar", dir: "rtl", icon: "icons/icon-192.png", badge: "icons/icon-192.png", data: { url: d.url || "" },
-    });
+    }));
   }));
 });
 self.addEventListener("notificationclick", e => {
