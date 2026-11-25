@@ -84,6 +84,14 @@ export async function handlePush(request, env, json, cors) {
     return { h, e: s("e"), p: s("p"), a: s("a"), u: s("u"), k: ((f.k && f.k.arrayValue && f.k.arrayValue.values) || []).map(x => x.stringValue) };
   }).filter(s => s.e && s.p && s.a && (kind === "test" ? s.u === user.localId : s.u !== user.localId && s.k.includes(kind)));
   const msg = { title: str(b.title, 120) || "دفتر الديون", body: str(b.body, 200), tag: str(b.tag, 40), force: kind === "test" };
+  // One entry (tag = its activity id) is pushed once: a second ask for the same entry within 30 minutes (a retry, a slow
+  // network sending it again) is dropped, so the owner's phone never rings twice for one debt.
+  const seen = kind !== "test" && msg.tag && typeof caches !== "undefined"
+    ? new Request(`https://push.seen.invalid/${shop || "main"}/${encodeURIComponent(msg.tag)}`) : null;
+  if (seen) {
+    try { if (await caches.default.match(seen)) { log("info", "push.dup", { kind }); return json({ sent: 0, tried: 0, gone: [], dup: true }, 200, cors); }
+      await caches.default.put(seen, new Response("1", { headers: { "Cache-Control": "max-age=1800" } })); } catch (e) {}
+  }
   const res = await Promise.all(subs.map(s => sendPush(env, s, msg).catch(() => 0)));
   const gone = subs.filter((s, i) => res[i] === 404 || res[i] === 410).map(s => s.h);
   log("info", "push.sent", { kind, sent: res.filter(x => x >= 200 && x < 300).length, of: subs.length });

@@ -7,7 +7,7 @@
 #   bash tests/e2e/run.sh cu eye          # some
 set -u
 E=$(cd "$(dirname "$0")" && pwd); R=$(cd "$E/../.." && pwd); T="$E/.work"
-TESTS=${*:-"posd1 tc cu eye acc stmsg shopall more hb login-forgot"}  # login-forgot resets the accounts: keep it last
+TESTS=${*:-"posd1 tc cu eye acc stmsg shopall more hb notif login-forgot"}  # login-forgot resets the accounts: keep it last
 export PW=${PW:-$R/tests/node_modules/playwright/index.mjs}
 PIDS=()
 stop() { for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null; pkill -P "$p" 2>/dev/null; done; }
