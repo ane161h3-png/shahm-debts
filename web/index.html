@@ -661,7 +661,7 @@ td.x{width:64px;white-space:nowrap}
 .top-cards{padding:12px 0 14px;overflow:hidden}
 .top-cards .section-title{padding:0 14px;margin-bottom:8px}
 .top-cards .section-title h2 svg{width:18px;height:18px;vertical-align:-3px;margin-inline-end:6px;color:var(--debt)}
-.tc-view{overflow:hidden;-webkit-mask-image:linear-gradient(to left,transparent,black 18px,black calc(100% - 18px),transparent);mask-image:linear-gradient(to left,transparent,black 18px,black calc(100% - 18px),transparent)}
+.tc-view{overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scrollbar-width:none;user-select:none;-webkit-user-select:none;-webkit-mask-image:linear-gradient(to left,transparent,black 18px,black calc(100% - 18px),transparent);mask-image:linear-gradient(to left,transparent,black 18px,black calc(100% - 18px),transparent)}
 .tc-track,.tc-dup{display:flex;width:max-content}
 .tc-track{padding:4px 0}
 .tc{flex:none;width:168px;margin-inline-end:10px;display:flex;flex-direction:column;gap:4px;text-align:right;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:10px 12px;cursor:pointer}
@@ -675,11 +675,9 @@ td.x{width:64px;white-space:nowrap}
 .tc-bar{height:4px;border-radius:2px;background:var(--paper-2);overflow:hidden}.tc-bar i{display:block;height:100%;background:var(--debt);border-radius:2px}
 .tc-s{font-size:12px;color:var(--muted);white-space:nowrap}.tc-s.late{color:var(--debt)}
 .tc:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-@media (prefers-reduced-motion:no-preference){
-  .tc-track{animation:tcDrift var(--tc-dur,40s) linear infinite}
-  @keyframes tcDrift{from{transform:translateX(0)}to{transform:translateX(50%)}}
-  .tc-view:hover .tc-track,.tc-view:active .tc-track,.tc-view:focus-within .tc-track{animation-play-state:paused}}
-@media (prefers-reduced-motion:reduce){.tc-view{overflow-x:auto;-webkit-mask-image:none;mask-image:none}.tc-dup,.tc[aria-hidden]{display:none}}
+.tc-view::-webkit-scrollbar{display:none}
+@media (hover:hover){.tc-view{cursor:grab}.tc-view.drag{cursor:grabbing}.tc-view.drag .tc{pointer-events:none}}
+@media (prefers-reduced-motion:reduce){.tc-view{-webkit-mask-image:none;mask-image:none}.tc-dup,.tc[aria-hidden]{display:none}}
 /* Home board (homeBoard): swipeable cards at the top of home that move on by themselves; the late and locked cards hold a reel
    that shows one customer at a time. */
 .hb{position:relative;overflow:hidden;padding:0}
@@ -2047,7 +2045,7 @@ function showApp(){
   $("#gate").hidden=true;$("#gate").innerHTML="";$("#app").hidden=false;$("#bottomNav").hidden=false;
   render();
 }
-function go(v){if(v==="customers"&&S.view!=="customers")S.kind="customer";S.view=v;if(v!=="customers")S.selected=null;if(v!=="settings"){S.setPage=null;S.bizDraft=null}render();window.scrollTo(0,0)}
+function go(v){S.listY=null;if(v==="customers"&&S.view!=="customers")S.kind="customer";S.view=v;if(v!=="customers")S.selected=null;if(v!=="settings"){S.setPage=null;S.bizDraft=null}render();window.scrollTo(0,0)}
 /* First-time tour: four steps, once per device. A notebook that already has accounts skips it; Settings > تثبيت البرنامج
    has «شرح البرنامج» to see it again. */
 const INTRO_KEY="shahm-intro";
@@ -2090,7 +2088,10 @@ function renderNow(){
   if(S.view==="home"){const ae=document.activeElement,hf=ae&&ae.id==="hq",tf=ae&&ae.id==="htq";v.innerHTML=homeView();renderHomeTable();
     if(tf){const i=$("#htq");if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}}
     if(S.hq){homeSearch(S.hq);if(hf){const i=$("#hq");i.focus();i.setSelectionRange(i.value.length,i.value.length)}}}
-  else if(S.view==="customers"){v.innerHTML=customersView();renderList();renderDetail()}
+  // Picking an account, sending a reminder and live refreshes redraw the whole page; the accounts list stays where it was
+  // scrolled (only a new kind, filter, order or search starts it from the top).
+  else if(S.view==="customers"){const ol=$("#list"),lt=ol?ol.scrollTop:0,lk=[S.kind,S.filter,S.sort,S.q].join("|"),same=ol&&render.listKey===lk;render.listKey=lk;
+    v.innerHTML=customersView();renderList();renderDetail();const nl=$("#list");if(nl&&same&&lt)nl.scrollTop=lt}
   else if(S.view==="reminders")v.innerHTML=remindersView();
   else if(S.view==="reports"){v.innerHTML=reportsView();mountRepCharts()}
   else{v.innerHTML=settingsView();if($("#bizCv"))bizRedraw()}
@@ -2157,8 +2158,9 @@ const ACT_TEXT=a=>{
   }
 };
 /* Every customer who owes, highest balance first, as cards in a strip at the top of home that drifts to the right on its own (a seamless loop: the
-   cards are drawn twice and the strip moves by one copy). Touching or hovering stops it; reduce-motion makes it a plain
-   swipeable row. Tapping a card opens the account. */
+   cards are drawn twice and the strip wraps round by one copy). It scrolls by finger, trackpad or mouse drag; touching,
+   hovering or scrolling stops the drift for a few seconds (tcTick). Reduce-motion makes it a plain swipeable row. Tapping a card
+   opens the account. */
 function topCards(per,total){
   const list=[...S.customers.values()].filter(c=>!isSup(c)).map(c=>({c,b:per.get(c.id).bal})).filter(x=>x.b>0).sort((a,b)=>b.b-a.b);
   if(list.length<2)return "";const late=lateInfo();
@@ -2174,7 +2176,7 @@ function topCards(per,total){
   const one=list.map((x,i)=>card(x,i,false)).join("")+hid.repeat(reps-1),two=hid.repeat(reps);
   return `<section class="pane top-cards" aria-label="أعلى الأرصدة">
     <div class="section-title"><h2>${I.trend}الزبائن حسب الرصيد</h2><span class="ro-note"><span class="num">${list.length}</span> زبون عليهم دين</span></div>
-    <div class="tc-view"><div class="tc-track" style="--tc-dur:${list.length*reps*6}s">${one}<span class="tc-dup">${two}</span></div></div></section>`;
+    <div class="tc-view"><div class="tc-track">${one}<span class="tc-dup">${two}</span></div></div></section>`;
 }
 /* ---------- home board: cards at the top of home that move on every few seconds and swipe by hand ----------
    Today's report (debts and payments recorded this shop day, 2 AM to 2 AM), late customers and locked accounts (each with a
@@ -2268,6 +2270,37 @@ setInterval(()=>{const H=S.hb,el=$("#hb");if(!H||!el||S.view!=="home")return;
       const stop=ev=>{ev.stopPropagation();ev.preventDefault()};document.addEventListener("click",stop,{capture:true,once:true});setTimeout(()=>document.removeEventListener("click",stop,{capture:true}),50)}};
   document.addEventListener("pointerup",up);document.addEventListener("pointercancel",up);
   document.addEventListener("visibilitychange",()=>{if(S.hb)S.hb.slideAt=Date.now()});
+})();
+/* «الزبائن حسب الرصيد» drift: about 30px a second while nobody touches it. Its place lives in tcS, so the live refreshes of home
+   don't send it back to the start. In this right-to-left page the later cards sit to the left; scrollLeft runs from 0 to
+   negative (older engines count down from the far end instead), so tcGet/tcPut talk in "how far along". */
+const TC_SPEED=30,TC_REST=3000,TC_CALM=matchMedia("(prefers-reduced-motion:reduce)"),tcS={el:null,pos:0,set:-1,user:0,hold:false,t:0};
+function tcNeg(el){if(el._neg==null){const s=el.scrollLeft;el.scrollLeft=-1;el._neg=el.scrollLeft<0;el.scrollLeft=s}return el._neg}
+const tcMax=el=>el.scrollWidth-el.clientWidth,tcHalf=el=>{const d=el.querySelector(".tc-dup");return d?d.offsetWidth:0};
+function tcGet(el){return tcNeg(el)?-el.scrollLeft:tcMax(el)-el.scrollLeft}
+function tcPut(el,p){p=Math.max(0,Math.min(tcMax(el),p));el.scrollLeft=tcNeg(el)?-p:tcMax(el)-p;tcS.set=tcGet(el)}
+// Wraps round by one copy (the copies look the same) so the strip never runs out; needs the second copy to fill the view.
+function tcWrap(el){const W=tcHalf(el);if(TC_CALM.matches||!W||tcMax(el)<W)return;if(tcS.pos>=W){tcS.pos-=W;tcPut(el,tcS.pos)}}
+function tcTick(t){requestAnimationFrame(tcTick);const dt=Math.min(100,t-(tcS.t||t));tcS.t=t;
+  const el=S.view==="home"?document.querySelector(".tc-view"):null;if(!el){tcS.el=null;return}
+  if(el!==tcS.el){tcS.el=el;const W=tcHalf(el);if(W&&tcS.pos>=W)tcS.pos%=W;tcPut(el,tcS.pos);return}
+  if(TC_CALM.matches||document.hidden||tcS.hold||$("#modalRoot").children.length||Date.now()-tcS.user<TC_REST||HB_HOVER.matches&&el.matches(":hover")||el.querySelector(":focus-visible"))return;
+  const W=tcHalf(el);if(!W||tcMax(el)<W)return;
+  tcS.pos+=TC_SPEED*dt/1000;if(tcS.pos>=W)tcS.pos-=W;tcPut(el,tcS.pos)}
+requestAnimationFrame(tcTick);
+(()=>{let x0=null,p0=0,id=null,moved=false;const isV=e=>e.target.closest&&e.target.closest(".tc-view");
+  // A scroll the app didn't make is the user's: keep where they left it and rest the drift.
+  document.addEventListener("scroll",e=>{const el=e.target;if(!el.classList||!el.classList.contains("tc-view"))return;const cur=tcGet(el);
+    if(Math.abs(cur-tcS.set)<=1)return;tcS.pos=cur;tcS.set=cur;tcS.user=Date.now();if(!tcS.hold&&cur>tcMax(el)-40)tcWrap(el)},true);
+  document.addEventListener("pointerdown",e=>{const el=isV(e);if(!el)return;tcS.hold=true;tcS.user=Date.now();
+    if(e.pointerType==="mouse"&&e.button===0){x0=e.clientX;p0=tcGet(el);id=e.pointerId;moved=false;e.preventDefault()}});
+  // Mouse drag: pulling the strip to the right brings in the later cards from the left.
+  document.addEventListener("pointermove",e=>{if(x0==null||e.pointerId!==id)return;const el=tcS.el;if(!el)return;const dx=e.clientX-x0;
+    if(!moved&&Math.abs(dx)>5){moved=true;el.classList.add("drag")}if(moved){tcS.pos=p0+dx;tcPut(el,tcS.pos);tcS.user=Date.now()}});
+  const up=e=>{if(!tcS.hold)return;tcS.hold=false;tcS.user=Date.now();if(x0==null||e.pointerId!==id)return;x0=null;
+    const el=tcS.el;if(el){el.classList.remove("drag");tcWrap(el)}
+    if(moved){const stop=ev=>{ev.stopPropagation();ev.preventDefault()};document.addEventListener("click",stop,{capture:true,once:true});setTimeout(()=>document.removeEventListener("click",stop,{capture:true}),50)}};
+  document.addEventListener("pointerup",up);document.addEventListener("pointercancel",up);
 })();
 function homeView(){
   const per=stats();const m=monthISO();let total=0,owing=0,mAdd=0,mPay=0;
@@ -2537,7 +2570,7 @@ function renderDetail(){
 </div>`;
   countUps();
 }
-function openCustomer(id){S.hq="";S.view="customers";S.selected=id;const oc=S.customers.get(id);if(oc)S.kind=kindOf(oc);render();stPrefetch(oc);if(window.innerWidth<=820)window.scrollTo(0,0)}
+function openCustomer(id){if(S.view==="customers"&&!S.selected&&window.innerWidth<=820)S.listY=scrollY;else if(S.view!=="customers")S.listY=null;S.hq="";S.view="customers";S.selected=id;const oc=S.customers.get(id);if(oc)S.kind=kindOf(oc);render();stPrefetch(oc);if(window.innerWidth<=820)window.scrollTo(0,0)}
 
 /* ---------- reminders ---------- */
 // The customers shown on the reminders page (with a phone, and not already reminded this month-end), for «إرسال للكل بالدور».
@@ -4747,7 +4780,7 @@ document.addEventListener("click",e=>{
   const b=t.closest("[data-act]");if(!b)return;
   const c=S.customers.get(S.selected);
   switch(b.dataset.act){
-    case "back":S.selected=null;render();break;
+    case "back":S.selected=null;render();if(window.innerWidth<=820&&S.listY!=null)window.scrollTo(0,S.listY);break;
     case "viewpics":{const x=S.txns.get(b.dataset.id);if(x)viewPhotos(x);break}
     case "viewlist":if(c)viewListPhotos(c,b.dataset.date);break;
     case "listsall":if(c){S.listsAll=c.id;render()}break;
